@@ -1,0 +1,43 @@
+# Środowisko Python
+__pycache__/
+venv/
+.env
+
+# VS Code
+.vscode/
+
+# PyCharm
+.idea/
+
+# Pliki systemowe
+.DS_Store
+Thumbs.db
+
+# Pliki tymczasowe
+*.tmp
+*.bak
+*.swp
+*~
+
+# Pliki kompilowane
+*.py[cod]
+*$py.class
+*.so
+*.dll
+*.exe
+
+# Pliki pakietów
+*.egg
+*.egg-info/
+dist/
+build/
+*.manifest
+*.spec
+
+# Logi
+*.log
+logs/
+
+# Pliki lokalne
+*.sqlite
+*.db
