@@ -427,20 +427,24 @@
                 case 'responding':
                     if (listeningRing && listeningRing.material.uniforms) {
                         listeningRing.material.uniforms.time.value = time;
-                        listeningRing.material.uniforms.audioLevel.value = avgAudioLevel * 1.5;
+                        // ZMIANA: Zmniejszamy mnożnik z 1.5 na 0.6 i dodajemy baseline
+                        listeningRing.material.uniforms.audioLevel.value = 0.3 + (avgAudioLevel * 0.6);
                         listeningRing.rotation.z = time * 0.8;
                     }
                     
                     if (particles && particles.material.uniforms) {
                         particles.material.uniforms.time.value = time;
-                        particles.material.uniforms.audioLevel.value = avgAudioLevel * 1.2;
+                        // ZMIANA: Podobnie - zmniejszamy z 1.2 na 0.5 i dodajemy baseline
+                        particles.material.uniforms.audioLevel.value = 0.2 + (avgAudioLevel * 0.5);
                         particles.rotation.z = time * 0.3;
                     }
                     
                     if (glowRing) {
-                        const glowScale = 1.2 + avgAudioLevel * 0.6;
+                        // ZMIANA: Mniejszy zakres skalowania - było 1.2 + 0.6, teraz 1.1 + 0.3
+                        const glowScale = 1.1 + avgAudioLevel * 0.3;
                         glowRing.scale.set(glowScale, glowScale, 1);
-                        glowRing.material.opacity = 0.2 + avgAudioLevel * 0.3;
+                        // ZMIANA: Mniejsza zmiana opacity - było 0.2 + 0.3, teraz 0.25 + 0.15
+                        glowRing.material.opacity = 0.25 + avgAudioLevel * 0.15;
                     }
                     break;
                     
