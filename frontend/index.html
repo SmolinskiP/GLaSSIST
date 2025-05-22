@@ -81,13 +81,21 @@
     <script>
         // Globalne zmienne
         let scene, camera, renderer, animationFrameId;
-        let listeningRing, loadingRing, particles, glowRing;
+        let ring;
         let websocket = null;
         let currentState = 'hidden';
         let audioData = [];
         let isConnected = false;
         let isAnimating = false;
         let errorMessage = '';
+        
+        // Zmienne do normalizacji audio
+        let audioBuffer = [];
+        const AUDIO_BUFFER_SIZE = 5;  // Bufor wygładzający
+        let audioBaseline = 0.15;     // Minimalny poziom (dla ciszy)
+        let audioMax = 0.5;           // Maksymalny poziom (ogranicznik)
+        let audioHistory = [];        // Historia dla adaptacyjnej normalizacji
+        const HISTORY_SIZE = 100;     // Długość historii dla adaptacji
         
         // Kolory dla różnych stanów
         const stateColors = {
@@ -98,100 +106,96 @@
             error: 0xf44336
         };
         
-        // VERTEX SHADER dla świecącego pierścienia (listening/responding)
+        // SHADER Z GRADIENTEM I EFEKTAMI
         const ringVertexShader = `
+            precision highp float;
             varying vec2 vUv;
-            varying vec3 vPosition;
-            uniform float time;
-            uniform float audioLevel;
             
             void main() {
                 vUv = uv;
-                vPosition = position;
-                
-                // Deformacja na podstawie audio
-                vec3 pos = position;
-                float angle = atan(pos.y, pos.x);
-                float radius = length(pos.xy);
-                
-                // Dodaj pulsowanie na podstawie audio
-                float pulse = sin(time * 4.0 + angle * 8.0) * audioLevel * 0.3;
-                pos.xy *= (1.0 + pulse);
-                
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
             }
         `;
         
-        // FRAGMENT SHADER dla świecącego pierścienia (listening/responding)
         const ringFragmentShader = `
+            precision highp float;
             uniform float time;
             uniform float audioLevel;
             uniform vec3 color;
+            uniform float pulseSpeed;
+            uniform float usePulse;
             varying vec2 vUv;
-            varying vec3 vPosition;
             
-            void main() {
-                vec2 center = vec2(0.5);
-                float dist = distance(vUv, center);
-                
-                // Pierścień - tylko krawędź
-                float ring = 1.0 - smoothstep(0.35, 0.5, dist);
-                ring *= smoothstep(0.25, 0.35, dist);
-                
-                // Efekt świecenia
-                float glow = exp(-dist * 8.0);
-                
-                // Pulsowanie na podstawie audio - ZWIĘKSZONA CZUŁOŚĆ
-                float pulse = sin(time * 6.0 + dist * 20.0) * audioLevel * 2.0;
-                
-                // Animacja błysku - ZWIĘKSZONA CZUŁOŚĆ
-                float sparkle = sin(time * 12.0 + vPosition.x * 10.0 + vPosition.y * 15.0);
-                sparkle = pow(max(0.0, sparkle), 6.0) * audioLevel * 1.5;
-                
-                // Kombinacja wszystkich efektów
-                float intensity = ring + glow * 0.3 + pulse * 0.8 + sparkle;
-                
-                vec3 finalColor = color * intensity;
-                
-                // Dodatkowy glow - ZWIĘKSZONY
-                finalColor += vec3(0.2, 0.6, 1.0) * glow * audioLevel * 1.5;
-                
-                gl_FragColor = vec4(finalColor, intensity * 0.8);
+            // Funkcja do tworzenia przypadkowego szumu
+            float random(vec2 st) {
+                return fract(sin(dot(st.xy, vec2(12.9898, 78.233))) * 43758.5453123);
             }
-        `;
-        
-        // SHADER dla cząsteczek (responding)
-        const particleVertexShader = `
-            attribute float size;
-            attribute float alpha;
-            varying float vAlpha;
-            uniform float time;
-            uniform float audioLevel;
             
             void main() {
-                vAlpha = alpha;
+                // Obliczenia dla pierścienia
+                vec2 center = vec2(0.5, 0.5);
+                float dist = distance(vUv, center) * 2.0;  // Skalujemy do zakresu 0-1
                 
-                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                // Tworzenie pierścienia (okręgu z dziurą)
+                float innerRadius = 0.7;
+                float outerRadius = 0.95;
+                float ring = smoothstep(innerRadius, innerRadius + 0.02, dist) * (1.0 - smoothstep(outerRadius - 0.02, outerRadius, dist));
                 
-                // Rozmiar cząsteczki zależny od audio
-                gl_PointSize = size * (1.0 + audioLevel * 2.0);
-                gl_Position = projectionMatrix * mvPosition;
-            }
-        `;
-        
-        const particleFragmentShader = `
-            uniform vec3 color;
-            varying float vAlpha;
-            
-            void main() {
-                // Okrągłe cząsteczki
-                vec2 center = gl_PointCoord - vec2(0.5);
-                float dist = length(center);
+                // Pulsacja - zależna od czasu lub dźwięku
+                float pulse;
+                if (usePulse > 0.5) {
+                    // Tryb pulsacji automatycznej (processing, error)
+                    pulse = 0.6 + 0.4 * sin(time * pulseSpeed);
+                } else {
+                    // Tryb audio (listening, responding) - NORMALIZOWANA REAKCJA
+                    // Liniowa transformacja: baseline->0.7, max->1.0
+                    pulse = 0.7 + audioLevel * 0.3;
+                }
                 
-                if (dist > 0.5) discard;
+                // Gradient - jaśniejszy wewnątrz, ciemniejszy na zewnątrz
+                float gradient = 1.0 - (dist - innerRadius) / (outerRadius - innerRadius);
+                gradient = pow(gradient, 1.5);  // Wzmacniamy efekt gradientu
                 
-                float alpha = (1.0 - dist * 2.0) * vAlpha;
-                gl_FragColor = vec4(color, alpha);
+                // Dodatkowy efekt świetlny podążający za pulsem
+                float glow = smoothstep(0.0, 0.8, gradient) * pulse;
+                
+                // Tworzenie efektu świetlnych fal wokół pierścienia - SUBTELNIEJSZE
+                float wavePulse = sin(time * 3.0 + dist * 8.0) * 0.5 + 0.5;
+                float waves = wavePulse * mix(0.1, audioLevel * 0.3, 0.7) * smoothstep(outerRadius - 0.1, outerRadius, dist);
+                
+                // Szum dla dodania tekstury - SUBTELNIEJSZY
+                float noise = random(vUv + vec2(time * 0.1, 0.0)) * 0.03;
+                
+                // Dodatkowe efekty świetlne reagujące na dźwięk - SUBTELNIEJSZE
+                float sparkle = sin(time * 10.0 + vUv.x * 20.0 + vUv.y * 15.0);
+                sparkle = pow(max(0.0, sparkle), 10.0) * 0.1 * pulse;
+                
+                // Łączymy efekty
+                float intensity = ring * (gradient + glow * 0.6 + waves + sparkle + noise);
+                
+                // Kolor końcowy
+                vec3 baseColor = color * intensity;
+                
+                // Dodajemy poświatę dla wybranego koloru
+                vec3 glowColor;
+                if (color.r > 0.7) {  // Czerwony (error)
+                    glowColor = vec3(1.0, 0.3, 0.1);
+                } else if (color.g > 0.7) {  // Pomarańczowy (processing)
+                    glowColor = vec3(1.0, 0.7, 0.2);
+                } else if (color.b > 0.7) {  // Niebieski (listening)
+                    glowColor = vec3(0.2, 0.6, 1.0);
+                } else {  // Fioletowy (responding)
+                    glowColor = vec3(1.0, 0.2, 1.0);
+                }
+                
+                // Dodatkowy efekt świecenia - SUBTELNIEJSZY
+                float audioGlow = usePulse < 0.5 ? mix(0.5, audioLevel, 0.7) : 0.7;
+                vec3 finalColor = baseColor + glowColor * glow * audioGlow * 0.7;
+                
+                // Przezroczystość
+                float alpha = intensity * (0.7 + audioLevel * 0.3);
+                
+                gl_FragColor = vec4(finalColor, alpha);
             }
         `;
         
@@ -213,107 +217,34 @@
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setClearColor(0x000000, 0);
             
-            // Włącz blending dla efektów świetlnych
-            renderer.sortObjects = false;
-            
-            createListeningAnimation();
+            createAnimations();
             
             renderer.render(scene, camera);
             console.log('Three.js zainicjalizowane z obsługą tekstu błędu');
         }
         
-        function createListeningAnimation() {
-            // GŁÓWNY PIERŚCIEŃ Z SHADERAMI (listening/responding)
-            const ringGeometry = new THREE.RingGeometry(1.0, 1.2, 64);
+        function createAnimations() {
+            // Używamy płaszczyzny dla shadera, który narysuje pierścień
+            const planeGeometry = new THREE.PlaneGeometry(4, 4);
             const ringMaterial = new THREE.ShaderMaterial({
                 vertexShader: ringVertexShader,
                 fragmentShader: ringFragmentShader,
                 uniforms: {
                     time: { value: 0.0 },
                     audioLevel: { value: 0.0 },
-                    color: { value: new THREE.Color(0x4fc3f7) }
+                    color: { value: new THREE.Color(0x4fc3f7) },
+                    pulseSpeed: { value: 2.0 },
+                    usePulse: { value: 0.0 }  // 0 = tryb audio, 1 = tryb pulsowania
                 },
                 transparent: true,
-                blending: THREE.AdditiveBlending,
-                side: THREE.DoubleSide
-            });
-            
-            listeningRing = new THREE.Mesh(ringGeometry, ringMaterial);
-            listeningRing.visible = false;
-            scene.add(listeningRing);
-            
-            // LOADING RING
-            const loadingGeometry = new THREE.RingGeometry(1.0, 1.2, 64);
-            const loadingMaterial = new THREE.ShaderMaterial({
-                vertexShader: ringVertexShader,
-                fragmentShader: ringFragmentShader,
-                uniforms: {
-                    time: { value: 0.0 },
-                    audioLevel: { value: 0.8 },
-                    color: { value: new THREE.Color(0xff9800) }
-                },
-                transparent: true,
-                blending: THREE.AdditiveBlending,
-                side: THREE.DoubleSide
-            });
-            
-            loadingRing = new THREE.Mesh(loadingGeometry, loadingMaterial);
-            loadingRing.visible = false;
-            scene.add(loadingRing);
-            
-            // CZĄSTECZKI (TYLKO DLA RESPONDING)
-            const particleCount = 200;
-            const positions = new Float32Array(particleCount * 3);
-            const sizes = new Float32Array(particleCount);
-            const alphas = new Float32Array(particleCount);
-            
-            for (let i = 0; i < particleCount; i++) {
-                // Rozmieść cząsteczki wokół pierścienia
-                const angle = (i / particleCount) * Math.PI * 2;
-                const radius = 1.5 + Math.random() * 1.0;
-                
-                positions[i * 3] = Math.cos(angle) * radius;
-                positions[i * 3 + 1] = Math.sin(angle) * radius;
-                positions[i * 3 + 2] = (Math.random() - 0.5) * 0.5;
-                
-                sizes[i] = Math.random() * 8 + 2;
-                alphas[i] = Math.random() * 0.8 + 0.2;
-            }
-            
-            const particleGeometry = new THREE.BufferGeometry();
-            particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            particleGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-            particleGeometry.setAttribute('alpha', new THREE.BufferAttribute(alphas, 1));
-            
-            const particleMaterial = new THREE.ShaderMaterial({
-                vertexShader: particleVertexShader,
-                fragmentShader: particleFragmentShader,
-                uniforms: {
-                    time: { value: 0.0 },
-                    audioLevel: { value: 0.0 },
-                    color: { value: new THREE.Color(0x9c27b0) }
-                },
-                transparent: true,
+                depthTest: false,
+                depthWrite: false,
                 blending: THREE.AdditiveBlending
             });
             
-            particles = new THREE.Points(particleGeometry, particleMaterial);
-            particles.visible = false;
-            scene.add(particles);
-            
-            // DODATKOWY GLOW RING
-            const glowGeometry = new THREE.RingGeometry(0.8, 1.4, 32);
-            const glowMaterial = new THREE.MeshBasicMaterial({
-                color: 0x4fc3f7,
-                transparent: true,
-                opacity: 0.1,
-                blending: THREE.AdditiveBlending,
-                side: THREE.DoubleSide
-            });
-            
-            glowRing = new THREE.Mesh(glowGeometry, glowMaterial);
-            glowRing.visible = false;
-            scene.add(glowRing);
+            ring = new THREE.Mesh(planeGeometry, ringMaterial);
+            ring.visible = false;
+            scene.add(ring);
         }
         
         function animate() {
@@ -331,18 +262,13 @@
             console.log('Startowanie animacji');
             
             // Pokaż odpowiednie elementy w zależności od stanu
-            if (currentState === 'listening') {
-                if (listeningRing) listeningRing.visible = true;
-                if (glowRing) glowRing.visible = true;
-            } else if (currentState === 'processing') {
-                if (loadingRing) loadingRing.visible = true;
-            } else if (currentState === 'responding') {
-                if (listeningRing) listeningRing.visible = true;
-                if (particles) particles.visible = true;
-                if (glowRing) glowRing.visible = true;
-            } else if (currentState === 'error') {
-                if (listeningRing) listeningRing.visible = true;
-                showErrorText(errorMessage);
+            if (currentState !== 'hidden') {
+                ring.visible = true;
+                
+                // Pokaż tekst błędu tylko w stanie error
+                if (currentState === 'error') {
+                    showErrorText(errorMessage);
+                }
             }
             
             animate();
@@ -355,10 +281,7 @@
             console.log('Zatrzymywanie animacji');
             
             // Ukryj wszystkie elementy
-            if (listeningRing) listeningRing.visible = false;
-            if (loadingRing) loadingRing.visible = false;
-            if (particles) particles.visible = false;
-            if (glowRing) glowRing.visible = false;
+            ring.visible = false;
             
             // Ukryj tekst błędu
             hideErrorText();
@@ -388,75 +311,131 @@
             }
         }
         
-        function updateAnimation() {
-            const time = Date.now() * 0.001;
+        // Funkcja do normalizacji poziomu audio
+        function normalizeAudioLevel(rawLevel) {
+            // Ograniczamy maksymalną wartość
+            const cappedLevel = Math.min(rawLevel, audioMax);
             
-            // Oblicz średni poziom audio
-            let avgAudioLevel = 0;
-            if (audioData && audioData.length > 0) {
-                avgAudioLevel = audioData.reduce((a, b) => a + b, 0) / audioData.length;
-                avgAudioLevel = Math.min(avgAudioLevel, 1.0);
+            // Liniowa normalizacja między baseline a max
+            const range = audioMax - audioBaseline;
+            if (range <= 0) return 0;
+            
+            // Jeśli poziom jest poniżej baseline, to zwracamy małą wartość
+            if (cappedLevel < audioBaseline) {
+                return Math.max(0, cappedLevel / audioBaseline * 0.1);
             }
             
-            switch(currentState) {
-                case 'listening':
-                    if (listeningRing && listeningRing.material.uniforms) {
-                        listeningRing.material.uniforms.time.value = time;
-                        listeningRing.material.uniforms.audioLevel.value = avgAudioLevel;
-                    }
-                    
-                    if (listeningRing) {
-                        listeningRing.rotation.z = time * 0.5;
-                    }
-                    
-                    if (glowRing) {
-                        const glowScale = 1.0 + avgAudioLevel * 0.8 + Math.sin(time * 3) * 0.15;
-                        glowRing.scale.set(glowScale, glowScale, 1);
-                        glowRing.material.opacity = 0.1 + avgAudioLevel * 0.4;
-                    }
-                    break;
-                    
-                case 'processing':
-                    if (loadingRing && loadingRing.material.uniforms) {
-                        loadingRing.material.uniforms.time.value = time;
-                        const pulseLevel = 0.25 + Math.sin(time * 3.14159) * 0.15;
-                        loadingRing.material.uniforms.audioLevel.value = pulseLevel;
-                    }
-                    break;
-                    
-                case 'responding':
-                    if (listeningRing && listeningRing.material.uniforms) {
-                        listeningRing.material.uniforms.time.value = time;
-                        // ZMIANA: Zmniejszamy mnożnik z 1.5 na 0.6 i dodajemy baseline
-                        listeningRing.material.uniforms.audioLevel.value = 0.3 + (avgAudioLevel * 0.6);
-                        listeningRing.rotation.z = time * 0.8;
-                    }
-                    
-                    if (particles && particles.material.uniforms) {
-                        particles.material.uniforms.time.value = time;
-                        // ZMIANA: Podobnie - zmniejszamy z 1.2 na 0.5 i dodajemy baseline
-                        particles.material.uniforms.audioLevel.value = 0.2 + (avgAudioLevel * 0.5);
-                        particles.rotation.z = time * 0.3;
-                    }
-                    
-                    if (glowRing) {
-                        // ZMIANA: Mniejszy zakres skalowania - było 1.2 + 0.6, teraz 1.1 + 0.3
-                        const glowScale = 1.1 + avgAudioLevel * 0.3;
-                        glowRing.scale.set(glowScale, glowScale, 1);
-                        // ZMIANA: Mniejsza zmiana opacity - było 0.2 + 0.3, teraz 0.25 + 0.15
-                        glowRing.material.opacity = 0.25 + avgAudioLevel * 0.15;
-                    }
-                    break;
-                    
-                case 'error':
-                    if (listeningRing && listeningRing.material.uniforms) {
-                        listeningRing.material.uniforms.color.value.setHex(0xf44336);
-                        listeningRing.material.uniforms.time.value = time;
-                        // Szybkie pulsowanie dla błędu - 0.7 sekundy na cykl
-                        const pulseLevel = 0.25 + Math.sin(time * 8.976) * 0.15;
-                        listeningRing.material.uniforms.audioLevel.value = pulseLevel;
-                    }
-                    break;
+            // Normalizacja między baseline a max do zakresu 0.1-1.0
+            return 0.1 + 0.9 * (cappedLevel - audioBaseline) / range;
+        }
+        
+        // Funkcja do adaptacyjnego przetwarzania poziomu audio
+        function processAudioLevel(audioData) {
+            if (!audioData || audioData.length === 0) return 0;
+            
+            // Oblicz średni poziom audio z surowych danych
+            let avgLevel = 0;
+            let count = 0;
+            
+            // Bierzemy dane z niższych i średnich częstotliwości
+            const relevantRange = Math.min(audioData.length, 20);
+            for (let i = 0; i < relevantRange; i++) {
+                // Stosujemy różne wagi dla różnych częstotliwości
+                // Niższe częstotliwości mają większą wagę
+                const weight = (relevantRange - i) / relevantRange;
+                avgLevel += audioData[i] * weight;
+                count += weight;
+            }
+            
+            // Unikamy dzielenia przez zero
+            if (count <= 0) return 0;
+            
+            // Surowy poziom audio
+            const rawLevel = avgLevel / count;
+            
+            // Dodajemy do historii dla adaptacyjnej normalizacji
+            audioHistory.push(rawLevel);
+            if (audioHistory.length > HISTORY_SIZE) {
+                audioHistory.shift();
+            }
+            
+            // Aktualizujemy baseline i max adaptacyjnie
+            if (audioHistory.length > 10) {
+                // Sortujemy historię
+                const sortedHistory = [...audioHistory].sort((a, b) => a - b);
+                // Baseline to 15 percentyl
+                const baselineIndex = Math.floor(sortedHistory.length * 0.15);
+                // Max to 90 percentyl
+                const maxIndex = Math.floor(sortedHistory.length * 0.9);
+                
+                // Aktualizujemy wartości z pewną bezwładnością
+                audioBaseline = audioBaseline * 0.9 + sortedHistory[baselineIndex] * 0.1;
+                audioMax = audioMax * 0.9 + sortedHistory[maxIndex] * 0.1;
+                
+                // Upewniamy się, że baseline i max są rozsądne
+                audioBaseline = Math.max(0.05, audioBaseline);
+                audioMax = Math.max(audioBaseline * 1.5, audioMax);
+            }
+            
+            // Normalizujemy poziom
+            const normalizedLevel = normalizeAudioLevel(rawLevel);
+            
+            // Dodajemy do bufora wygładzającego
+            audioBuffer.push(normalizedLevel);
+            if (audioBuffer.length > AUDIO_BUFFER_SIZE) {
+                audioBuffer.shift();
+            }
+            
+            // Obliczamy średnią z bufora dla płynniejszej animacji
+            let smoothedLevel = 0;
+            for (let i = 0; i < audioBuffer.length; i++) {
+                smoothedLevel += audioBuffer[i];
+            }
+            smoothedLevel /= audioBuffer.length;
+            
+            return smoothedLevel;
+        }
+        
+        function updateAnimation() {
+            const time = performance.now() * 0.001;
+            
+            // Przetwarzamy dane audio z normalizacją
+            const audioLevel = processAudioLevel(audioData);
+            
+            // Aktualizacja shadera pierścienia
+            if (ring && ring.material.uniforms) {
+                // Aktualizuj czas dla wszystkich stanów
+                ring.material.uniforms.time.value = time;
+                
+                // Ustaw kolor pierścienia
+                ring.material.uniforms.color.value.set(stateColors[currentState] || stateColors.hidden);
+                
+                // Aktualizuj parametry w zależności od stanu
+                switch (currentState) {
+                    case 'listening':
+                        // Listening: reaguje tylko na dźwięk
+                        ring.material.uniforms.audioLevel.value = audioLevel;
+                        ring.material.uniforms.usePulse.value = 0.0; // Tryb audio
+                        break;
+                        
+                    case 'processing':
+                        // Processing: wolne pulsowanie
+                        ring.material.uniforms.pulseSpeed.value = 2.0;
+                        ring.material.uniforms.usePulse.value = 1.0; // Tryb pulsowania
+                        break;
+                        
+                    case 'responding':
+                        // Responding: reaguje na dźwięk
+                        ring.material.uniforms.audioLevel.value = audioLevel;
+                        ring.material.uniforms.usePulse.value = 0.0; // Tryb audio
+                        break;
+                        
+                    case 'error':
+                        // Error: szybkie pulsowanie
+                        ring.material.uniforms.pulseSpeed.value = 6.0;
+                        ring.material.uniforms.usePulse.value = 1.0; // Tryb pulsowania
+                        break;
+                }
             }
         }
         
@@ -466,11 +445,11 @@
             console.log(`Zmiana stanu: ${currentState} -> ${newState}`);
             
             // Ukryj wszystkie elementy przed zmianą stanu
-            if (listeningRing) listeningRing.visible = false;
-            if (loadingRing) loadingRing.visible = false;
-            if (particles) particles.visible = false;
-            if (glowRing) glowRing.visible = false;
+            if (ring) ring.visible = false;
             hideErrorText();
+            
+            // Resetuj bufory audio przy zmianie stanu
+            audioBuffer = [];
             
             currentState = newState;
             
@@ -482,35 +461,22 @@
             if (newState === 'hidden') {
                 stopAnimation();
                 return;
-            } else if (!isAnimating) {
-                startAnimation();
-            } else {
-                // Jeśli animacja już działa, tylko pokaż odpowiednie elementy
-                if (newState === 'listening') {
-                    if (listeningRing) listeningRing.visible = true;
-                    if (glowRing) glowRing.visible = true;
-                } else if (newState === 'processing') {
-                    if (loadingRing) loadingRing.visible = true;
-                } else if (newState === 'responding') {
-                    if (listeningRing) listeningRing.visible = true;
-                    if (particles) particles.visible = true;
-                    if (glowRing) glowRing.visible = true;
-                } else if (newState === 'error') {
-                    if (listeningRing) listeningRing.visible = true;
-                    showErrorText(errorMessage);
+            } 
+            
+            // Aktualizuj elementy widoczne dla nowego stanu
+            if (ring) {
+                ring.visible = true;
+                if (ring.material.uniforms) {
+                    ring.material.uniforms.color.value.set(stateColors[newState] || stateColors.hidden);
                 }
             }
             
-            // Zmień kolory shaderów
-            const color = new THREE.Color(stateColors[newState] || stateColors.hidden);
-            if (listeningRing && listeningRing.material.uniforms) {
-                listeningRing.material.uniforms.color.value = color;
+            if (newState === 'error') {
+                showErrorText(errorMessage);
             }
-            if (particles && particles.material.uniforms) {
-                particles.material.uniforms.color.value = new THREE.Color(0x9c27b0);
-            }
-            if (glowRing) {
-                glowRing.material.color = color;
+            
+            if (!isAnimating) {
+                startAnimation();
             }
         }
         

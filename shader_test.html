@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPU Diagnostic Test</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            color: white;
+            font-family: monospace;
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 100;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            max-width: 500px;
+        }
+        canvas {
+            display: block;
+        }
+        button {
+            margin: 5px;
+            padding: 5px 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h2>WebGL GPU Diagnostyka</h2>
+        <div id="gpu-info"></div>
+        <div id="extensions"></div>
+        <hr>
+        <div>
+            <button id="test1">Test podstawowy</button>
+            <button id="test2">Test zaawansowany</button>
+            <button id="test3">Test gradientu</button>
+            <button id="fix1">Fix #1: Precyzja</button>
+            <button id="fix2">Fix #2: Wersja GLSL</button>
+            <button id="fix3">Fix #3: Alternatywny blending</button>
+        </div>
+        <div id="result"></div>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Informacje o GPU
+        function detectGPU() {
+            const canvas = document.createElement('canvas');
+            const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+            
+            if (!gl) {
+                document.getElementById('gpu-info').innerHTML = 'WebGL nie jest obsługiwany!';
+                return;
+            }
+            
+            const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+            let gpuInfo = '';
+            
+            if (debugInfo) {
+                const vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
+                const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+                gpuInfo = `<strong>GPU Vendor:</strong> ${vendor}<br><strong>GPU Renderer:</strong> ${renderer}`;
+                
+                // Wersja WebGL
+                const version = gl.getParameter(gl.VERSION);
+                const glslVersion = gl.getParameter(gl.SHADING_LANGUAGE_VERSION);
+                gpuInfo += `<br><strong>WebGL Version:</strong> ${version}<br><strong>GLSL Version:</strong> ${glslVersion}`;
+            } else {
+                gpuInfo = 'Nie można odczytać informacji o GPU';
+            }
+            
+            document.getElementById('gpu-info').innerHTML = gpuInfo;
+            
+            // Sprawdź dostępne rozszerzenia
+            const extensions = gl.getSupportedExtensions();
+            let extList = '<strong>Kluczowe rozszerzenia:</strong><br>';
+            
+            const criticalExts = ['OES_texture_float', 'OES_texture_half_float', 'WEBGL_color_buffer_float', 
+                                 'EXT_color_buffer_half_float', 'EXT_blend_minmax', 'EXT_frag_depth'];
+            
+            criticalExts.forEach(ext => {
+                if (extensions.includes(ext)) {
+                    extList += `✅ ${ext}<br>`;
+                } else {
+                    extList += `❌ ${ext}<br>`;
+                }
+            });
+            
+            document.getElementById('extensions').innerHTML = extList;
+        }
+        
+        // Główna konfiguracja
+        let scene, camera, renderer;
+        let animationMesh, animationMaterial;
+        let currentTest = null;
+        
+        function initThree() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 5;
+            
+            renderer = new THREE.WebGLRenderer({ 
+                canvas: document.getElementById('canvas'),
+                antialias: true
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            
+            // Informacje o renderer
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML += `<strong>THREE.WebGLRenderer:</strong><br>`;
+            resultDiv.innerHTML += `- Precision: ${renderer.capabilities.precision}<br>`;
+            resultDiv.innerHTML += `- Max Anisotropy: ${renderer.capabilities.getMaxAnisotropy()}<br>`;
+            resultDiv.innerHTML += `- Max Precision: ${renderer.capabilities.precision}<br>`;
+            resultDiv.innerHTML += `- WebGL2: ${renderer.capabilities.isWebGL2 ? 'Tak' : 'Nie'}<br>`;
+            
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+        
+        // Podstawowy test - pierścień z animacją
+        function runBasicTest() {
+            clearTest();
+            currentTest = 'basic';
+            
+            // Prosty shader dla pierścienia z animacją
+            const vertexShader = `
+                varying vec2 vUv;
+                
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `;
+            
+            const fragmentShader = `
+                uniform float time;
+                uniform vec3 color;
+                varying vec2 vUv;
+                
+                void main() {
+                    vec2 center = vec2(0.5);
+                    float dist = distance(vUv, center);
+                    
+                    float ring = 1.0 - smoothstep(0.4, 0.5, dist);
+                    ring *= smoothstep(0.2, 0.4, dist);
+                    
+                    float pulse = sin(time * 3.0) * 0.5 + 0.5;
+                    
+                    vec3 finalColor = color * ring * pulse;
+                    float alpha = ring * 0.8;
+                    
+                    gl_FragColor = vec4(finalColor, alpha);
+                }
+            `;
+            
+            // Geometria i materiał
+            const geometry = new THREE.PlaneGeometry(4, 4);
+            animationMaterial = new THREE.ShaderMaterial({
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+                uniforms: {
+                    time: { value: 0 },
+                    color: { value: new THREE.Color(0x4fc3f7) }
+                },
+                transparent: true,
+                blending: THREE.AdditiveBlending
+            });
+            
+            animationMesh = new THREE.Mesh(geometry, animationMaterial);
+            scene.add(animationMesh);
+            
+            animate();
+            logTest("Podstawowy test uruchomiony - prosty pierścień z animacją");
+        }
+        
+        // Zaawansowany test - podobny do oryginalnej animacji
+        function runAdvancedTest() {
+            clearTest();
+            currentTest = 'advanced';
+            
+            const vertexShader = `
+                varying vec2 vUv;
+                varying vec3 vPosition;
+                uniform float time;
+                
+                void main() {
+                    vUv = uv;
+                    vPosition = position;
+                    
+                    vec3 pos = position;
+                    float angle = atan(pos.y, pos.x);
+                    float pulse = sin(time * 4.0 + angle * 8.0) * 0.3;
+                    pos.xy *= (1.0 + pulse);
+                    
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+                }
+            `;
+            
+            const fragmentShader = `
+                uniform float time;
+                uniform vec3 color;
+                varying vec2 vUv;
+                varying vec3 vPosition;
+                
+                void main() {
+                    vec2 center = vec2(0.5);
+                    float dist = distance(vUv, center);
+                    
+                    float ring = 1.0 - smoothstep(0.35, 0.5, dist);
+                    ring *= smoothstep(0.25, 0.35, dist);
+                    
+                    float glow = exp(-dist * 8.0);
+                    
+                    float pulse = sin(time * 6.0 + dist * 20.0) * 2.0;
+                    
+                    float sparkle = sin(time * 12.0 + vPosition.x * 10.0 + vPosition.y * 15.0);
+                    sparkle = pow(max(0.0, sparkle), 6.0) * 1.5;
+                    
+                    float intensity = ring + glow * 0.3 + pulse * 0.8 + sparkle;
+                    
+                    vec3 finalColor = color * intensity;
+                    finalColor += vec3(0.2, 0.6, 1.0) * glow * 1.5;
+                    
+                    gl_FragColor = vec4(finalColor, intensity * 0.8);
+                }
+            `;
+            
+            // Geometria i materiał
+            const geometry = new THREE.PlaneGeometry(4, 4);
+            animationMaterial = new THREE.ShaderMaterial({
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+                uniforms: {
+                    time: { value: 0 },
+                    color: { value: new THREE.Color(0x4fc3f7) }
+                },
+                transparent: true,
+                blending: THREE.AdditiveBlending
+            });
+            
+            animationMesh = new THREE.Mesh(geometry, animationMaterial);
+            scene.add(animationMesh);
+            
+            animate();
+            logTest("Zaawansowany test uruchomiony - podobny do oryginalnej animacji");
+        }
+        
+        // Test gradientu
+        function runGradientTest() {
+            clearTest();
+            currentTest = 'gradient';
+            
+            const vertexShader = `
+                varying vec2 vUv;
+                
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `;
+            
+            const fragmentShader = `
+                uniform float time;
+                varying vec2 vUv;
+                
+                void main() {
+                    // Prosty gradient od środka
+                    vec2 center = vec2(0.5);
+                    float dist = distance(vUv, center);
+                    
+                    // Animacja zmiany koloru
+                    float r = 0.5 + 0.5 * sin(time + 0.0);
+                    float g = 0.5 + 0.5 * sin(time + 2.0);
+                    float b = 0.5 + 0.5 * sin(time + 4.0);
+                    
+                    // Gradient od środka
+                    float gradient = 1.0 - dist * 2.0;
+                    gradient = max(0.0, gradient);
+                    
+                    vec3 color = vec3(r, g, b) * gradient;
+                    
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `;
+            
+            // Geometria i materiał
+            const geometry = new THREE.PlaneGeometry(4, 4);
+            animationMaterial = new THREE.ShaderMaterial({
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+                uniforms: {
+                    time: { value: 0 }
+                }
+            });
+            
+            animationMesh = new THREE.Mesh(geometry, animationMaterial);
+            scene.add(animationMesh);
+            
+            animate();
+            logTest("Test gradientu uruchomiony - powinien pokazać płynny gradient");
+        }
+        
+        // Fix 1: Dodanie precyzji
+        function runFix1() {
+            clearTest();
+            currentTest = 'fix1';
+            
+            const vertexShader = `
+                precision highp float;
+                precision highp int;
+                varying vec2 vUv;
+                varying vec3 vPosition;
+                uniform float time;
+                
+                void main() {
+                    vUv = uv;
+                    vPosition = position;
+                    
+                    vec3 pos = position;
+                    float angle = atan(pos.y, pos.x);
+                    float pulse = sin(time * 4.0 + angle * 8.0) * 0.3;
+                    pos.xy *= (1.0 + pulse);
+                    
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+                }
+            `;
+            
+            const fragmentShader = `
+                precision highp float;
+                precision highp int;
+                uniform float time;
+                uniform vec3 color;
+                varying vec2 vUv;
+                varying vec3 vPosition;
+                
+                void main() {
+                    vec2 center = vec2(0.5);
+                    float dist = distance(vUv, center);
+                    
+                    float ring = 1.0 - smoothstep(0.35, 0.5, dist);
+                    ring *= smoothstep(0.25, 0.35, dist);
+                    
+                    float glow = exp(-dist * 8.0);
+                    
+                    float pulse = sin(time * 6.0 + dist * 20.0) * 2.0;
+                    
+                    float sparkle = sin(time * 12.0 + vPosition.x * 10.0 + vPosition.y * 15.0);
+                    sparkle = pow(max(0.0, sparkle), 6.0) * 1.5;
+                    
+                    float intensity = ring + glow * 0.3 + pulse * 0.8 + sparkle;
+                    
+                    vec3 finalColor = color * intensity;
+                    finalColor += vec3(0.2, 0.6, 1.0) * glow * 1.5;
+                    
+                    gl_FragColor = vec4(finalColor, intensity * 0.8);
+                }
+            `;
+            
+            // Geometria i materiał
+            const geometry = new THREE.PlaneGeometry(4, 4);
+            animationMaterial = new THREE.ShaderMaterial({
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+                uniforms: {
+                    time: { value: 0 },
+                    color: { value: new THREE.Color(0x4fc3f7) }
+                },
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthTest: false,
+                depthWrite: false
+            });
+            
+            animationMesh = new THREE.Mesh(geometry, animationMaterial);
+            scene.add(animationMesh);
+            
+            animate();
+            logTest("Fix #1 uruchomiony - dodano precyzję highp i wyłączono depth test");
+        }
+        
+        // Fix 2: Zmiana wersji GLSL
+        function runFix2() {
+            clearTest();
+            currentTest = 'fix2';
+            
+            const vertexShader = `
+                #version 300 es
+                precision highp float;
+                
+                in vec3 position;
+                in vec2 uv;
+                
+                out vec2 vUv;
+                out vec3 vPosition;
+                
+                uniform float time;
+                
+                void main() {
+                    vUv = uv;
+                    vPosition = position;
+                    
+                    vec3 pos = position;
+                    float angle = atan(pos.y, pos.x);
+                    float pulse = sin(time * 4.0 + angle * 8.0) * 0.3;
+                    pos.xy *= (1.0 + pulse);
+                    
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+                }
+            `;
+            
+            const fragmentShader = `
+                #version 300 es
+                precision highp float;
+                
+                uniform float time;
+                uniform vec3 color;
+                
+                in vec2 vUv;
+                in vec3 vPosition;
+                
+                out vec4 FragColor;
+                
+                void main() {
+                    vec2 center = vec2(0.5);
+                    float dist = distance(vUv, center);
+                    
+                    float ring = 1.0 - smoothstep(0.35, 0.5, dist);
+                    ring *= smoothstep(0.25, 0.35, dist);
+                    
+                    float glow = exp(-dist * 8.0);
+                    
+                    float pulse = sin(time * 6.0 + dist * 20.0) * 2.0;
+                    
+                    float sparkle = sin(time * 12.0 + vPosition.x * 10.0 + vPosition.y * 15.0);
+                    sparkle = pow(max(0.0, sparkle), 6.0) * 1.5;
+                    
+                    float intensity = ring + glow * 0.3 + pulse * 0.8 + sparkle;
+                    
+                    vec3 finalColor = color * intensity;
+                    finalColor += vec3(0.2, 0.6, 1.0) * glow * 1.5;
+                    
+                    FragColor = vec4(finalColor, intensity * 0.8);
+                }
+            `;
+            
+            try {
+                // Geometria i materiał
+                const geometry = new THREE.PlaneGeometry(4, 4);
+                animationMaterial = new THREE.ShaderMaterial({
+                    vertexShader: vertexShader,
+                    fragmentShader: fragmentShader,
+                    uniforms: {
+                        time: { value: 0 },
+                        color: { value: new THREE.Color(0x4fc3f7) }
+                    },
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    depthTest: false,
+                    depthWrite: false,
+                    glslVersion: THREE.GLSL3
+                });
+                
+                animationMesh = new THREE.Mesh(geometry, animationMaterial);
+                scene.add(animationMesh);
+                
+                animate();
+                logTest("Fix #2 uruchomiony - użyto GLSL 3.0 (ES)");
+            } catch (e) {
+                logTest("Fix #2 błąd: " + e.message + ". Twoja karta nie obsługuje GLSL 3.0.");
+                runFix1(); // Fallback do Fix #1
+            }
+        }
+        
+        // Fix 3: Alternatywny blending
+        function runFix3() {
+            clearTest();
+            currentTest = 'fix3';
+            
+            const vertexShader = `
+                precision highp float;
+                varying vec2 vUv;
+                varying vec3 vPosition;
+                uniform float time;
+                
+                void main() {
+                    vUv = uv;
+                    vPosition = position;
+                    
+                    vec3 pos = position;
+                    float angle = atan(pos.y, pos.x);
+                    float pulse = sin(time * 4.0 + angle * 8.0) * 0.3;
+                    pos.xy *= (1.0 + pulse);
+                    
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+                }
+            `;
+            
+            const fragmentShader = `
+                precision highp float;
+                uniform float time;
+                uniform vec3 color;
+                varying vec2 vUv;
+                varying vec3 vPosition;
+                
+                void main() {
+                    vec2 center = vec2(0.5);
+                    float dist = distance(vUv, center);
+                    
+                    // Zwiększona intensywność gradientu
+                    float ring = 1.0 - smoothstep(0.35, 0.5, dist);
+                    ring *= smoothstep(0.25, 0.35, dist);
+                    
+                    // Wyrazistszy glow
+                    float glow = exp(-dist * 6.0); // Mniej stromy spadek
+                    
+                    float pulse = sin(time * 6.0 + dist * 20.0) * 2.0;
+                    
+                    float sparkle = sin(time * 12.0 + vPosition.x * 10.0 + vPosition.y * 15.0);
+                    sparkle = pow(max(0.0, sparkle), 6.0) * 1.5;
+                    
+                    // Jaśniejszy efekt ogólny
+                    float intensity = ring + glow * 0.5 + pulse * 0.8 + sparkle;
+                    
+                    // Więcej kontrastu w kolorach
+                    vec3 finalColor = color * (intensity + 0.2);
+                    // Mocniejszy glow z innym kolorem
+                    finalColor += vec3(0.3, 0.7, 1.0) * glow * 2.0;
+                    
+                    gl_FragColor = vec4(finalColor, intensity * 0.9);
+                }
+            `;
+            
+            // Geometria i materiał - użycie CustomBlending
+            const geometry = new THREE.PlaneGeometry(4, 4);
+            animationMaterial = new THREE.ShaderMaterial({
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+                uniforms: {
+                    time: { value: 0 },
+                    color: { value: new THREE.Color(0x4fc3f7) }
+                },
+                transparent: true,
+                blending: THREE.CustomBlending,
+                blendSrc: THREE.SrcAlphaFactor,
+                blendDst: THREE.OneFactor,
+                blendEquation: THREE.AddEquation,
+                depthTest: false,
+                depthWrite: false
+            });
+            
+            animationMesh = new THREE.Mesh(geometry, animationMaterial);
+            scene.add(animationMesh);
+            
+            animate();
+            logTest("Fix #3 uruchomiony - niestandardowy blending i mocniejsze gradienty");
+        }
+        
+        // Animacja
+        function animate() {
+            if (!currentTest) return;
+            
+            requestAnimationFrame(animate);
+            
+            if (animationMaterial && animationMaterial.uniforms) {
+                animationMaterial.uniforms.time.value = performance.now() * 0.001;
+            }
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Czyszczenie testu
+        function clearTest() {
+            if (animationMesh) {
+                scene.remove(animationMesh);
+                animationMesh.geometry.dispose();
+                animationMesh.material.dispose();
+                animationMesh = null;
+            }
+            
+            currentTest = null;
+        }
+        
+        // Logowanie wyników testu
+        function logTest(message) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = `<div style="margin-top: 10px; padding: 5px; background: rgba(0,0,0,0.5);">${message}</div>`;
+        }
+        
+        // Inicjalizacja
+        window.addEventListener('load', () => {
+            detectGPU();
+            initThree();
+            
+            // Przypisanie eventów do przycisków
+            document.getElementById('test1').addEventListener('click', runBasicTest);
+            document.getElementById('test2').addEventListener('click', runAdvancedTest);
+            document.getElementById('test3').addEventListener('click', runGradientTest);
+            document.getElementById('fix1').addEventListener('click', runFix1);
+            document.getElementById('fix2').addEventListener('click', runFix2);
+            document.getElementById('fix3').addEventListener('click', runFix3);
+        });
+    </script>
+</body>
+</html>
