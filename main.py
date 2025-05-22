@@ -108,7 +108,9 @@ class HAAssistApp:
             # Połączenie z Home Assistant
             if not await self.ha_client.connect():
                 logger.error("Nie udało się połączyć z Home Assistant")
-                self.animation_server.change_state("error", message="Błąd połączenia z HA")
+                self.animation_server.change_state("error")
+                await asyncio.sleep(6)  # Pokaż error przez 3 sekundy
+                self.animation_server.change_state("hidden")
                 return False
             
             logger.info("Połączono z Home Assistant")
@@ -116,7 +118,9 @@ class HAAssistApp:
             # Uruchomienie pipeline Assist
             if not await self.ha_client.start_assist_pipeline():
                 logger.error("Nie udało się uruchomić pipeline Assist")
-                self.animation_server.change_state("error", message="Błąd pipeline")
+                self.animation_server.change_state("error")
+                await asyncio.sleep(6)  # Pokaż error przez 3 sekundy
+                self.animation_server.change_state("hidden")
                 return False
             
             logger.info("Pipeline Assist uruchomiony pomyślnie")
@@ -137,7 +141,7 @@ class HAAssistApp:
                 self.animation_server.change_state("processing")
                 
                 # KRÓTKIE OPÓŹNIENIE - żeby animacja processing była widoczna
-                await asyncio.sleep(10.8)
+                await asyncio.sleep(0.8)
                 
                 await self.ha_client.end_audio()
             
@@ -149,39 +153,69 @@ class HAAssistApp:
                 logger.info("=== ODBIERAM ODPOWIEDŹ ===")
                 results = await self.ha_client.receive_response()
                 
-                response = self.ha_client.extract_assistant_response(results)
+                # SPRAWDŹ CZY NIE MA BŁĘDU W RESULTS
+                error_found = False
+                for result in results:
+                    if result.get('type') == 'event':
+                        event = result.get('event', {})
+                        if event.get('type') == 'error':
+                            # BŁĄD ZNALEZIONY!
+                            error_code = event.get('data', {}).get('code', 'unknown')
+                            error_message = event.get('data', {}).get('message', 'Unknown error')
+                            
+                            print(f"\n=== BŁĄD ASYSTENTA ===")
+                            print(f"Błąd: {error_code} - {error_message}")
+                            print("===========================\n")
+                            
+                            # POKAŻ ERROR ANIMATION
+                            self.animation_server.change_state("error")
+                            await asyncio.sleep(6)  # 3 sekundy czerwonej animacji
+                            self.animation_server.change_state("hidden")
+                            
+                            error_found = True
+                            break
                 
-                if response:
-                    print("\n=== ODPOWIEDŹ ASYSTENTA ===")
-                    print(response)
-                    print("===========================\n")
+                if not error_found:
+                    # NIE MA BŁĘDU - NORMALNA ODPOWIEDŹ
+                    response = self.ha_client.extract_assistant_response(results)
                     
-                    # Zmień stan na odpowiadanie i wyślij tekst
-                    self.animation_server.change_state("responding")
-                    self.animation_server.send_response_text(response)
-                    
-                    # Odtwórz dźwięk odpowiedzi
-                    audio_url = self.ha_client.extract_audio_url(results)
-                    if audio_url:
-                        print("Odtwarzam odpowiedź głosową...")
-                        utils.play_audio_from_url(audio_url, self.ha_client.host)
-                    
-                    # Powrót do stanu hidden po 3 sekundach
-                    await asyncio.sleep(3)
-                    self.animation_server.change_state("hidden")
-                else:
-                    print("\nBrak odpowiedzi od asystenta lub błąd przetwarzania.")
-                    self.animation_server.change_state("error", message="Brak odpowiedzi")
+                    if response:
+                        print("\n=== ODPOWIEDŹ ASYSTENTA ===")
+                        print(response)
+                        print("===========================\n")
+                        
+                        # Zmień stan na odpowiadanie i wyślij tekst
+                        print("Czkeam 10 sekund żeby pokazać animację...")
+                        await asyncio.sleep(10.0)
+                        self.animation_server.change_state("responding")
+                        self.animation_server.send_response_text(response)
+                        
+                        # Odtwórz dźwięk odpowiedzi
+                        audio_url = self.ha_client.extract_audio_url(results)
+                        if audio_url:
+                            print("Odtwarzam odpowiedź głosową...")
+                            utils.play_audio_from_url(audio_url, self.ha_client.host)
+                        
+                        # Powrót do stanu hidden po 3 sekundach
+                        await asyncio.sleep(3)
+                        self.animation_server.change_state("hidden")
+                    else:
+                        print("\nBrak odpowiedzi od asystenta lub błąd przetwarzania.")
+                        self.animation_server.change_state("error")
+                        await asyncio.sleep(6)
+                        self.animation_server.change_state("hidden")
             else:
                 logger.error("Nie udało się nagrać i wysłać audio")
-                self.animation_server.change_state("error", message="Błąd nagrywania")
+                self.animation_server.change_state("error")
+                await asyncio.sleep(6)
+                self.animation_server.change_state("hidden")
                 
         except Exception as e:
             logger.exception(f"Wystąpił błąd podczas przetwarzania: {str(e)}")
-            self.animation_server.change_state("error", message=str(e))
+            self.animation_server.change_state("error")
             
             # Po błędzie też wracamy do hidden
-            await asyncio.sleep(3)
+            await asyncio.sleep(6)
             self.animation_server.change_state("hidden")
         finally:
             # Cleanup

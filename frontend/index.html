@@ -61,7 +61,7 @@
             error: 0xf44336
         };
         
-        // VERTEX SHADER dla świecącego pierścienia
+        // VERTEX SHADER dla świecącego pierścienia (listening/responding)
         const ringVertexShader = `
             varying vec2 vUv;
             varying vec3 vPosition;
@@ -85,7 +85,7 @@
             }
         `;
         
-        // FRAGMENT SHADER dla świecącego pierścienia
+        // FRAGMENT SHADER dla świecącego pierścienia (listening/responding)
         const ringFragmentShader = `
             uniform float time;
             uniform float audioLevel;
@@ -122,21 +122,35 @@
                 gl_FragColor = vec4(finalColor, intensity * 0.8);
             }
         `;
-        
-        // SHADER dla efektu ładowania (processing)
+
+        // WRACAMY DO DZIAŁAJĄCEGO VERTEX SHADERA
         const loadingVertexShader = `
             varying vec2 vUv;
             varying vec3 vPosition;
+            uniform float time;
+            uniform float audioLevel;
             
             void main() {
                 vUv = uv;
                 vPosition = position;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                
+                // Deformacja na podstawie audio
+                vec3 pos = position;
+                float angle = atan(pos.y, pos.x);
+                float radius = length(pos.xy);
+                
+                // Dodaj pulsowanie na podstawie audio
+                float pulse = sin(time * 4.0 + angle * 8.0) * audioLevel * 0.3;
+                pos.xy *= (1.0 + pulse);
+                
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
             }
         `;
-        
+
+        // WRACAMY DO DZIAŁAJĄCEGO FRAGMENT SHADERA - POPRAWIONY KOLOR
         const loadingFragmentShader = `
             uniform float time;
+            uniform float audioLevel;
             uniform vec3 color;
             varying vec2 vUv;
             varying vec3 vPosition;
@@ -145,39 +159,24 @@
                 vec2 center = vec2(0.5);
                 float dist = distance(vUv, center);
                 
-                // Pierścień
+                // Pierścień - tylko krawędź
                 float ring = 1.0 - smoothstep(0.35, 0.5, dist);
                 ring *= smoothstep(0.25, 0.35, dist);
                 
-                // Oblicz kąt dla efektu ładowania
-                float angle = atan(vUv.y - 0.5, vUv.x - 0.5);
-                angle = (angle + 3.14159) / (2.0 * 3.14159); // Normalizuj do 0-1
+                // Efekt świecenia
+                float glow = exp(-dist * 8.0);
                 
-                // Efekt ładowania - glow biegnący po pierścieniu
-                float loadingPos = mod(time * 1.5, 1.0); // Pozycja efektu ładowania
+                // USUNIĘTE PULSOWANIE I SPARKLE - będzie tylko podstawowy pierścień
                 
-                // Główny glow - szybko z góry na dół
-                float mainGlow = 1.0 - abs(angle - loadingPos);
-                mainGlow = smoothstep(0.7, 1.0, mainGlow);
-                mainGlow *= smoothstep(0.0, 0.3, mainGlow);
-                
-                // Drugorzędny glow - wolno z dołu na górę
-                float secondaryPos = mod(time * 0.7 + 0.5, 1.0);
-                float secondaryGlow = 1.0 - abs(angle - secondaryPos);
-                secondaryGlow = smoothstep(0.8, 1.0, secondaryGlow);
-                secondaryGlow *= 0.5;
-                
-                // Kombinuj efekty
-                float totalGlow = mainGlow + secondaryGlow;
-                float intensity = ring * (0.3 + totalGlow * 2.0);
+                // Kombinacja podstawowych efektów
+                float intensity = ring + glow * 0.3;
                 
                 vec3 finalColor = color * intensity;
                 
-                // Dodatkowy blur/glow
-                float blur = exp(-dist * 6.0) * totalGlow * 0.5;
-                finalColor += color * blur;
+                // POPRAWIONY GLOW - używa koloru uniforms zamiast hardcoded blue
+                finalColor += color * glow * audioLevel * 0.5;
                 
-                gl_FragColor = vec4(finalColor, intensity * 0.9);
+                gl_FragColor = vec4(finalColor, intensity * 0.8);
             }
         `;
         
@@ -240,11 +239,11 @@
             createListeningAnimation();
             
             renderer.render(scene, camera);
-            console.log('Three.js zainicjalizowane z shaderami');
+            console.log('Three.js zainicjalizowane z nowym loading shaderem');
         }
         
         function createListeningAnimation() {
-            // GŁÓWNY PIERŚCIEŃ Z SHADERAMI
+            // GŁÓWNY PIERŚCIEŃ Z SHADERAMI (listening/responding)
             const ringGeometry = new THREE.RingGeometry(1.0, 1.2, 64);
             const ringMaterial = new THREE.ShaderMaterial({
                 vertexShader: ringVertexShader,
@@ -263,14 +262,15 @@
             listeningRing.visible = false;
             scene.add(listeningRing);
             
-            // PIERŚCIEŃ DO ANIMACJI LOADING (PROCESSING)
+            // COFAM DO ORYGINALNEGO DZIAŁAJĄCEGO LOADING RING
             const loadingGeometry = new THREE.RingGeometry(1.0, 1.2, 64);
             const loadingMaterial = new THREE.ShaderMaterial({
-                vertexShader: loadingVertexShader,
-                fragmentShader: loadingFragmentShader,
+                vertexShader: ringVertexShader,  // TEN SAM CO LISTENING - DZIAŁAJĄCY
+                fragmentShader: ringFragmentShader,  // TEN SAM CO LISTENING - DZIAŁAJĄCY
                 uniforms: {
                     time: { value: 0.0 },
-                    color: { value: new THREE.Color(0xff9800) }
+                    audioLevel: { value: 0.8 },  // Stała wartość zamiast audio
+                    color: { value: new THREE.Color(0xff9800) }  // Pomarańczowy
                 },
                 transparent: true,
                 blending: THREE.AdditiveBlending,
@@ -348,7 +348,7 @@
             if (isAnimating) return;
             
             isAnimating = true;
-            console.log('Startowanie animacji z shaderami');
+            console.log('Startowanie animacji');
             
             // Pokaż odpowiednie elementy w zależności od stanu
             if (currentState === 'listening') {
@@ -417,9 +417,12 @@
                     break;
                     
                 case 'processing':
-                    // NOWA ANIMACJA LOADING - nie reaguje na audio
+                    // PULSUJĄCY audioLevel - od 0.1 do 0.4 i z powrotem, co 2 sekundy
                     if (loadingRing && loadingRing.material.uniforms) {
                         loadingRing.material.uniforms.time.value = time;
+                        // sin daje wartości od -1 do 1, przeskalowuję na 0.1 - 0.4
+                        const pulseLevel = 0.25 + Math.sin(time * 3.14159) * 0.15; // 0.1 - 0.4, pełny cykl co 2 sekundy
+                        loadingRing.material.uniforms.audioLevel.value = pulseLevel;
                     }
                     break;
                     
@@ -446,11 +449,13 @@
                     break;
                     
                 case 'error':
-                    // Czerwona animacja błędu
+                    // CZERWONA ANIMACJA BŁĘDU - szybko pulsująca (0.7s na cykl)
                     if (listeningRing && listeningRing.material.uniforms) {
-                        listeningRing.material.uniforms.color.value.setHex(0xff4444);
+                        listeningRing.material.uniforms.color.value.setHex(0xf44336); // Czerwony
                         listeningRing.material.uniforms.time.value = time;
-                        listeningRing.material.uniforms.audioLevel.value = Math.sin(time * 8) * 0.5 + 0.5;
+                        // Bardzo szybkie pulsowanie - 0.7 sekundy na cykl
+                        const pulseLevel = 0.25 + Math.sin(time * 8.976) * 0.15; // 0.1 - 0.4, co 0.7s (2π/0.7 ≈ 8.976)
+                        listeningRing.material.uniforms.audioLevel.value = pulseLevel;
                     }
                     break;
             }
@@ -503,7 +508,7 @@
             }
         }
         
-        // WebSocket i reszta kodu bez zmian...
+        // WebSocket
         function initWebSocket() {
             try {
                 websocket = new WebSocket('ws://localhost:8765');
@@ -575,7 +580,7 @@
         }
         
         window.addEventListener('load', function() {
-            console.log('Inicjalizacja aplikacji z shaderami...');
+            console.log('Inicjalizacja aplikacji z nowym loading shaderem...');
             initThree();
             initWebSocket();
             startHeartbeat();
