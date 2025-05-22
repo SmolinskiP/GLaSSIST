@@ -84,8 +84,9 @@ class HAAssistApp:
             fullscreen=False,
             minimized=False,
             on_top=True,
-            shadow=True,
+            shadow=False,
             frameless=True,
+            transparent=True
         )
         
         logger.info("Webview window skonfigurowane (ukryte z paska zadań)")

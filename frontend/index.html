@@ -12,154 +12,33 @@
         }
         
         body {
-            background: #000;
+            background: transparent;
             overflow: hidden;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             -webkit-app-region: drag;
+        }
+        
+        html {
+            background: transparent;
         }
         
         #container {
             width: 100vw;
             height: 100vh;
             position: relative;
+            background: transparent;
         }
         
         #canvas {
             display: block;
             width: 100%;
             height: 100%;
-        }
-        
-        #overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 10;
-        }
-        
-        #status {
-            color: #fff;
-            font-size: 14px;
-            margin-bottom: 10px;
-            text-align: center;
-            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
-            opacity: 0.8;
-        }
-        
-        #response-text {
-            color: #fff;
-            font-size: 16px;
-            text-align: center;
-            max-width: 300px;
-            line-height: 1.4;
-            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
-            opacity: 0;
-            transition: opacity 0.5s ease;
-        }
-        
-        .status-idle { color: #888; }
-        .status-listening { color: #4fc3f7; }
-        .status-processing { color: #ff9800; }
-        .status-responding { color: #9c27b0; }
-        .status-error { color: #f44336; }
-        
-        /* Ukryj scrollbary na Windows */
-        ::-webkit-scrollbar {
-            display: none;
-        }
-        
-        /* Przycisk zamknięcia */
-        #close-btn {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            width: 20px;
-            height: 20px;
-            background: rgba(255, 255, 255, 0.2);
-            border: none;
-            border-radius: 50%;
-            color: #fff;
-            cursor: pointer;
-            font-size: 12px;
-            z-index: 20;
-            -webkit-app-region: no-drag;
-            opacity: 0.6;
-            transition: opacity 0.3s ease;
-        }
-        
-        #close-btn:hover {
-            opacity: 1;
-            background: rgba(255, 255, 255, 0.3);
-        }
-        
-        /* Wskaźnik połączenia */
-        #connection-status {
-            position: absolute;
-            bottom: 10px;
-            left: 10px;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #f44336;
-            z-index: 20;
-            transition: background 0.3s ease;
-        }
-        
-        /* Przycisk aktywacji */
-        #activate-btn {
-            position: absolute;
-            bottom: 50px;
-            left: 50%;
-            transform: translateX(-50%);
-            padding: 12px 24px;
-            background: rgba(79, 195, 247, 0.2);
-            border: 2px solid #4fc3f7;
-            border-radius: 25px;
-            color: #4fc3f7;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: bold;
-            z-index: 20;
-            -webkit-app-region: no-drag;
-            opacity: 0.8;
-            transition: all 0.3s ease;
-            backdrop-filter: blur(10px);
-        }
-        
-        #activate-btn:hover {
-            opacity: 1;
-            background: rgba(79, 195, 247, 0.3);
-            transform: translateX(-50%) scale(1.05);
-        }
-        
-        #activate-btn:disabled {
-            opacity: 0.3;
-            cursor: not-allowed;
-            background: rgba(136, 136, 136, 0.2);
-            border-color: #888;
-            color: #888;
+            background: transparent;
         }
     </style>
 </head>
 <body>
     <div id="container">
         <canvas id="canvas"></canvas>
-        
-        <div id="overlay">
-            <div id="status" class="status-idle">Oczekiwanie...</div>
-            <div id="response-text"></div>
-        </div>
-        
-        <button id="close-btn" onclick="closeApp()">&times;</button>
-        <button id="activate-btn" onclick="activateVoiceCommand()">🎤 Aktywuj głos</button>
-        <div id="connection-status"></div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -172,12 +51,6 @@
         let audioData = [];
         let isConnected = false;
         
-        // Elementy DOM
-        const statusElement = document.getElementById('status');
-        const responseTextElement = document.getElementById('response-text');
-        const connectionStatusElement = document.getElementById('connection-status');
-        const activateBtn = document.getElementById('activate-btn');
-        
         // Kolory dla różnych stanów
         const stateColors = {
             idle: 0x888888,
@@ -187,47 +60,38 @@
             error: 0xf44336
         };
         
-        // Teksty statusów
-        const statusTexts = {
-            idle: 'Kliknij przycisk lub naciśnij Ctrl+Shift+H',
-            listening: 'Słucham...',
-            processing: 'Przetwarzam...',
-            responding: 'Odpowiadam...',
-            error: 'Wystąpił błąd'
-        };
-        
         // Inicjalizacja Three.js
         function initThree() {
             // Scena
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x000000);
+            // Przezroczyste tło
+            scene.background = null;
             
             // Kamera
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.z = 5;
             
-            // Renderer
+            // Renderer z przezroczystością
             renderer = new THREE.WebGLRenderer({ 
                 canvas: document.getElementById('canvas'),
                 antialias: true,
-                alpha: true
+                alpha: true,
+                premultipliedAlpha: false
             });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setClearColor(0x000000, 0); // Przezroczyste tło
             
             // Geometria okręgu
             circleGeometry = new THREE.CircleGeometry(1, 64);
             circleMaterial = new THREE.MeshBasicMaterial({ 
                 color: stateColors.idle,
                 transparent: true,
-                opacity: 0.8
+                opacity: 0.8,
+                side: THREE.DoubleSide
             });
             circleObject = new THREE.Mesh(circleGeometry, circleMaterial);
             scene.add(circleObject);
-            
-            // Dodaj światło
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-            scene.add(ambientLight);
             
             // Rozpocznij animację
             animate();
@@ -337,34 +201,8 @@
             // Aktualizuj kolor
             circleMaterial.color.setHex(stateColors[newState] || stateColors.idle);
             
-            // Aktualizuj status
-            statusElement.textContent = data.message || statusTexts[newState] || statusTexts.idle;
-            statusElement.className = `status-${newState}`;
-            
-            // Aktualizuj przycisk
-            updateActivateButton();
-            
             // Resetuj geometrię przy zmianie stanu
             resetGeometry();
-        }
-        
-        // Aktualizacja stanu przycisku aktywacji
-        function updateActivateButton() {
-            const isIdle = currentState === 'idle';
-            activateBtn.disabled = !isIdle;
-            activateBtn.textContent = isIdle ? '🎤 Aktywuj głos' : '🎤 Zajęty...';
-        }
-        
-        // Aktywacja komendy głosowej przez przycisk
-        function activateVoiceCommand() {
-            if (currentState !== 'idle') return;
-            
-            // Wyślij komendę aktywacji do Python backend
-            if (websocket && websocket.readyState === WebSocket.OPEN) {
-                websocket.send(JSON.stringify({ 
-                    type: 'activate_voice_command' 
-                }));
-            }
         }
         
         // Reset geometrii do okręgu
@@ -395,7 +233,6 @@
                 websocket.onopen = function(event) {
                     console.log('Połączono z animation server');
                     isConnected = true;
-                    connectionStatusElement.classList.add('connected');
                     
                     // Wyślij sygnał gotowości
                     websocket.send(JSON.stringify({ type: 'ready' }));
@@ -409,7 +246,6 @@
                 websocket.onclose = function(event) {
                     console.log('Połączenie z animation server zamknięte');
                     isConnected = false;
-                    connectionStatusElement.classList.remove('connected');
                     
                     // Spróbuj ponownie za 2 sekundy
                     setTimeout(initWebSocket, 2000);
@@ -437,7 +273,7 @@
                     break;
                     
                 case 'response_text':
-                    showResponseText(data.text);
+                    // Ignorujemy tekst odpowiedzi - tylko animacja
                     break;
                     
                 case 'pong':
@@ -449,16 +285,14 @@
             }
         }
         
-        // Wyświetlenie tekstu odpowiedzi
-        function showResponseText(text) {
-            responseTextElement.textContent = text;
-            responseTextElement.style.opacity = '1';
-            
-            // Ukryj po 5 sekundach
-            setTimeout(() => {
-                responseTextElement.style.opacity = '0';
-            }, 5000);
-        }
+        // Aktywacja komendy głosowej przez kliknięcie
+        document.addEventListener('click', function() {
+            if (currentState === 'idle' && websocket && websocket.readyState === WebSocket.OPEN) {
+                websocket.send(JSON.stringify({ 
+                    type: 'activate_voice_command' 
+                }));
+            }
+        });
         
         // Obsługa zmiany rozmiaru okna
         window.addEventListener('resize', function() {
@@ -466,22 +300,6 @@
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
-        
-        // Zamknięcie aplikacji
-        function closeApp() {
-            if (websocket) {
-                websocket.close();
-            }
-            
-            if (animationFrameId) {
-                cancelAnimationFrame(animationFrameId);
-            }
-            
-            // Wyślij sygnał do Python
-            if (window.pywebview) {
-                window.pywebview.api.close_app();
-            }
-        }
         
         // Heartbeat do utrzymania połączenia
         function startHeartbeat() {
@@ -498,11 +316,6 @@
             initThree();
             initWebSocket();
             startHeartbeat();
-        });
-        
-        // Obsługa zamknięcia okna
-        window.addEventListener('beforeunload', function() {
-            closeApp();
         });
     </script>
 </body>
