@@ -26,49 +26,85 @@ class AudioManager:
         self.stream = None
         self.vad = VoiceActivityDetector()
         
+        # Walidacja parametrów audio
+        utils.validate_audio_format(self.sample_rate, self.channels)
+        
         logger.info(f"AudioManager zainicjalizowany: {self.sample_rate}Hz, {self.channels} kanał(y), chunk {self.chunk_size}")
     
     def init_audio(self):
         """Inicjalizacja PyAudio i strumienia mikrofonu."""
-        self.audio = pyaudio.PyAudio()
+        try:
+            self.audio = pyaudio.PyAudio()
+            
+            # Znalezienie najlepszego urządzenia mikrofonu
+            mic_device_index = self._find_best_microphone()
+            
+            if mic_device_index is None:
+                logger.error("Nie znaleziono żadnego mikrofonu")
+                raise Exception("Nie znaleziono mikrofonu")
+            
+            # Otworzenie strumienia audio
+            self.stream = self.audio.open(
+                format=self.format,
+                channels=self.channels,
+                rate=self.sample_rate,
+                input=True,
+                frames_per_buffer=self.chunk_size,
+                input_device_index=mic_device_index
+            )
+            
+            logger.info(f"Zainicjalizowano strumień audio: {self.sample_rate} Hz, {self.channels} kanał(y), chunk {self.chunk_size}")
+            return True
+            
+        except Exception as e:
+            logger.exception(f"Błąd inicjalizacji audio: {e}")
+            return False
+    
+    def _find_best_microphone(self):
+        """Znajdowanie najlepszego dostępnego mikrofonu."""
+        default_device = None
+        best_device = None
         
-        # Znalezienie indeksu urządzenia mikrofonu
-        mic_device_index = None
         for i in range(self.audio.get_device_count()):
-            device_info = self.audio.get_device_info_by_index(i)
-            logger.debug(f"Urządzenie audio {i}: {device_info['name']}")
-            if device_info.get('maxInputChannels') > 0:
-                mic_device_index = i
-                logger.info(f"Znaleziono mikrofon: {device_info['name']}")
-                break
+            try:
+                device_info = self.audio.get_device_info_by_index(i)
+                logger.debug(f"Urządzenie audio {i}: {device_info['name']} - kanały wej: {device_info.get('maxInputChannels', 0)}")
+                
+                # Sprawdź czy urządzenie ma kanały wejściowe
+                if device_info.get('maxInputChannels', 0) > 0:
+                    # Preferuj urządzenie domyślne
+                    if i == self.audio.get_default_input_device_info()['index']:
+                        default_device = i
+                        logger.info(f"Znaleziono domyślny mikrofon: {device_info['name']}")
+                    
+                    # Zapisz pierwszy dostępny jako backup
+                    if best_device is None:
+                        best_device = i
+                        logger.info(f"Znaleziono mikrofon: {device_info['name']}")
+                        
+            except Exception as e:
+                logger.debug(f"Błąd sprawdzania urządzenia {i}: {e}")
+                continue
         
-        if mic_device_index is None:
-            logger.error("Nie znaleziono mikrofonu")
-            raise Exception("Nie znaleziono mikrofonu")
-        
-        # Otworzenie strumienia audio
-        self.stream = self.audio.open(
-            format=self.format,
-            channels=self.channels,
-            rate=self.sample_rate,
-            input=True,
-            frames_per_buffer=self.chunk_size,
-            input_device_index=mic_device_index
-        )
-        
-        logger.info(f"Zainicjalizowano strumień audio: {self.sample_rate} Hz, {self.channels} kanał(y), chunk {self.chunk_size}")
-        return True
+        # Zwróć domyślne urządzenie jeśli dostępne, w przeciwnym razie pierwsze znalezione
+        return default_device if default_device is not None else best_device
     
     def close_audio(self):
         """Zamknięcie strumienia audio i PyAudio."""
-        if self.stream:
-            self.stream.stop_stream()
-            self.stream.close()
-            logger.info("Strumień audio zamknięty")
-        
-        if self.audio:
-            self.audio.terminate()
-            logger.info("PyAudio zakończone")
+        try:
+            if self.stream:
+                self.stream.stop_stream()
+                self.stream.close()
+                self.stream = None
+                logger.info("Strumień audio zamknięty")
+            
+            if self.audio:
+                self.audio.terminate()
+                self.audio = None
+                logger.info("PyAudio zakończone")
+                
+        except Exception as e:
+            logger.error(f"Błąd zamykania audio: {e}")
     
     async def record_audio(self, on_chunk_callback, on_end_callback=None):
         """
@@ -87,14 +123,23 @@ class AudioManager:
         # Reset VAD
         self.vad.reset()
         
-        # Nasłuchiwanie dźwięku
+        # Statystyki nagrywania
+        start_time = time.time()
+        chunks_processed = 0
+        
         try:
             waiting_for_speech = True
             speech_active = False
             
             while True:
                 # Odczytanie danych audio
-                data = self.stream.read(self.chunk_size, exception_on_overflow=False)
+                try:
+                    data = self.stream.read(self.chunk_size, exception_on_overflow=False)
+                    chunks_processed += 1
+                    
+                except Exception as e:
+                    logger.error(f"Błąd odczytu audio: {e}")
+                    break
                 
                 # Przetworzenie audio przez VAD
                 process_chunk, is_end = self.vad.process_audio(data)
@@ -108,13 +153,22 @@ class AudioManager:
                 if speech_active:
                     # Wywołanie callback'a dla każdego fragmentu audio
                     if process_chunk:
-                        await on_chunk_callback(data)
+                        try:
+                            await on_chunk_callback(data)
+                        except Exception as e:
+                            logger.error(f"Błąd callback audio chunk: {e}")
                     
                     # Jeśli to koniec mowy, zakończ nagrywanie
                     if is_end:
                         speech_active = False
+                        duration = time.time() - start_time
+                        logger.info(f"Zakończono nagrywanie po {utils.format_duration(duration)}, przetworzono {chunks_processed} fragmentów")
+                        
                         if on_end_callback:
-                            await on_end_callback()
+                            try:
+                                await on_end_callback()
+                            except Exception as e:
+                                logger.error(f"Błąd callback audio end: {e}")
                         break
         
         except Exception as e:
@@ -123,3 +177,38 @@ class AudioManager:
         
         logger.info("Zakończono nagrywanie")
         return True
+    
+    def get_audio_level(self, audio_data):
+        """Oblicza poziom głośności dla danego fragmentu audio."""
+        try:
+            # Konwersja do numpy array
+            audio_array = np.frombuffer(audio_data, dtype=np.int16)
+            
+            # Oblicz RMS (Root Mean Square)
+            rms = np.sqrt(np.mean(audio_array**2))
+            
+            # Normalizacja do zakresu 0-1
+            # Maksymalna wartość dla 16-bit audio to 32767
+            level = min(rms / 32767.0, 1.0)
+            
+            return level
+            
+        except Exception as e:
+            logger.error(f"Błąd obliczania poziomu audio: {e}")
+            return 0.0
+    
+    def is_audio_stream_active(self):
+        """Sprawdza czy strumień audio jest aktywny."""
+        return self.stream is not None and self.stream.is_active()
+    
+    def get_device_info(self):
+        """Zwraca informacje o aktualnie używanym urządzeniu audio."""
+        if not self.audio or not self.stream:
+            return None
+        
+        try:
+            device_index = self.stream._input_device_index
+            return self.audio.get_device_info_by_index(device_index)
+        except Exception as e:
+            logger.error(f"Błąd pobierania informacji o urządzeniu: {e}")
+            return None

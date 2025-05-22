@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HA Assist Desktop</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            -webkit-app-region: drag;
+        }
+        
+        #container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        
+        #canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+        }
+        
+        #status {
+            color: #fff;
+            font-size: 14px;
+            margin-bottom: 10px;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+            opacity: 0.8;
+        }
+        
+        #response-text {
+            color: #fff;
+            font-size: 16px;
+            text-align: center;
+            max-width: 300px;
+            line-height: 1.4;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+        
+        .status-idle { color: #888; }
+        .status-listening { color: #4fc3f7; }
+        .status-processing { color: #ff9800; }
+        .status-responding { color: #9c27b0; }
+        .status-error { color: #f44336; }
+        
+        /* Ukryj scrollbary na Windows */
+        ::-webkit-scrollbar {
+            display: none;
+        }
+        
+        /* Przycisk zamknięcia */
+        #close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 20px;
+            height: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 50%;
+            color: #fff;
+            cursor: pointer;
+            font-size: 12px;
+            z-index: 20;
+            -webkit-app-region: no-drag;
+            opacity: 0.6;
+            transition: opacity 0.3s ease;
+        }
+        
+        #close-btn:hover {
+            opacity: 1;
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        /* Wskaźnik połączenia */
+        #connection-status {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #f44336;
+            z-index: 20;
+            transition: background 0.3s ease;
+        }
+        
+        /* Przycisk aktywacji */
+        #activate-btn {
+            position: absolute;
+            bottom: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 24px;
+            background: rgba(79, 195, 247, 0.2);
+            border: 2px solid #4fc3f7;
+            border-radius: 25px;
+            color: #4fc3f7;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 20;
+            -webkit-app-region: no-drag;
+            opacity: 0.8;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        #activate-btn:hover {
+            opacity: 1;
+            background: rgba(79, 195, 247, 0.3);
+            transform: translateX(-50%) scale(1.05);
+        }
+        
+        #activate-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            background: rgba(136, 136, 136, 0.2);
+            border-color: #888;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <canvas id="canvas"></canvas>
+        
+        <div id="overlay">
+            <div id="status" class="status-idle">Oczekiwanie...</div>
+            <div id="response-text"></div>
+        </div>
+        
+        <button id="close-btn" onclick="closeApp()">&times;</button>
+        <button id="activate-btn" onclick="activateVoiceCommand()">🎤 Aktywuj głos</button>
+        <div id="connection-status"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Globalne zmienne
+        let scene, camera, renderer, animationFrameId;
+        let circleGeometry, circleMaterial, circleObject;
+        let websocket = null;
+        let currentState = 'idle';
+        let audioData = [];
+        let isConnected = false;
+        
+        // Elementy DOM
+        const statusElement = document.getElementById('status');
+        const responseTextElement = document.getElementById('response-text');
+        const connectionStatusElement = document.getElementById('connection-status');
+        const activateBtn = document.getElementById('activate-btn');
+        
+        // Kolory dla różnych stanów
+        const stateColors = {
+            idle: 0x888888,
+            listening: 0x4fc3f7,
+            processing: 0xff9800,
+            responding: 0x9c27b0,
+            error: 0xf44336
+        };
+        
+        // Teksty statusów
+        const statusTexts = {
+            idle: 'Kliknij przycisk lub naciśnij Ctrl+Shift+H',
+            listening: 'Słucham...',
+            processing: 'Przetwarzam...',
+            responding: 'Odpowiadam...',
+            error: 'Wystąpił błąd'
+        };
+        
+        // Inicjalizacja Three.js
+        function initThree() {
+            // Scena
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
+            
+            // Kamera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 5;
+            
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ 
+                canvas: document.getElementById('canvas'),
+                antialias: true,
+                alpha: true
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            
+            // Geometria okręgu
+            circleGeometry = new THREE.CircleGeometry(1, 64);
+            circleMaterial = new THREE.MeshBasicMaterial({ 
+                color: stateColors.idle,
+                transparent: true,
+                opacity: 0.8
+            });
+            circleObject = new THREE.Mesh(circleGeometry, circleMaterial);
+            scene.add(circleObject);
+            
+            // Dodaj światło
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            // Rozpocznij animację
+            animate();
+            
+            console.log('Three.js zainicjalizowane');
+        }
+        
+        // Główna pętla animacji
+        function animate() {
+            animationFrameId = requestAnimationFrame(animate);
+            
+            // Aktualizuj animację na podstawie stanu
+            updateAnimation();
+            
+            // Renderuj scenę
+            renderer.render(scene, camera);
+        }
+        
+        // Aktualizacja animacji
+        function updateAnimation() {
+            const time = Date.now() * 0.001;
+            
+            switch(currentState) {
+                case 'idle':
+                    // Delikatne pulsowanie
+                    const idleScale = 1 + Math.sin(time * 2) * 0.1;
+                    circleObject.scale.set(idleScale, idleScale, 1);
+                    break;
+                    
+                case 'listening':
+                    // Reagowanie na dane audio
+                    if (audioData.length > 0) {
+                        const avgLevel = audioData.reduce((a, b) => a + b, 0) / audioData.length;
+                        const scale = 1 + avgLevel * 2;
+                        circleObject.scale.set(scale, scale, 1);
+                        
+                        // Deformacja geometrii na podstawie FFT
+                        updateGeometryFromAudio();
+                    } else {
+                        // Animacja oczekiwania
+                        const scale = 1 + Math.sin(time * 4) * 0.2;
+                        circleObject.scale.set(scale, scale, 1);
+                    }
+                    break;
+                    
+                case 'processing':
+                    // Wirujące kółko
+                    circleObject.rotation.z = time * 2;
+                    const processScale = 1 + Math.sin(time * 6) * 0.3;
+                    circleObject.scale.set(processScale, processScale, 1);
+                    break;
+                    
+                case 'responding':
+                    // Intensywniejsza animacja
+                    if (audioData.length > 0) {
+                        const avgLevel = audioData.reduce((a, b) => a + b, 0) / audioData.length;
+                        const scale = 1.5 + avgLevel * 3;
+                        circleObject.scale.set(scale, scale, 1);
+                        updateGeometryFromAudio();
+                    } else {
+                        const scale = 1.5 + Math.sin(time * 6) * 0.5;
+                        circleObject.scale.set(scale, scale, 1);
+                    }
+                    break;
+                    
+                case 'error':
+                    // Pulsowanie z błędem
+                    const errorScale = 1 + Math.sin(time * 8) * 0.4;
+                    circleObject.scale.set(errorScale, errorScale, 1);
+                    break;
+            }
+        }
+        
+        // Aktualizacja geometrii na podstawie danych audio
+        function updateGeometryFromAudio() {
+            if (!audioData || audioData.length === 0) return;
+            
+            const vertices = circleGeometry.attributes.position.array;
+            const centerX = 0, centerY = 0;
+            
+            // Dla każdego wierzchołka (pomijamy środek)
+            for (let i = 3; i < vertices.length; i += 3) {
+                const index = Math.floor((i / 3 - 1) / (vertices.length / 3 - 1) * audioData.length);
+                const audioLevel = audioData[index] || 0;
+                
+                // Oblicz kąt
+                const angle = (i / 3 - 1) / (vertices.length / 3 - 1) * Math.PI * 2;
+                
+                // Zmodyfikuj promień na podstawie poziomu audio
+                const baseRadius = 1;
+                const radius = baseRadius + audioLevel * 0.5;
+                
+                vertices[i] = Math.cos(angle) * radius;
+                vertices[i + 1] = Math.sin(angle) * radius;
+            }
+            
+            circleGeometry.attributes.position.needsUpdate = true;
+        }
+        
+        // Zmiana stanu animacji
+        function changeState(newState, data = {}) {
+            if (currentState === newState) return;
+            
+            console.log(`Zmiana stanu: ${currentState} -> ${newState}`);
+            currentState = newState;
+            
+            // Aktualizuj kolor
+            circleMaterial.color.setHex(stateColors[newState] || stateColors.idle);
+            
+            // Aktualizuj status
+            statusElement.textContent = data.message || statusTexts[newState] || statusTexts.idle;
+            statusElement.className = `status-${newState}`;
+            
+            // Aktualizuj przycisk
+            updateActivateButton();
+            
+            // Resetuj geometrię przy zmianie stanu
+            resetGeometry();
+        }
+        
+        // Aktualizacja stanu przycisku aktywacji
+        function updateActivateButton() {
+            const isIdle = currentState === 'idle';
+            activateBtn.disabled = !isIdle;
+            activateBtn.textContent = isIdle ? '🎤 Aktywuj głos' : '🎤 Zajęty...';
+        }
+        
+        // Aktywacja komendy głosowej przez przycisk
+        function activateVoiceCommand() {
+            if (currentState !== 'idle') return;
+            
+            // Wyślij komendę aktywacji do Python backend
+            if (websocket && websocket.readyState === WebSocket.OPEN) {
+                websocket.send(JSON.stringify({ 
+                    type: 'activate_voice_command' 
+                }));
+            }
+        }
+        
+        // Reset geometrii do okręgu
+        function resetGeometry() {
+            const vertices = circleGeometry.attributes.position.array;
+            
+            // Środek okręgu
+            vertices[0] = 0;
+            vertices[1] = 0;
+            vertices[2] = 0;
+            
+            // Punkty na okręgu
+            for (let i = 3; i < vertices.length; i += 3) {
+                const angle = (i / 3 - 1) / (vertices.length / 3 - 1) * Math.PI * 2;
+                vertices[i] = Math.cos(angle);
+                vertices[i + 1] = Math.sin(angle);
+                vertices[i + 2] = 0;
+            }
+            
+            circleGeometry.attributes.position.needsUpdate = true;
+        }
+        
+        // Inicjalizacja WebSocket
+        function initWebSocket() {
+            try {
+                websocket = new WebSocket('ws://localhost:8765');
+                
+                websocket.onopen = function(event) {
+                    console.log('Połączono z animation server');
+                    isConnected = true;
+                    connectionStatusElement.classList.add('connected');
+                    
+                    // Wyślij sygnał gotowości
+                    websocket.send(JSON.stringify({ type: 'ready' }));
+                };
+                
+                websocket.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    handleWebSocketMessage(data);
+                };
+                
+                websocket.onclose = function(event) {
+                    console.log('Połączenie z animation server zamknięte');
+                    isConnected = false;
+                    connectionStatusElement.classList.remove('connected');
+                    
+                    // Spróbuj ponownie za 2 sekundy
+                    setTimeout(initWebSocket, 2000);
+                };
+                
+                websocket.onerror = function(error) {
+                    console.error('Błąd WebSocket:', error);
+                };
+                
+            } catch (error) {
+                console.error('Błąd inicjalizacji WebSocket:', error);
+                setTimeout(initWebSocket, 2000);
+            }
+        }
+        
+        // Obsługa wiadomości WebSocket
+        function handleWebSocketMessage(data) {
+            switch(data.type) {
+                case 'state_change':
+                    changeState(data.state, data);
+                    break;
+                    
+                case 'audio_data':
+                    audioData = data.fft || [];
+                    break;
+                    
+                case 'response_text':
+                    showResponseText(data.text);
+                    break;
+                    
+                case 'pong':
+                    // Heartbeat odpowiedź
+                    break;
+                    
+                default:
+                    console.log('Nieznana wiadomość:', data);
+            }
+        }
+        
+        // Wyświetlenie tekstu odpowiedzi
+        function showResponseText(text) {
+            responseTextElement.textContent = text;
+            responseTextElement.style.opacity = '1';
+            
+            // Ukryj po 5 sekundach
+            setTimeout(() => {
+                responseTextElement.style.opacity = '0';
+            }, 5000);
+        }
+        
+        // Obsługa zmiany rozmiaru okna
+        window.addEventListener('resize', function() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        // Zamknięcie aplikacji
+        function closeApp() {
+            if (websocket) {
+                websocket.close();
+            }
+            
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            
+            // Wyślij sygnał do Python
+            if (window.pywebview) {
+                window.pywebview.api.close_app();
+            }
+        }
+        
+        // Heartbeat do utrzymania połączenia
+        function startHeartbeat() {
+            setInterval(() => {
+                if (websocket && websocket.readyState === WebSocket.OPEN) {
+                    websocket.send(JSON.stringify({ type: 'ping' }));
+                }
+            }, 30000); // Co 30 sekund
+        }
+        
+        // Inicjalizacja po załadowaniu strony
+        window.addEventListener('load', function() {
+            console.log('Inicjalizacja aplikacji...');
+            initThree();
+            initWebSocket();
+            startHeartbeat();
+        });
+        
+        // Obsługa zamknięcia okna
+        window.addEventListener('beforeunload', function() {
+            closeApp();
+        });
+    </script>
+</body>
+</html>

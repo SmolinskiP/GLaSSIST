@@ -1,0 +1,15 @@
+certifi==2025.4.26
+cffi==1.17.1
+charset-normalizer==3.4.2
+idna==3.10
+numpy==2.2.6
+PyAudio==0.2.14
+pycparser==2.22
+pygame==2.6.1
+python-dotenv==1.1.0
+requests==2.32.3
+sounddevice==0.5.2
+soundfile==0.13.1
+urllib3==2.4.0
+webrtcvad-wheels==2.0.14
+websockets==15.0.1

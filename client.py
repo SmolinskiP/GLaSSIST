@@ -30,7 +30,11 @@ class HomeAssistantClient:
     
     async def connect(self):
         """Nawiązanie połączenia WebSocket z Home Assistant."""
-        uri = f"ws://{self.host}/api/websocket"
+        if self.host.startswith(('localhost', '127.0.0.1', '192.168.', '10.', '172.')):
+            protocol = "ws"
+        else:
+            protocol = "wss"
+        uri = f"{protocol}://{self.host}/api/websocket"
         logger.info(f"Łączenie z Home Assistant: {uri}")
         
         try:

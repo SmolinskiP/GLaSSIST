@@ -3,13 +3,13 @@ Moduł zawierający funkcje pomocnicze dla aplikacji.
 """
 import os
 import logging
+import time
+from datetime import datetime
 from dotenv import load_dotenv
 import requests
 import sounddevice as sd
 import soundfile as sf
 import io
-import time
-
 
 # Ładowanie zmiennych środowiskowych z pliku .env
 load_dotenv()
@@ -35,6 +35,14 @@ def get_env(key, default=None, as_type=str):
     
     return as_type(value)
 
+def get_timestamp():
+    """Zwraca aktualny timestamp w milisekundach."""
+    return int(time.time() * 1000)
+
+def get_datetime_string():
+    """Zwraca sformatowany string z datą i czasem."""
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
 def play_audio_from_url(url, host):
     """Odtwarza dźwięk z podanego URL przy użyciu sounddevice i soundfile."""
     logger = setup_logger()
@@ -53,7 +61,7 @@ def play_audio_from_url(url, host):
         logger.info(f"Pobieranie audio z: {full_url}")
         
         # Pobierz plik audio
-        response = requests.get(full_url)
+        response = requests.get(full_url, timeout=10)
         if response.status_code != 200:
             logger.error(f"Błąd pobierania audio: {response.status_code}")
             return False
@@ -77,85 +85,30 @@ def play_audio_from_url(url, host):
     except Exception as e:
         logger.exception(f"Błąd odtwarzania audio: {str(e)}")
         return False
-    """Odtwarza dźwięk z podanego URL."""
-    logger = setup_logger()
-    
-    if not url:
-        logger.error("Brak URL do pliku audio")
-        return False
-    
-    try:
-        # Inicjalizacja pygame
-        # Pygame mixer powinien być już zainicjalizowany wcześniej
-        
-        # Jeśli URL jest względny, dodaj host
-        if url.startswith('/'):
-            full_url = f"http://{host}{url}"
-        else:
-            full_url = url
-        
-        logger.info(f"Pobieranie audio z: {full_url}")
-        
-        # Pobierz plik audio
-        response = requests.get(full_url)
-        if response.status_code != 200:
-            logger.error(f"Błąd pobierania audio: {response.status_code}")
-            return False
-        
-        # Zapisz dane do bufora
-        audio_buffer = io.BytesIO(response.content)
-        
-        # Odtwórz dźwięk
-        pygame.mixer.music.load(audio_buffer)
-        pygame.mixer.music.play()
-        
-        logger.info("Odtwarzanie dźwięku...")
-        
-        # Poczekaj na zakończenie odtwarzania
-        while pygame.mixer.music.get_busy():
-            time.sleep(0.1)
-        
-        logger.info("Zakończono odtwarzanie dźwięku")
-        return True
-    except Exception as e:
-        logger.exception(f"Błąd odtwarzania audio: {str(e)}")
-        return False
-    """Odtwarza dźwięk z podanego URL."""
-    if not url:
+
+def validate_audio_format(sample_rate, channels=1):
+    """Walidacja parametrów audio."""
+    valid_rates = [8000, 16000, 22050, 44100, 48000]
+    if sample_rate not in valid_rates:
         logger = setup_logger()
-        logger.error("Brak URL do pliku audio")
-        return False
+        logger.warning(f"Nietypowa częstotliwość próbkowania: {sample_rate}Hz")
     
-    try:
-        # Inicjalizacja pygame mixer
-        mixer.init()
-        
-        # Jeśli URL jest względny, dodaj host
-        if url.startswith('/'):
-            full_url = f"http://{host}{url}"
-        else:
-            full_url = url
-        
-        # Pobierz plik audio
-        response = requests.get(full_url)
-        if response.status_code != 200:
-            logger = setup_logger()
-            logger.error(f"Błąd pobierania audio: {response.status_code}")
-            return False
-        
-        # Utwórz bufor i załaduj dane audio
-        audio_data = io.BytesIO(response.content)
-        mixer.music.load(audio_data)
-        
-        # Odtwórz dźwięk
-        mixer.music.play()
-        
-        # Poczekaj na zakończenie odtwarzania
-        while mixer.music.get_busy():
-            pygame.time.wait(100)
-        
-        return True
-    except Exception as e:
+    if channels not in [1, 2]:
         logger = setup_logger()
-        logger.exception(f"Błąd odtwarzania audio: {str(e)}")
-        return False
+        logger.warning(f"Nietypowa liczba kanałów: {channels}")
+    
+    return True
+
+def format_duration(seconds):
+    """Formatuje czas trwania w sekundach na czytelny string."""
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    elif seconds < 3600:
+        minutes = int(seconds // 60)
+        secs = seconds % 60
+        return f"{minutes}m {secs:.1f}s"
+    else:
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = seconds % 60
+        return f"{hours}h {minutes}m {secs:.1f}s"

@@ -2,77 +2,382 @@
 Główny plik aplikacji do interakcji z Home Assistant ASSIST przez WebSocket API.
 """
 import asyncio
+import threading
+import webview
+import sys
+import os
+import pystray
+from PIL import Image, ImageDraw
+from pystray import MenuItem as item
 import utils
 from client import HomeAssistantClient
 from audio import AudioManager
+from animation_server import AnimationServer
 
 logger = utils.setup_logger()
 
-async def main():
-    """Główna funkcja aplikacji."""
-    try:
-        # Inicjalizacja klientów
-        ha_client = HomeAssistantClient()
-        audio_manager = AudioManager()
+class HAAssistApp:
+    """Główna klasa aplikacji."""
+    
+    def __init__(self):
+        """Inicjalizacja aplikacji."""
+        self.ha_client = None
+        self.audio_manager = None
+        self.animation_server = None
+        self.window = None
+        self.is_running = False
+        self.tray_icon = None
+        self.window_visible = True
         
-        # Inicjalizacja mikrofonu
-        audio_manager.init_audio()
+    def create_tray_icon(self):
+        """Utworzenie ikony w system tray."""
+        # Tworzenie prostej ikony
+        image = Image.new('RGB', (64, 64), color='black')
+        draw = ImageDraw.Draw(image)
+        draw.ellipse([8, 8, 56, 56], fill='#4fc3f7', outline='white', width=2)
+        draw.ellipse([24, 24, 40, 40], fill='white')
         
-        # Połączenie z Home Assistant
-        if await ha_client.connect():
+        # Menu kontekstowe
+        menu = pystray.Menu(
+            item('Pokaż/Ukryj okno', self.toggle_window),
+            item('Aktywuj głos (Ctrl+Shift+H)', self.trigger_voice_command),
+            pystray.Menu.SEPARATOR,
+            item('Zamknij', self.quit_application)
+        )
+        
+        self.tray_icon = pystray.Icon(
+            "HA Assist",
+            image,
+            "HA Assist Desktop",
+            menu
+        )
+        
+        logger.info("Ikona system tray utworzona")
+        
+    def setup_animation_server(self):
+        """Konfiguracja serwera animacji."""
+        self.animation_server = AnimationServer()
+        
+        # Ustawienie callback'a dla aktywacji z frontendu
+        self.animation_server.set_voice_command_callback(self.on_voice_command_trigger)
+        
+        self.animation_server.start()
+        logger.info("Animation server uruchomiony")
+    
+    def setup_webview(self):
+        """Konfiguracja okna webview."""
+        # Ścieżka do plików frontend
+        frontend_path = os.path.join(os.path.dirname(__file__), 'frontend')
+        index_path = os.path.join(frontend_path, 'index.html')
+        
+        if not os.path.exists(index_path):
+            logger.error(f"Nie znaleziono pliku frontend: {index_path}")
+            return False
+        
+        # Utworzenie okna webview - ukryte z paska zadań
+        self.window = webview.create_window(
+            'HA Assist',
+            index_path,
+            width=400,
+            height=400,
+            resizable=False,
+            fullscreen=False,
+            minimized=False,
+            on_top=True,
+            shadow=True,
+            frameless=True,
+        )
+        
+        logger.info("Webview window skonfigurowane (ukryte z paska zadań)")
+        return True
+    
+    async def process_voice_command(self):
+        """Przetwarzanie komendy głosowej."""
+        try:
+            # Zmień stan na nasłuchiwanie
+            self.animation_server.change_state("listening")
+            
+            # Inicjalizacja klientów
+            self.ha_client = HomeAssistantClient()
+            self.audio_manager = AudioManager()
+            
+            # Inicjalizacja mikrofonu
+            self.audio_manager.init_audio()
+            
+            # Połączenie z Home Assistant
+            if not await self.ha_client.connect():
+                logger.error("Nie udało się połączyć z Home Assistant")
+                self.animation_server.change_state("error", message="Błąd połączenia z HA")
+                return False
+            
             logger.info("Połączono z Home Assistant")
             
             # Uruchomienie pipeline Assist
-            if await ha_client.start_assist_pipeline():
-                logger.info("Pipeline Assist uruchomiony pomyślnie")
-                
-                print("\n=== MÓWISZ ===")
-                print("(Oczekiwanie na głos, mów do mikrofonu...)")
-                
-                # Rejestracja funkcji callback dla fragmentów audio
-                async def on_audio_chunk(audio_chunk):
-                    await ha_client.send_audio_chunk(audio_chunk)
-                
-                async def on_audio_end():
-                    await ha_client.end_audio()
-                
-                # Rozpoczęcie nagrywania
-                if await audio_manager.record_audio(on_audio_chunk, on_audio_end):
-                    logger.info("Audio wysłane pomyślnie")
-                    
-                    # Odbieranie odpowiedzi
-                    results = await ha_client.receive_response()
-                    response = ha_client.extract_assistant_response(results)
-                    
-                    if response:
-                        print("\n=== ODPOWIEDŹ ASYSTENTA ===")
-                        print(response)
-                        print("===========================\n")
-                        
-                        # Odtwórz dźwięk odpowiedzi
-                        audio_url = ha_client.extract_audio_url(results)
-                        if ha_client.audio_url:
-                            print("Odtwarzam odpowiedź głosową...")
-                            utils.play_audio_from_url(ha_client.audio_url, ha_client.host)
-                        else:
-                            print("Brak URL audio do odtworzenia")
-                    else:
-                        print("\nBrak odpowiedzi od asystenta lub błąd przetwarzania.")
-                else:
-                    logger.error("Nie udało się nagrać i wysłać audio")
-            else:
+            if not await self.ha_client.start_assist_pipeline():
                 logger.error("Nie udało się uruchomić pipeline Assist")
-        else:
-            logger.error("Nie udało się połączyć z Home Assistant")
+                self.animation_server.change_state("error", message="Błąd pipeline")
+                return False
             
-    except Exception as e:
-        logger.exception(f"Wystąpił błąd: {str(e)}")
-    finally:
-        if 'audio_manager' in locals():
-            audio_manager.close_audio()
+            logger.info("Pipeline Assist uruchomiony pomyślnie")
+            
+            print("\n=== MÓWISZ ===")
+            print("(Oczekiwanie na głos, mów do mikrofonu...)")
+            
+            # Rejestracja funkcji callback dla fragmentów audio
+            async def on_audio_chunk(audio_chunk):
+                # Wyślij dane audio do animacji
+                self.animation_server.send_audio_data(audio_chunk)
+                # Wyślij do Home Assistant
+                await self.ha_client.send_audio_chunk(audio_chunk)
+            
+            async def on_audio_end():
+                # Zmień stan na przetwarzanie
+                self.animation_server.change_state("processing")
+                await self.ha_client.end_audio()
+            
+            # Rozpoczęcie nagrywania
+            if await self.audio_manager.record_audio(on_audio_chunk, on_audio_end):
+                logger.info("Audio wysłane pomyślnie")
+                
+                # Odbieranie odpowiedzi
+                results = await self.ha_client.receive_response()
+                response = self.ha_client.extract_assistant_response(results)
+                
+                if response:
+                    print("\n=== ODPOWIEDŹ ASYSTENTA ===")
+                    print(response)
+                    print("===========================\n")
+                    
+                    # Zmień stan na odpowiadanie i wyślij tekst
+                    self.animation_server.change_state("responding")
+                    self.animation_server.send_response_text(response)
+                    
+                    # Odtwórz dźwięk odpowiedzi
+                    audio_url = self.ha_client.extract_audio_url(results)
+                    if audio_url:
+                        print("Odtwarzam odpowiedź głosową...")
+                        utils.play_audio_from_url(audio_url, self.ha_client.host)
+                    
+                    # Powrót do stanu idle po 3 sekundach
+                    await asyncio.sleep(3)
+                    self.animation_server.change_state("idle")
+                else:
+                    print("\nBrak odpowiedzi od asystenta lub błąd przetwarzania.")
+                    self.animation_server.change_state("error", message="Brak odpowiedzi")
+            else:
+                logger.error("Nie udało się nagrać i wysłać audio")
+                self.animation_server.change_state("error", message="Błąd nagrywania")
+                
+        except Exception as e:
+            logger.exception(f"Wystąpił błąd podczas przetwarzania: {str(e)}")
+            self.animation_server.change_state("error", message=str(e))
+        finally:
+            # Cleanup
+            if self.audio_manager:
+                self.audio_manager.close_audio()
+            if self.ha_client:
+                await self.ha_client.close()
+    
+    def on_voice_command_trigger(self):
+        """Callback wywoływany gdy użytkownik aktywuje komendę głosową."""
+        if self.animation_server.current_state != "idle":
+            logger.info("Aplikacja jest zajęta, ignoruję trigger")
+            return
         
-        if 'ha_client' in locals():
-            await ha_client.close()
+        # Uruchom przetwarzanie w osobnym wątku
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        def run_async():
+            loop.run_until_complete(self.process_voice_command())
+        
+        thread = threading.Thread(target=run_async, daemon=True)
+        thread.start()
+    
+    def hide_from_taskbar(self):
+        """Ukrycie okna z paska zadań Windows (backup method)."""
+        try:
+            import ctypes
+            from ctypes import wintypes
+            
+            found_windows = []
+            
+            # Znajdź okno aplikacji
+            def enum_windows_proc(hwnd, lParam):
+                if ctypes.windll.user32.IsWindowVisible(hwnd):
+                    window_text = ctypes.create_unicode_buffer(512)
+                    ctypes.windll.user32.GetWindowTextW(hwnd, window_text, 512)
+                    class_name = ctypes.create_unicode_buffer(512)
+                    ctypes.windll.user32.GetClassNameW(hwnd, class_name, 512)
+                    
+                    window_title = window_text.value
+                    class_name_str = class_name.value
+                    
+                    # TYLKO okno HA Assist - bardzo precyzyjnie!
+                    if window_title == "HA Assist" and "WindowsForms10" in class_name_str:
+                        
+                        found_windows.append((hwnd, window_title, class_name_str))
+                        
+                        # Ustaw WS_EX_TOOLWINDOW żeby ukryć z paska zadań
+                        GWL_EXSTYLE = -20
+                        WS_EX_TOOLWINDOW = 0x00000080
+                        WS_EX_APPWINDOW = 0x00040000
+                        
+                        current_style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+                        # Usuń WS_EX_APPWINDOW i dodaj WS_EX_TOOLWINDOW
+                        new_style = (current_style & ~WS_EX_APPWINDOW) | WS_EX_TOOLWINDOW
+                        ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, new_style)
+                        
+                        # Zmuś do odświeżenia
+                        SWP_FRAMECHANGED = 0x0020
+                        SWP_NOMOVE = 0x0002
+                        SWP_NOSIZE = 0x0001
+                        SWP_NOZORDER = 0x0004
+                        ctypes.windll.user32.SetWindowPos(
+                            hwnd, 0, 0, 0, 0, 0, 
+                            SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER
+                        )
+                        
+                        logger.info(f"Okno ukryte z paska zadań: '{window_title}' (klasa: {class_name_str})")
+                
+                return True
+            
+            EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+            ctypes.windll.user32.EnumWindows(EnumWindowsProc(enum_windows_proc), 0)
+            
+            logger.info(f"Znaleziono {len(found_windows)} okien do ukrycia")
+            
+        except Exception as e:
+            logger.exception(f"Błąd ukrywania z paska zadań: {e}")
+    
+    def trigger_voice_command(self, icon=None, item=None):
+        """Trigger z menu tray."""
+        logger.info("Aktywacja komendy głosowej z menu tray")
+        self.on_voice_command_trigger()
+    
+    def setup_hotkey(self):
+        """Konfiguracja skrótu klawiszowego."""
+        try:
+            import keyboard
+            
+            # Skrót Ctrl+Shift+H
+            hotkey = utils.get_env("HA_HOTKEY", "ctrl+shift+h")
+            keyboard.add_hotkey(hotkey, self.on_voice_command_trigger)
+            logger.info(f"Skrót klawiszowy ustawiony: {hotkey}")
+            return True
+            
+        except ImportError:
+            logger.warning("Biblioteka keyboard nie jest zainstalowana - uruchom: pip install keyboard")
+            return False
+        except Exception as e:
+            logger.error(f"Błąd konfiguracji skrótu klawiszowego: {e}")
+            return False
+    
+    def toggle_window(self, icon=None, item=None):
+        """Przełączenie widoczności okna."""
+        if self.window_visible:
+            # Ukryj okno
+            if hasattr(webview, 'windows') and webview.windows:
+                webview.windows[0].minimize()
+            self.window_visible = False
+            logger.info("Okno ukryte")
+        else:
+            # Pokaż okno
+            if hasattr(webview, 'windows') and webview.windows:
+                webview.windows[0].restore()
+            self.window_visible = True
+            logger.info("Okno pokazane")
+    
+    def quit_application(self, icon=None, item=None):
+        """Zamknięcie aplikacji z menu tray."""
+        logger.info("Zamykanie aplikacji z menu tray...")
+        self.cleanup()
+        
+        # Zatrzymaj tray icon
+        if self.tray_icon:
+            self.tray_icon.stop()
+        
+        # Zamknij webview
+        if hasattr(webview, 'windows') and webview.windows:
+            for window in webview.windows:
+                window.destroy()
+        
+        sys.exit(0)
+    
+    def run_tray(self):
+        """Uruchomienie ikony tray w osobnym wątku."""
+        def tray_thread():
+            try:
+                self.tray_icon.run()
+            except Exception as e:
+                logger.exception(f"Błąd tray icon: {e}")
+        
+        threading.Thread(target=tray_thread, daemon=True).start()
+        logger.info("System tray uruchomiony")
+    
+    def run(self):
+        """Uruchomienie aplikacji."""
+        try:
+            logger.info("Uruchamianie HA Assist Desktop...")
+            
+            # Konfiguracja serwera animacji
+            self.setup_animation_server()
+            
+            # Konfiguracja webview
+            if not self.setup_webview():
+                logger.error("Nie udało się skonfigurować interfejsu")
+                return
+            
+            # Konfiguracja skrótu klawiszowego
+            self.setup_hotkey()
+            
+            # Konfiguracja system tray
+            self.create_tray_icon()
+            self.run_tray()
+            
+            # Uruchomienie webview (blokujące)
+            logger.info("Uruchamianie interfejsu...")
+            
+            # Ukrycie z paska zadań po uruchomieniu  
+            def on_window_loaded():
+                import time
+                time.sleep(2)  # Poczekaj na pełne załadowanie okna
+                logger.info("Próba ukrycia okna z paska zadań...")
+                
+                # Tymczasowo zwiększ poziom logowania
+                old_level = logger.level
+                logger.setLevel(10)  # DEBUG
+                
+                self.hide_from_taskbar()
+                
+                # Przywróć poziom logowania
+                logger.setLevel(old_level)
+            
+            threading.Thread(target=on_window_loaded, daemon=True).start()
+            
+            webview.start(debug=utils.get_env("DEBUG", False, bool))
+            
+        except KeyboardInterrupt:
+            logger.info("Aplikacja przerwana przez użytkownika")
+        except Exception as e:
+            logger.exception(f"Błąd aplikacji: {str(e)}")
+        finally:
+            self.cleanup()
+    
+    def cleanup(self):
+        """Sprzątanie zasobów."""
+        logger.info("Sprzątanie zasobów...")
+        
+        if self.animation_server:
+            self.animation_server.stop()
+        
+        if self.audio_manager:
+            self.audio_manager.close_audio()
+
+def main():
+    """Główna funkcja aplikacji."""
+    app = HAAssistApp()
+    app.run()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
