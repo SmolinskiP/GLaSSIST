@@ -34,11 +34,47 @@
             height: 100%;
             background: transparent;
         }
+        
+        /* Tekst błędu */
+        #errorText {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #f44336;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 14px;
+            font-weight: bold;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(244, 67, 54, 0.8);
+            pointer-events: none;
+            z-index: 1000;
+            display: none;
+            max-width: 280px;
+            line-height: 1.4;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: 1px solid #f44336;
+            animation: pulse-error 0.7s infinite alternate ease-in-out;
+        }
+        
+        @keyframes pulse-error {
+            from {
+                opacity: 0.8;
+                text-shadow: 0 0 10px rgba(244, 67, 54, 0.8);
+            }
+            to {
+                opacity: 1.0;
+                text-shadow: 0 0 20px rgba(244, 67, 54, 1.0);
+            }
+        }
     </style>
 </head>
 <body>
     <div id="container">
         <canvas id="canvas"></canvas>
+        <div id="errorText"></div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -51,6 +87,7 @@
         let audioData = [];
         let isConnected = false;
         let isAnimating = false;
+        let errorMessage = '';
         
         // Kolory dla różnych stanów
         const stateColors = {
@@ -122,63 +159,6 @@
                 gl_FragColor = vec4(finalColor, intensity * 0.8);
             }
         `;
-
-        // WRACAMY DO DZIAŁAJĄCEGO VERTEX SHADERA
-        const loadingVertexShader = `
-            varying vec2 vUv;
-            varying vec3 vPosition;
-            uniform float time;
-            uniform float audioLevel;
-            
-            void main() {
-                vUv = uv;
-                vPosition = position;
-                
-                // Deformacja na podstawie audio
-                vec3 pos = position;
-                float angle = atan(pos.y, pos.x);
-                float radius = length(pos.xy);
-                
-                // Dodaj pulsowanie na podstawie audio
-                float pulse = sin(time * 4.0 + angle * 8.0) * audioLevel * 0.3;
-                pos.xy *= (1.0 + pulse);
-                
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-            }
-        `;
-
-        // WRACAMY DO DZIAŁAJĄCEGO FRAGMENT SHADERA - POPRAWIONY KOLOR
-        const loadingFragmentShader = `
-            uniform float time;
-            uniform float audioLevel;
-            uniform vec3 color;
-            varying vec2 vUv;
-            varying vec3 vPosition;
-            
-            void main() {
-                vec2 center = vec2(0.5);
-                float dist = distance(vUv, center);
-                
-                // Pierścień - tylko krawędź
-                float ring = 1.0 - smoothstep(0.35, 0.5, dist);
-                ring *= smoothstep(0.25, 0.35, dist);
-                
-                // Efekt świecenia
-                float glow = exp(-dist * 8.0);
-                
-                // USUNIĘTE PULSOWANIE I SPARKLE - będzie tylko podstawowy pierścień
-                
-                // Kombinacja podstawowych efektów
-                float intensity = ring + glow * 0.3;
-                
-                vec3 finalColor = color * intensity;
-                
-                // POPRAWIONY GLOW - używa koloru uniforms zamiast hardcoded blue
-                finalColor += color * glow * audioLevel * 0.5;
-                
-                gl_FragColor = vec4(finalColor, intensity * 0.8);
-            }
-        `;
         
         // SHADER dla cząsteczek (responding)
         const particleVertexShader = `
@@ -239,7 +219,7 @@
             createListeningAnimation();
             
             renderer.render(scene, camera);
-            console.log('Three.js zainicjalizowane z nowym loading shaderem');
+            console.log('Three.js zainicjalizowane z obsługą tekstu błędu');
         }
         
         function createListeningAnimation() {
@@ -262,15 +242,15 @@
             listeningRing.visible = false;
             scene.add(listeningRing);
             
-            // COFAM DO ORYGINALNEGO DZIAŁAJĄCEGO LOADING RING
+            // LOADING RING
             const loadingGeometry = new THREE.RingGeometry(1.0, 1.2, 64);
             const loadingMaterial = new THREE.ShaderMaterial({
-                vertexShader: ringVertexShader,  // TEN SAM CO LISTENING - DZIAŁAJĄCY
-                fragmentShader: ringFragmentShader,  // TEN SAM CO LISTENING - DZIAŁAJĄCY
+                vertexShader: ringVertexShader,
+                fragmentShader: ringFragmentShader,
                 uniforms: {
                     time: { value: 0.0 },
-                    audioLevel: { value: 0.8 },  // Stała wartość zamiast audio
-                    color: { value: new THREE.Color(0xff9800) }  // Pomarańczowy
+                    audioLevel: { value: 0.8 },
+                    color: { value: new THREE.Color(0xff9800) }
                 },
                 transparent: true,
                 blending: THREE.AdditiveBlending,
@@ -360,6 +340,9 @@
                 if (listeningRing) listeningRing.visible = true;
                 if (particles) particles.visible = true;
                 if (glowRing) glowRing.visible = true;
+            } else if (currentState === 'error') {
+                if (listeningRing) listeningRing.visible = true;
+                showErrorText(errorMessage);
             }
             
             animate();
@@ -377,12 +360,32 @@
             if (particles) particles.visible = false;
             if (glowRing) glowRing.visible = false;
             
+            // Ukryj tekst błędu
+            hideErrorText();
+            
             if (animationFrameId) {
                 cancelAnimationFrame(animationFrameId);
                 animationFrameId = null;
             }
             
             renderer.render(scene, camera);
+        }
+        
+        function showErrorText(message) {
+            const errorElement = document.getElementById('errorText');
+            if (errorElement && message) {
+                errorElement.textContent = message;
+                errorElement.style.display = 'block';
+                console.log('Pokazano tekst błędu:', message);
+            }
+        }
+        
+        function hideErrorText() {
+            const errorElement = document.getElementById('errorText');
+            if (errorElement) {
+                errorElement.style.display = 'none';
+                console.log('Ukryto tekst błędu');
+            }
         }
         
         function updateAnimation() {
@@ -392,23 +395,20 @@
             let avgAudioLevel = 0;
             if (audioData && audioData.length > 0) {
                 avgAudioLevel = audioData.reduce((a, b) => a + b, 0) / audioData.length;
-                avgAudioLevel = Math.min(avgAudioLevel, 1.0); // Ograniczenie
+                avgAudioLevel = Math.min(avgAudioLevel, 1.0);
             }
             
             switch(currentState) {
                 case 'listening':
-                    // Update shaderów pierścienia - BEZ CZĄSTECZEK
                     if (listeningRing && listeningRing.material.uniforms) {
                         listeningRing.material.uniforms.time.value = time;
                         listeningRing.material.uniforms.audioLevel.value = avgAudioLevel;
                     }
                     
-                    // Rotacja głównego pierścienia
                     if (listeningRing) {
                         listeningRing.rotation.z = time * 0.5;
                     }
                     
-                    // Pulsowanie glow ring
                     if (glowRing) {
                         const glowScale = 1.0 + avgAudioLevel * 0.8 + Math.sin(time * 3) * 0.15;
                         glowRing.scale.set(glowScale, glowScale, 1);
@@ -417,24 +417,20 @@
                     break;
                     
                 case 'processing':
-                    // PULSUJĄCY audioLevel - od 0.1 do 0.4 i z powrotem, co 2 sekundy
                     if (loadingRing && loadingRing.material.uniforms) {
                         loadingRing.material.uniforms.time.value = time;
-                        // sin daje wartości od -1 do 1, przeskalowuję na 0.1 - 0.4
-                        const pulseLevel = 0.25 + Math.sin(time * 3.14159) * 0.15; // 0.1 - 0.4, pełny cykl co 2 sekundy
+                        const pulseLevel = 0.25 + Math.sin(time * 3.14159) * 0.15;
                         loadingRing.material.uniforms.audioLevel.value = pulseLevel;
                     }
                     break;
                     
                 case 'responding':
-                    // Intensywniejsza animacja odpowiedzi Z CZĄSTECZKAMI
                     if (listeningRing && listeningRing.material.uniforms) {
                         listeningRing.material.uniforms.time.value = time;
                         listeningRing.material.uniforms.audioLevel.value = avgAudioLevel * 1.5;
                         listeningRing.rotation.z = time * 0.8;
                     }
                     
-                    // CZĄSTECZKI TYLKO PRZY RESPONDING
                     if (particles && particles.material.uniforms) {
                         particles.material.uniforms.time.value = time;
                         particles.material.uniforms.audioLevel.value = avgAudioLevel * 1.2;
@@ -449,12 +445,11 @@
                     break;
                     
                 case 'error':
-                    // CZERWONA ANIMACJA BŁĘDU - szybko pulsująca (0.7s na cykl)
                     if (listeningRing && listeningRing.material.uniforms) {
-                        listeningRing.material.uniforms.color.value.setHex(0xf44336); // Czerwony
+                        listeningRing.material.uniforms.color.value.setHex(0xf44336);
                         listeningRing.material.uniforms.time.value = time;
-                        // Bardzo szybkie pulsowanie - 0.7 sekundy na cykl
-                        const pulseLevel = 0.25 + Math.sin(time * 8.976) * 0.15; // 0.1 - 0.4, co 0.7s (2π/0.7 ≈ 8.976)
+                        // Szybkie pulsowanie dla błędu - 0.7 sekundy na cykl
+                        const pulseLevel = 0.25 + Math.sin(time * 8.976) * 0.15;
                         listeningRing.material.uniforms.audioLevel.value = pulseLevel;
                     }
                     break;
@@ -471,8 +466,14 @@
             if (loadingRing) loadingRing.visible = false;
             if (particles) particles.visible = false;
             if (glowRing) glowRing.visible = false;
+            hideErrorText();
             
             currentState = newState;
+            
+            // Zapisz wiadomość błędu jeśli dostępna
+            if (newState === 'error' && data.errorMessage) {
+                errorMessage = data.errorMessage;
+            }
             
             if (newState === 'hidden') {
                 stopAnimation();
@@ -492,6 +493,7 @@
                     if (glowRing) glowRing.visible = true;
                 } else if (newState === 'error') {
                     if (listeningRing) listeningRing.visible = true;
+                    showErrorText(errorMessage);
                 }
             }
             
@@ -501,7 +503,7 @@
                 listeningRing.material.uniforms.color.value = color;
             }
             if (particles && particles.material.uniforms) {
-                particles.material.uniforms.color.value = new THREE.Color(0x9c27b0); // Fioletowe cząsteczki
+                particles.material.uniforms.color.value = new THREE.Color(0x9c27b0);
             }
             if (glowRing) {
                 glowRing.material.color = color;
@@ -580,7 +582,7 @@
         }
         
         window.addEventListener('load', function() {
-            console.log('Inicjalizacja aplikacji z nowym loading shaderem...');
+            console.log('Inicjalizacja aplikacji z obsługą tekstu błędu...');
             initThree();
             initWebSocket();
             startHeartbeat();

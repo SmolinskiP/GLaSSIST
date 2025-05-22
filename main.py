@@ -108,8 +108,8 @@ class HAAssistApp:
             # Połączenie z Home Assistant
             if not await self.ha_client.connect():
                 logger.error("Nie udało się połączyć z Home Assistant")
-                self.animation_server.change_state("error")
-                await asyncio.sleep(6)  # Pokaż error przez 3 sekundy
+                self.animation_server.change_state("error", "Nie można połączyć się z Home Assistant")
+                await asyncio.sleep(8)  # WYDŁUŻONO z 6 do 8 sekund
                 self.animation_server.change_state("hidden")
                 return False
             
@@ -118,8 +118,8 @@ class HAAssistApp:
             # Uruchomienie pipeline Assist
             if not await self.ha_client.start_assist_pipeline():
                 logger.error("Nie udało się uruchomić pipeline Assist")
-                self.animation_server.change_state("error")
-                await asyncio.sleep(6)  # Pokaż error przez 3 sekundy
+                self.animation_server.change_state("error", "Nie można uruchomić asystenta głosowego")
+                await asyncio.sleep(8)  # WYDŁUŻONO z 6 do 8 sekund
                 self.animation_server.change_state("hidden")
                 return False
             
@@ -161,15 +161,16 @@ class HAAssistApp:
                         if event.get('type') == 'error':
                             # BŁĄD ZNALEZIONY!
                             error_code = event.get('data', {}).get('code', 'unknown')
-                            error_message = event.get('data', {}).get('message', 'Unknown error')
+                            error_message = event.get('data', {}).get('message', 'Nieznany błąd')
                             
                             print(f"\n=== BŁĄD ASYSTENTA ===")
                             print(f"Błąd: {error_code} - {error_message}")
                             print("===========================\n")
                             
-                            # POKAŻ ERROR ANIMATION
-                            self.animation_server.change_state("error")
-                            await asyncio.sleep(6)  # 3 sekundy czerwonej animacji
+                            # POKAŻ ERROR ANIMATION Z TEKSTEM BŁĘDU
+                            full_error_message = f"{error_code}: {error_message}"
+                            self.animation_server.change_state("error", full_error_message)
+                            await asyncio.sleep(8)  # WYDŁUŻONO z 6 do 8 sekund - więcej czasu na przeczytanie
                             self.animation_server.change_state("hidden")
                             
                             error_found = True
@@ -185,37 +186,41 @@ class HAAssistApp:
                         print("===========================\n")
                         
                         # Zmień stan na odpowiadanie i wyślij tekst
-                        print("Czkeam 10 sekund żeby pokazać animację...")
-                        await asyncio.sleep(10.0)
                         self.animation_server.change_state("responding")
                         self.animation_server.send_response_text(response)
                         
-                        # Odtwórz dźwięk odpowiedzi
+                        # Odtwórz dźwięk odpowiedzi Z ANALIZĄ FFT! 🔥
                         audio_url = self.ha_client.extract_audio_url(results)
                         if audio_url:
-                            print("Odtwarzam odpowiedź głosową...")
-                            utils.play_audio_from_url(audio_url, self.ha_client.host)
+                            print("Odtwarzam odpowiedź głosową z analizą FFT...")
+                            utils.play_audio_from_url(audio_url, self.ha_client.host, self.animation_server)
                         
                         # Powrót do stanu hidden po 3 sekundach
                         await asyncio.sleep(3)
                         self.animation_server.change_state("hidden")
                     else:
                         print("\nBrak odpowiedzi od asystenta lub błąd przetwarzania.")
-                        self.animation_server.change_state("error")
-                        await asyncio.sleep(6)
+                        self.animation_server.change_state("error", "Asystent nie odpowiedział")
+                        await asyncio.sleep(8)  # WYDŁUŻONO z 6 do 8 sekund
                         self.animation_server.change_state("hidden")
             else:
                 logger.error("Nie udało się nagrać i wysłać audio")
-                self.animation_server.change_state("error")
-                await asyncio.sleep(6)
+                self.animation_server.change_state("error", "Błąd nagrywania audio")
+                await asyncio.sleep(8)  # WYDŁUŻONO z 6 do 8 sekund
                 self.animation_server.change_state("hidden")
                 
         except Exception as e:
             logger.exception(f"Wystąpił błąd podczas przetwarzania: {str(e)}")
-            self.animation_server.change_state("error")
             
-            # Po błędzie też wracamy do hidden
-            await asyncio.sleep(6)
+            # WYCIĄGNIJ INFORMACJĘ O BŁĘDZIE I PRZEKAŻ DO ANIMACJI
+            error_msg = str(e)
+            if len(error_msg) > 80:  # Ogranicz długość wiadomości błędu
+                error_msg = error_msg[:77] + "..."
+            
+            self.animation_server.change_state("error", f"Błąd: {error_msg}")
+            
+            # Po błędzie też wracamy do hidden - WYDŁUŻONO CZAS
+            await asyncio.sleep(10)  # WYDŁUŻONO z 6 do 10 sekund dla błędów wyjątków
             self.animation_server.change_state("hidden")
         finally:
             # Cleanup

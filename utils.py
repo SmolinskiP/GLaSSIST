@@ -4,11 +4,13 @@ Moduł zawierający funkcje pomocnicze dla aplikacji.
 import os
 import logging
 import time
+import threading
 from datetime import datetime
 from dotenv import load_dotenv
 import requests
 import sounddevice as sd
 import soundfile as sf
+import numpy as np
 import io
 
 # Ładowanie zmiennych środowiskowych z pliku .env
@@ -52,8 +54,11 @@ def get_datetime_string():
     """Zwraca sformatowany string z datą i czasem."""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-def play_audio_from_url(url, host):
-    """Odtwarza dźwięk z podanego URL przy użyciu sounddevice i soundfile."""
+def play_audio_from_url(url, host, animation_server=None):
+    """
+    Odtwarza dźwięk z podanego URL przy użyciu sounddevice i soundfile.
+    Opcjonalnie wysyła dane FFT do animation server podczas odtwarzania.
+    """
     logger = setup_logger()
     
     if not url:
@@ -87,18 +92,132 @@ def play_audio_from_url(url, host):
         logger.info("Odczytywanie pliku audio...")
         data, samplerate = sf.read(audio_buffer)
         
-        # Odtwórz dźwięk
-        logger.info(f"Odtwarzanie dźwięku (samplerate: {samplerate})...")
-        sd.play(data, samplerate)
-        
-        # Poczekaj na zakończenie odtwarzania
-        sd.wait()
-        
-        logger.info("Zakończono odtwarzanie dźwięku")
-        return True
+        # Jeśli mamy animation server, użyj zaawansowanego odtwarzania z analizą FFT
+        if animation_server:
+            logger.info(f"Odtwarzanie z analizą FFT (samplerate: {samplerate})...")
+            return _play_with_fft_analysis(data, samplerate, animation_server)
+        else:
+            # Standardowe odtwarzanie bez analizy
+            logger.info(f"Standardowe odtwarzanie (samplerate: {samplerate})...")
+            sd.play(data, samplerate)
+            sd.wait()
+            logger.info("Zakończono odtwarzanie dźwięku")
+            return True
+            
     except Exception as e:
         logger.exception(f"Błąd odtwarzania audio: {str(e)}")
         return False
+
+def _play_with_fft_analysis(audio_data, samplerate, animation_server):
+    """
+    Odtwarza audio i jednocześnie wysyła dane FFT do animation server.
+    """
+    logger = setup_logger()
+    
+    try:
+        # Parametry dla analizy FFT
+        chunk_size = 1024  # Rozmiar fragmentu dla FFT (mniejszy = szybsza reakcja)
+        
+        # Convert stereo to mono if needed
+        if len(audio_data.shape) > 1:
+            audio_data = np.mean(audio_data, axis=1)
+        
+        # Konwersja do int16 dla kompatybilności
+        if audio_data.dtype != np.int16:
+            # Normalizacja do zakresu int16
+            audio_data = (audio_data * 32767).astype(np.int16)
+        
+        # Zmienne do śledzenia postępu odtwarzania
+        total_samples = len(audio_data)
+        samples_played = 0
+        
+        # Callback do analizy audio podczas odtwarzania
+        def audio_callback(outdata, frames, time, status):
+            nonlocal samples_played
+            
+            if status:
+                logger.warning(f"Audio callback status: {status}")
+            
+            # Sprawdź czy jeszcze mamy dane do odtworzenia
+            if samples_played >= total_samples:
+                # Koniec danych - wypełnij ciszą
+                outdata.fill(0)
+                return
+            
+            # Oblicz ile próbek możemy odtworzyć
+            samples_to_play = min(frames, total_samples - samples_played)
+            
+            # Skopiuj dane audio do bufora wyjściowego
+            if len(audio_data.shape) == 1:
+                # Mono - duplikuj do stereo jeśli potrzeba
+                if outdata.shape[1] == 2:
+                    outdata[:samples_to_play, 0] = audio_data[samples_played:samples_played + samples_to_play]
+                    outdata[:samples_to_play, 1] = audio_data[samples_played:samples_played + samples_to_play]
+                else:
+                    outdata[:samples_to_play, 0] = audio_data[samples_played:samples_played + samples_to_play]
+            
+            # Wypełnij resztę ciszą jeśli potrzeba
+            if samples_to_play < frames:
+                outdata[samples_to_play:].fill(0)
+            
+            # ANALIZA FFT - użyj mniejszego chunka dla lepszej responsywności
+            fft_chunk_size = min(chunk_size, samples_to_play)
+            if fft_chunk_size > 0:
+                chunk_data = audio_data[samples_played:samples_played + fft_chunk_size]
+                
+                # Wykonaj analizę FFT w osobnym wątku żeby nie blokować audio
+                threading.Thread(
+                    target=_send_fft_to_animation, 
+                    args=(chunk_data, animation_server), 
+                    daemon=True
+                ).start()
+            
+            samples_played += samples_to_play
+        
+        # Uruchom stream z callback
+        logger.info("Rozpoczynam odtwarzanie z analizą FFT...")
+        
+        with sd.OutputStream(
+            samplerate=samplerate,
+            channels=2,  # Stereo output
+            callback=audio_callback,
+            dtype=np.int16
+        ):
+            # Oblicz czas trwania i czekaj
+            duration = len(audio_data) / samplerate
+            logger.info(f"Czas trwania audio: {duration:.2f}s")
+            
+            # Czekaj na zakończenie odtwarzania
+            time.sleep(duration + 0.5)  # Dodatkowe 0.5s na margines
+        
+        logger.info("Zakończono odtwarzanie z analizą FFT")
+        return True
+        
+    except Exception as e:
+        logger.exception(f"Błąd odtwarzania z analizą FFT: {str(e)}")
+        return False
+
+def _send_fft_to_animation(audio_chunk, animation_server):
+    """
+    Wykonuje analizę FFT i wysyła dane do animation server.
+    Wywoływane w osobnym wątku.
+    """
+    try:
+        if len(audio_chunk) == 0:
+            return
+            
+        # Konwersja do bytes dla kompatybilności z istniejącą funkcją send_audio_data
+        if audio_chunk.dtype != np.int16:
+            audio_chunk = audio_chunk.astype(np.int16)
+        audio_chunk = (audio_chunk * 0.6).astype(np.int16)
+        audio_bytes = audio_chunk.tobytes()
+        
+        # Wyślij do animation server (użyje istniejącej logiki FFT)
+        animation_server.send_audio_data(audio_bytes, 16000)  # Zakładamy 16kHz dla FFT
+        
+    except Exception as e:
+        # Nie loguj każdego błędu FFT żeby nie spammować
+        pass
 
 def validate_audio_format(sample_rate, channels=1):
     """Walidacja parametrów audio."""

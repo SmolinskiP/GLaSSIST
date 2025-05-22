@@ -139,12 +139,15 @@ class AnimationServer:
         if self.loop and self.loop.is_running():
             asyncio.run_coroutine_threadsafe(self._broadcast(data), self.loop)
     
-    def change_state(self, new_state: str, **kwargs):
-        """Zmiana stanu animacji."""
-        if new_state == self.current_state:
+    def change_state(self, new_state: str, error_message: str = None, **kwargs):
+        """Zmiana stanu animacji z opcjonalną wiadomością błędu."""
+        if new_state == self.current_state and not error_message:
             return
             
         logger.info(f"Zmiana stanu animacji: {self.current_state} -> {new_state}")
+        if error_message:
+            logger.info(f"Wiadomość błędu: {error_message}")
+        
         self.current_state = new_state
         
         message = {
@@ -153,6 +156,10 @@ class AnimationServer:
             "timestamp": utils.get_timestamp(),
             **kwargs
         }
+        
+        # Dodaj wiadomość błędu jeśli dostępna
+        if error_message:
+            message["errorMessage"] = error_message
         
         self._safe_broadcast(message)
     
