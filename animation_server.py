@@ -21,7 +21,7 @@ class AnimationServer:
         self.server = None
         self.loop = None
         self.thread = None
-        self.current_state = "idle"  # idle, listening, processing, responding
+        self.current_state = "hidden"  # ZMIANA: zamiast 'idle' -> 'hidden'
         self.audio_data_buffer = []
         
     def start(self):
@@ -64,7 +64,7 @@ class AnimationServer:
         self.clients.add(websocket)
         
         try:
-            # Wyślij aktualny stan po połączeniu
+
             await self._send_to_client(websocket, {
                 "type": "state_change",
                 "state": self.current_state
@@ -93,10 +93,13 @@ class AnimationServer:
         elif msg_type == "ready":
             logger.info("Klient animacji gotowy")
         elif msg_type == "activate_voice_command":
-            logger.info("Otrzymano żądanie aktywacji komendy głosowej z frontendu")
-            # Wywołaj callback jeśli jest ustawiony
-            if hasattr(self, 'voice_command_callback') and self.voice_command_callback:
-                self.voice_command_callback()
+            # TYLKO JEŚLI STAN TO 'hidden' - inaczej aplikacja jest zajęta
+            if self.current_state == "hidden":
+                logger.info("Otrzymano żądanie aktywacji komendy głosowej z frontendu")
+                if hasattr(self, 'voice_command_callback') and self.voice_command_callback:
+                    self.voice_command_callback()
+            else:
+                logger.info(f"Ignoruję aktywację - aplikacja w stanie: {self.current_state}")
         else:
             logger.warning(f"Nieznany typ wiadomości: {msg_type}")
     

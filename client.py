@@ -72,7 +72,7 @@ class HomeAssistantClient:
         except Exception as e:
             logger.error(f"Błąd połączenia: {str(e)}")
             return False
-    
+
     async def start_assist_pipeline(self):
         """Uruchomienie pipeline Assist od etapu STT do TTS."""
         logger.info("Uruchamiam pipeline Assist")
@@ -102,27 +102,25 @@ class HomeAssistantClient:
                 response_json = json.loads(response)
                 logger.info(f"Otrzymano: {response_json}")
                 
-                # Szukamy wydarzenia run-start, które zawiera stt_binary_handler_id w runner_data
+                # Szukamy wydarzenia run-start
                 if (response_json.get("type") == "event" and 
                     response_json.get("event", {}).get("type") == "run-start"):
-                    self.stt_binary_handler_id = response_json.get("event", {}).get("data", {}).get("runner_data", {}).get("stt_binary_handler_id")
+                    
+                    event_data = response_json.get("event", {}).get("data", {})
+                    
+                    # Pobierz stt_binary_handler_id
+                    self.stt_binary_handler_id = event_data.get("runner_data", {}).get("stt_binary_handler_id")
                     logger.info(f"Otrzymano stt_binary_handler_id: {self.stt_binary_handler_id}")
                     
-                    # Zapisz URL audio z tts_output
-                    tts_output = response_json.get("event", {}).get("data", {}).get("tts_output", {})
-                    if tts_output:
-                        self.audio_url = tts_output.get("url")
-                        logger.info(f"Zapisano URL audio: {self.audio_url}")
+                    # TUTAJ POBIERZ URL AUDIO Z TTS_OUTPUT
+                    tts_output = event_data.get("tts_output", {})
+                    if tts_output and "url" in tts_output:
+                        self.audio_url = tts_output["url"]
+                        logger.info(f"Zapisano URL audio z run-start: {self.audio_url}")
                     
                     if self.stt_binary_handler_id is not None:
                         break
-                
-                # Szukamy również wydarzenia stt-start jako zapasowego sposobu
-                elif (response_json.get("type") == "event" and 
-                      response_json.get("event", {}).get("type") == "stt-start"):
-                    # Kontynuuj oczekiwanie na run-start, stt-start to tylko potwierdzenie, że proces STT się rozpoczął
-                    continue
-                    
+                        
             except json.JSONDecodeError:
                 logger.warning("Otrzymano wiadomość, która nie jest JSON")
         
@@ -157,54 +155,52 @@ class HomeAssistantClient:
         results = []
         try:
             while True:
-                response = await asyncio.wait_for(self.websocket.recv(), timeout=10)
+                # POJEDYNCZE recv() bez timeout - natychmiastowe przetwarzanie
+                response = await self.websocket.recv()
                 try:
                     response_json = json.loads(response)
+                    
+                    # NATYCHMIAST WYPISZ LOG
                     logger.info(f"Otrzymano: {response_json}")
+                    
                     results.append(response_json)
                     
-                    # Kończymy pętlę, jeśli wystąpi jeden z tych warunków:
-                    # 1. Otrzymaliśmy intent-end (normalne zakończenie)
-                    # 2. Otrzymaliśmy run-end (zakończenie całego pipeline'u)
-                    # 3. Otrzymaliśmy error (błąd przetwarzania)
+                    # Kończymy pętlę na różnych eventach
+                    event_type = response_json.get("event", {}).get("type")
+                    
                     if (response_json.get("type") == "event" and 
-                        (response_json.get("event", {}).get("type") == "intent-end" or
-                         response_json.get("event", {}).get("type") == "run-end" or
-                         response_json.get("event", {}).get("type") == "error")):
+                        event_type in ["intent-end", "run-end", "error", "tts-end"]):
+                        logger.info(f"Kończę odbiór na wydarzeniu: {event_type}")
                         break
                         
                 except json.JSONDecodeError:
                     logger.warning(f"Otrzymano wiadomość nie-JSON: {response}")
                     
-        except asyncio.TimeoutError:
-            logger.warning("Timeout podczas oczekiwania na odpowiedź")
+        except Exception as e:
+            logger.error(f"Błąd podczas odbierania odpowiedzi: {e}")
         
         return results
     
     def extract_audio_url(self, results):
         """Wydobycie URL audio z wyników."""
-        # Wypisz wszystkie eventy do debugowania
+        # Najpierw sprawdź czy mamy URL z run-start (zapisany wcześniej)
+        if self.audio_url:
+            logger.info(f"Używam URL audio z run-start: {self.audio_url}")
+            return self.audio_url
+        
+        # Backup - sprawdź w wynikach (dla kompatybilności)
         logger.info("Szukam URL audio w wynikach...")
         
-        # Sprawdź najpierw w tts-end
-        for result in results:
-            if (result.get("type") == "event" and 
-                result.get("event", {}).get("type") == "tts-end"):
-                url = result.get("event", {}).get("data", {}).get("url")
-                logger.info(f"Znaleziono URL audio w tts-end: {url}")
-                return url
-        
-        # Sprawdź również w run-start
         for result in results:
             if (result.get("type") == "event" and 
                 result.get("event", {}).get("type") == "run-start"):
                 tts_output = result.get("event", {}).get("data", {}).get("tts_output", {})
-                if tts_output:
-                    url = tts_output.get("url")
-                    logger.info(f"Znaleziono URL audio w run-start: {url}")
+                if tts_output and "url" in tts_output:
+                    url = tts_output["url"]
+                    logger.info(f"Znaleziono URL audio w wynikach: {url}")
                     return url
         
-        logger.warning("Nie znaleziono URL audio w wynikach")
+        logger.warning("Nie znaleziono URL audio")
         return None
 
     def extract_assistant_response(self, results):

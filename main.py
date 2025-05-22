@@ -91,7 +91,7 @@ class HAAssistApp:
         
         logger.info("Webview window skonfigurowane (ukryte z paska zadań)")
         return True
-    
+
     async def process_voice_command(self):
         """Przetwarzanie komendy głosowej."""
         try:
@@ -132,16 +132,23 @@ class HAAssistApp:
                 await self.ha_client.send_audio_chunk(audio_chunk)
             
             async def on_audio_end():
-                # Zmień stan na przetwarzanie
+                # Zmień stan na przetwarzanie Z MAŁYM OPÓŹNIENIEM
+                logger.info("=== PRZECHODZĘ DO PRZETWARZANIA ===")
                 self.animation_server.change_state("processing")
+                
+                # KRÓTKIE OPÓŹNIENIE - żeby animacja processing była widoczna
+                await asyncio.sleep(10.8)
+                
                 await self.ha_client.end_audio()
             
             # Rozpoczęcie nagrywania
             if await self.audio_manager.record_audio(on_audio_chunk, on_audio_end):
                 logger.info("Audio wysłane pomyślnie")
                 
-                # Odbieranie odpowiedzi
+                # Odbieranie odpowiedzi - TUTAJ BĘDĄ LOGI W CZASIE RZECZYWISTYM
+                logger.info("=== ODBIERAM ODPOWIEDŹ ===")
                 results = await self.ha_client.receive_response()
+                
                 response = self.ha_client.extract_assistant_response(results)
                 
                 if response:
@@ -159,9 +166,9 @@ class HAAssistApp:
                         print("Odtwarzam odpowiedź głosową...")
                         utils.play_audio_from_url(audio_url, self.ha_client.host)
                     
-                    # Powrót do stanu idle po 3 sekundach
+                    # Powrót do stanu hidden po 3 sekundach
                     await asyncio.sleep(3)
-                    self.animation_server.change_state("idle")
+                    self.animation_server.change_state("hidden")
                 else:
                     print("\nBrak odpowiedzi od asystenta lub błąd przetwarzania.")
                     self.animation_server.change_state("error", message="Brak odpowiedzi")
@@ -172,16 +179,21 @@ class HAAssistApp:
         except Exception as e:
             logger.exception(f"Wystąpił błąd podczas przetwarzania: {str(e)}")
             self.animation_server.change_state("error", message=str(e))
+            
+            # Po błędzie też wracamy do hidden
+            await asyncio.sleep(3)
+            self.animation_server.change_state("hidden")
         finally:
             # Cleanup
             if self.audio_manager:
                 self.audio_manager.close_audio()
             if self.ha_client:
                 await self.ha_client.close()
-    
+
     def on_voice_command_trigger(self):
         """Callback wywoływany gdy użytkownik aktywuje komendę głosową."""
-        if self.animation_server.current_state != "idle":
+        # ZMIANA: sprawdzaj 'hidden' zamiast 'idle'
+        if self.animation_server.current_state != "hidden":
             logger.info("Aplikacja jest zajęta, ignoruję trigger")
             return
         

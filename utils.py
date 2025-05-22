@@ -14,13 +14,22 @@ import io
 # Ładowanie zmiennych środowiskowych z pliku .env
 load_dotenv()
 
-# Konfiguracja loggera
 def setup_logger():
     """Konfiguracja i zwrócenie loggera."""
+    import sys
+    
+    # Handler z wymuszonym flush po każdym logu
+    class FlushHandler(logging.StreamHandler):
+        def emit(self, record):
+            super().emit(record)
+            self.flush()  # WYMUŚ FLUSH PO KAŻDYM LOGU
+    
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[FlushHandler(sys.stdout)]
     )
+    
     return logging.getLogger('haassist')
 
 # Funkcja pomocnicza do pobierania zmiennych środowiskowych
@@ -52,9 +61,14 @@ def play_audio_from_url(url, host):
         return False
     
     try:
-        # Jeśli URL jest względny, dodaj host
+        # Jeśli URL jest względny, dodaj host z odpowiednim protokołem
         if url.startswith('/'):
-            full_url = f"http://{host}{url}"
+            # Określ protokół na podstawie typu hosta (tak samo jak w client.py)
+            if host.startswith(('localhost', '127.0.0.1', '192.168.', '10.', '172.')):
+                protocol = "http"
+            else:
+                protocol = "https"
+            full_url = f"{protocol}://{host}{url}"
         else:
             full_url = url
         
