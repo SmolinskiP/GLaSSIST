@@ -58,7 +58,7 @@ class HAAssistApp:
         
         # Menu kontekstowe
         menu = pystray.Menu(
-            item('Aktywuj głos', self.trigger_voice_command),
+            item('Aktywuj głos (%s)' % utils.get_env("HA_HOTKEY"), self.trigger_voice_command),
             pystray.Menu.SEPARATOR,
             item('Ustawienia', self.open_settings),
             item('Zamknij', self.quit_application)
