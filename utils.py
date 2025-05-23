@@ -37,14 +37,49 @@ def setup_logger():
 # Funkcja pomocnicza do pobierania zmiennych środowiskowych
 def get_env(key, default=None, as_type=str):
     """Pobierz zmienną środowiskową i opcjonalnie przekonwertuj na określony typ."""
-    value = os.getenv(key, default)
+    # UWAGA: Najpierw sprawdź wartość w PLIKU .env
+    value = _read_from_env_file(key)
+    
+    # Jeśli nie ma w pliku, dopiero wtedy użyj zmiennych systemowych
+    if value is None:
+        value = os.getenv(key, default)
+    
     if value is None:
         return None
     
     if as_type == bool:
         return value.lower() in ('true', '1', 'yes', 'y', 't')
     
-    return as_type(value)
+    try:
+        return as_type(value)
+    except (ValueError, TypeError):
+        logger.warning(f"Nie można przekonwertować '{value}' na typ {as_type.__name__} dla klucza {key}")
+        return default
+
+def _read_from_env_file(key):
+    """Odczytaj wartość bezpośrednio z pliku .env."""
+    possible_paths = [
+        os.path.join(os.path.dirname(__file__), '.env'),
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'),
+        '.env'
+    ]
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#'):
+                            parts = line.split('=', 1)
+                            if len(parts) == 2:
+                                env_key, env_value = parts
+                                if env_key.strip() == key:
+                                    return env_value.strip()
+            except Exception as e:
+                logger.warning(f"Błąd odczytu pliku .env: {e}")
+    
+    return None
 
 def get_timestamp():
     """Zwraca aktualny timestamp w milisekundach."""
