@@ -171,7 +171,8 @@
                 sparkle = pow(max(0.0, sparkle), 10.0) * 0.1 * pulse;
                 
                 // Łączymy efekty
-                float intensity = ring * (gradient + glow * 0.6 + waves + sparkle + noise);
+                float levelFactor = mix(0.75, 0.9, audioLevel);
+                float intensity = ring * (gradient + glow * 0.6 + waves + sparkle + noise) * levelFactor;
                 
                 // Kolor końcowy
                 vec3 baseColor = color * intensity;
@@ -190,7 +191,7 @@
                 
                 // Dodatkowy efekt świecenia - SUBTELNIEJSZY
                 float audioGlow = usePulse < 0.5 ? mix(0.5, audioLevel, 0.7) : 0.7;
-                vec3 finalColor = baseColor + glowColor * glow * audioGlow * 0.7;
+                vec3 finalColor = baseColor + glowColor * glow * audioGlow * 0.45;
                 
                 // Przezroczystość
                 float alpha = intensity * (0.7 + audioLevel * 0.3);
@@ -239,7 +240,7 @@
                 transparent: true,
                 depthTest: false,
                 depthWrite: false,
-                blending: THREE.AdditiveBlending
+                blending: THREE.NormalBlending
             });
             
             ring = new THREE.Mesh(planeGeometry, ringMaterial);

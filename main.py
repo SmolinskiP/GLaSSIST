@@ -86,7 +86,8 @@ class HAAssistApp:
             on_top=True,
             shadow=False,
             frameless=True,
-            transparent=True
+            transparent=True,
+            y=10
         )
         
         logger.info("Webview window skonfigurowane (ukryte z paska zadań)")
@@ -252,6 +253,17 @@ class HAAssistApp:
             import ctypes
             from ctypes import wintypes
             
+            user32 = ctypes.windll.user32
+            screen_width = user32.GetSystemMetrics(0)   # SM_CXSCREEN
+            screen_height = user32.GetSystemMetrics(1)  # SM_CYSCREEN
+            window_width = 500
+            window_height = 500
+            pos_x = (screen_width - window_width) // 2
+            pos_y = screen_height - window_height + 50
+
+            logger.info(f"Rozmiar ekranu: {screen_width}x{screen_height}")
+            logger.info(f"Pozycja okna: x={pos_x}, y={pos_y}")
+
             found_windows = []
             
             # Znajdź okno aplikacji
@@ -286,8 +298,10 @@ class HAAssistApp:
                         SWP_NOSIZE = 0x0001
                         SWP_NOZORDER = 0x0004
                         ctypes.windll.user32.SetWindowPos(
-                            hwnd, 0, 0, 0, 0, 0, 
-                            SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER
+                            hwnd, 0,
+                            pos_x, pos_y,
+                            window_width, window_height,
+                            SWP_FRAMECHANGED | SWP_NOZORDER
                         )
                         
                         logger.info(f"Okno ukryte z paska zadań: '{window_title}' (klasa: {class_name_str})")
