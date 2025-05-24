@@ -1,5 +1,5 @@
 """
-Kompletna poprawka main.py - zachowuję oryginalny kod i dodaję tylko usprawnienia
+Enhanced main.py - preserves original code with improvements
 """
 import asyncio
 import threading
@@ -10,17 +10,17 @@ import pystray
 from PIL import Image, ImageDraw
 from pystray import MenuItem as item
 import utils
-from client import HomeAssistantClient  # Ta klasa już będzie ulepszona
+from client import HomeAssistantClient
 from audio import AudioManager
 from animation_server import AnimationServer
 
 logger = utils.setup_logger()
 
 class HAAssistApp:
-    """Główna klasa aplikacji z ulepszonymi funkcjami."""
+    """Main application class with enhanced features."""
     
     def __init__(self):
-        """Inicjalizacja aplikacji."""
+        """Initialize application."""
         self.ha_client = None
         self.audio_manager = None
         self.animation_server = None
@@ -30,38 +30,34 @@ class HAAssistApp:
         self.tray_icon = None
         self.window_visible = True
         
-        # NOWOŚĆ: Cache dla pipeline'ów
+        # Pipeline caching
         self.cached_pipelines = []
         self.pipeline_cache_time = 0
         
     def create_tray_icon(self):
-        """Utworzenie ikony w system tray z ulepszonymi opcjami."""
-        # Stała ścieżka do ikony
+        """Create system tray icon with enhanced options."""
         icon_path = os.path.join(os.path.dirname(__file__), 'img', 'icon.ico')
         
         if os.path.exists(icon_path):
-            # Załaduj ikonę z pliku
             try:
                 from PIL import Image
                 image = Image.open(icon_path)
-                logger.info(f"Załadowano ikonę tray: {icon_path}")
+                logger.info(f"Loaded tray icon: {icon_path}")
             except Exception as e:
-                logger.error(f"Błąd ładowania ikony: {e}")
-                # Prosta ikona jako fallback
+                logger.error(f"Error loading icon: {e}")
                 image = self._create_fallback_icon()
         else:
-            logger.warning(f"Brak pliku ikony: {icon_path}")
+            logger.warning(f"Icon file not found: {icon_path}")
             image = self._create_fallback_icon()
         
-        # ULEPSZONE menu kontekstowe
         menu = pystray.Menu(
-            item('🎤 Aktywuj głos (%s)' % utils.get_env("HA_HOTKEY", "ctrl+shift+h"), 
+            item('🎤 Activate voice (%s)' % utils.get_env("HA_HOTKEY", "ctrl+shift+h"), 
                  self.trigger_voice_command),
             pystray.Menu.SEPARATOR,
-            item('⚙️ Ustawienia', self.open_settings),
-            item('🔄 Test połączenia', self._quick_connection_test),
+            item('⚙️ Settings', self.open_settings),
+            item('🔄 Test connection', self._quick_connection_test),
             pystray.Menu.SEPARATOR,
-            item('❌ Zamknij', self.quit_application)
+            item('❌ Close', self.quit_application)
         )
         
         self.tray_icon = pystray.Icon(
@@ -71,10 +67,10 @@ class HAAssistApp:
             menu
         )
         
-        logger.info("Ikona system tray utworzona z ulepszonymi opcjami")
+        logger.info("System tray icon created")
     
     def _create_fallback_icon(self):
-        """Tworzenie fallback ikony."""
+        """Create fallback icon."""
         image = Image.new('RGB', (64, 64), color='black')
         draw = ImageDraw.Draw(image)
         draw.ellipse([8, 8, 56, 56], fill='#4fc3f7', outline='white', width=2)
@@ -82,32 +78,26 @@ class HAAssistApp:
         return image
     
     def _quick_connection_test(self, icon=None, item=None):
-        """Szybki test połączenia z tray - Z ANIMACJĄ!"""
+        """Quick connection test from tray with animation."""
         def test_thread():
             try:
-                # Utwórz tymczasowego klienta
                 test_client = HomeAssistantClient()
-                
-                # Uruchom test w nowej pętli asyncio
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 
                 try:
                     success, message = loop.run_until_complete(test_client.test_connection())
                     
-                    # Pokaż wynik w logach (jak wcześniej)
                     if success:
-                        logger.info(f"Test połączenia: ✅ {message}")
-                        print(f"✅ Test połączenia: {message}")
+                        logger.info(f"Connection test: ✅ {message}")
+                        print(f"✅ Connection test: {message}")
                         
-                        # NOWY: Pokaż animację sukcesu
                         if self.animation_server:
                             self.animation_server.show_success("Connection successful", duration=3.0)
                     else:
-                        logger.error(f"Test połączenia: ❌ {message}")
-                        print(f"❌ Test połączenia: {message}")
+                        logger.error(f"Connection test: ❌ {message}")
+                        print(f"❌ Connection test: {message}")
                         
-                        # NOWY: Pokaż animację błędu
                         if self.animation_server:
                             self.animation_server.show_error(f"Connection failed", duration=5.0)
                     
@@ -115,24 +105,20 @@ class HAAssistApp:
                     loop.close()
                     
             except Exception as e:
-                error_msg = f"Błąd testu: {str(e)}"
+                error_msg = f"Test error: {str(e)}"
                 logger.error(error_msg)
                 print(f"❌ {error_msg}")
                 
-                # NOWY: Pokaż animację błędu dla wyjątków
                 if self.animation_server:
                     self.animation_server.show_error("Test error", duration=5.0)
         
         threading.Thread(target=test_thread, daemon=True).start()
     
     def _show_pipelines_info(self, icon=None, item=None):
-        """Pokaż informacje o dostępnych pipeline'ach - POPRAWIONA WERSJA."""
+        """Show available pipelines information."""
         def pipelines_thread():
             try:
-                # Utwórz tymczasowego klienta
                 test_client = HomeAssistantClient()
-                
-                # Uruchom połączenie w nowej pętli asyncio
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 
@@ -141,97 +127,84 @@ class HAAssistApp:
                     
                     if success:
                         pipelines = test_client.get_available_pipelines()
-                        current_pipeline = utils.get_env("HA_PIPELINE_ID", "(domyślny)")
+                        current_pipeline = utils.get_env("HA_PIPELINE_ID", "(default)")
                         
-                        print(f"\n=== DOSTĘPNE PIPELINE'Y ({len(pipelines)}) ===")
-                        print(f"Aktualnie używany: {current_pipeline}")
+                        print(f"\n=== AVAILABLE PIPELINES ({len(pipelines)}) ===")
+                        print(f"Currently used: {current_pipeline}")
                         print("-" * 50)
                         
                         if not pipelines:
-                            print("Brak dostępnych pipeline'ów lub błąd połączenia")
+                            print("No available pipelines or connection error")
                         else:
                             for i, pipeline in enumerate(pipelines, 1):
-                                # NAPRAWIONE: Sprawdź czy pipeline to string czy obiekt
                                 if isinstance(pipeline, str):
-                                    # Pipeline to po prostu string (ID lub nazwa)
                                     name = pipeline
                                     pipeline_id = pipeline
-                                    language = "nieznany"
+                                    language = "unknown"
                                 elif isinstance(pipeline, dict):
-                                    # Pipeline to obiekt - używaj .get()
-                                    name = pipeline.get("name", "Bez nazwy")
+                                    name = pipeline.get("name", "Unnamed")
                                     pipeline_id = pipeline.get("id", "")
-                                    language = pipeline.get("language", "nieznany")
+                                    language = pipeline.get("language", "unknown")
                                 else:
-                                    # Nieznany typ - konwertuj na string
                                     name = str(pipeline)
                                     pipeline_id = str(pipeline)
-                                    language = "nieznany"
+                                    language = "unknown"
                                 
-                                # Sprawdź czy to aktualnie używany pipeline
-                                current_marker = " ← AKTUALNY" if pipeline_id == current_pipeline else ""
+                                current_marker = " ← CURRENT" if pipeline_id == current_pipeline else ""
                                 
                                 print(f"{i}. {name}")
                                 print(f"   ID: {pipeline_id}{current_marker}")
-                                if language != "nieznany":
-                                    print(f"   Język: {language}")
+                                if language != "unknown":
+                                    print(f"   Language: {language}")
                                 print()
                             
                             print("=" * 50)
-                            print("Użyj 'Ustawienia' aby zmienić pipeline.")
+                            print("Use 'Settings' to change pipeline.")
                             
-                            # BONUS: Podpowiedź jak skopiować ID
                             if len(pipelines) > 1:
-                                print("\n💡 WSKAZÓWKA:")
-                                print("Skopiuj ID wybranego pipeline'u i wklej w ustawieniach aplikacji.")
+                                print("\n💡 TIP:")
+                                print("Copy the ID of chosen pipeline and paste it in app settings.")
                                 
                     else:
-                        print("❌ Nie można połączyć się z Home Assistant")
-                        print("Sprawdź ustawienia połączenia.")
+                        print("❌ Cannot connect to Home Assistant")
+                        print("Check connection settings.")
                     
                 finally:
                     loop.close()
                     
             except Exception as e:
-                error_msg = f"Błąd pobierania pipeline'ów: {str(e)}"
+                error_msg = f"Error fetching pipelines: {str(e)}"
                 logger.error(error_msg)
                 print(f"❌ {error_msg}")
                 
-                # DODATKOWE DEBUG INFO
-                print(f"📋 DEBUG: Typ błędu: {type(e).__name__}")
+                print(f"📋 DEBUG: Error type: {type(e).__name__}")
                 if hasattr(e, '__traceback__'):
                     import traceback
-                    print("📋 Stos wywołań:")
+                    print("📋 Stack trace:")
                     traceback.print_exc()
         
         threading.Thread(target=pipelines_thread, daemon=True).start()
 
     def setup_animation_server(self):
-        """Konfiguracja serwera animacji."""
+        """Setup animation server."""
         self.animation_server = AnimationServer()
-        
-        # Ustawienie callback'a dla aktywacji z frontendu
         self.animation_server.set_voice_command_callback(self.on_voice_command_trigger)
-        
         self.animation_server.start()
-        logger.info("Animation server uruchomiony")
+        logger.info("Animation server started")
     
     def setup_webview(self):
-        """Konfiguracja okna webview."""
-        # Ścieżka do plików frontend
+        """Setup webview window."""
         frontend_path = os.path.join(os.path.dirname(__file__), 'frontend')
         index_path = os.path.join(frontend_path, 'index.html')
         
         if not os.path.exists(index_path):
-            logger.error(f"Nie znaleziono pliku frontend: {index_path}")
+            logger.error(f"Frontend file not found: {index_path}")
             return False
         
         icon_path = os.path.join(os.path.dirname(__file__), 'img', 'icon.ico')
-        # Pobierz rozmiar okna z ustawień
         window_width = utils.get_env("WINDOW_WIDTH", 400, int)
         window_height = utils.get_env("WINDOW_HEIGHT", 400, int)
         
-        # Utworzenie okna webview - ukryte z paska zadań
         self.window = webview.create_window(
             'HA Assist',
             index_path,
@@ -247,39 +220,20 @@ class HAAssistApp:
             y=10
         )
         
-        logger.info(f"Webview window skonfigurowane ({window_width}x{window_height}, ukryte z paska zadań)")
+        logger.info(f"Webview window configured ({window_width}x{window_height}, hidden from taskbar)")
         return True
 
     def open_settings(self, icon=None, item=None):
-        """Otwórz ulepszone okno ustawień."""
-        logger.info("Otwieranie ulepszonych ustawień...")
+        """Open enhanced settings window."""
+        logger.info("Opening enhanced settings...")
         
         try:
             from improved_settings_dialog import show_improved_settings
             show_improved_settings(self.animation_server)
             
         except ImportError as e:
-            logger.error(f"Nie znaleziono improved_settings_dialog.py: {e}")
+            logger.error(f"improved_settings_dialog.py not found: {e}")
             
-            # Emergency fallback - przynajmniej powiedz użytkownikowi co zrobić
-            import tkinter as tk
-            from tkinter import messagebox
-            
-            root = tk.Tk()
-            root.withdraw()  # Ukryj główne okno
-            
-            messagebox.showerror(
-                "Błąd ustawień", 
-                "Nie znaleziono pliku improved_settings_dialog.py!\n\n"
-                "Utwórz ten plik w folderze aplikacji\n"
-                "lub sprawdź czy wszystkie pliki zostały skopiowane."
-            )
-            root.destroy()
-            
-        except Exception as e:
-            logger.exception(f"Błąd otwierania ustawień: {e}")
-            
-            # Emergency fallback
             import tkinter as tk
             from tkinter import messagebox
             
@@ -287,114 +241,113 @@ class HAAssistApp:
             root.withdraw()
             
             messagebox.showerror(
-                "Błąd ustawień", 
-                f"Wystąpił błąd podczas otwierania ustawień:\n\n{str(e)}\n\n"
-                "Sprawdź logi aplikacji dla szczegółów."
+                "Settings Error", 
+                "improved_settings_dialog.py file not found!\n\n"
+                "Create this file in application folder\n"
+                "or check if all files were copied."
+            )
+            root.destroy()
+            
+        except Exception as e:
+            logger.exception(f"Error opening settings: {e}")
+            
+            import tkinter as tk
+            from tkinter import messagebox
+            
+            root = tk.Tk()
+            root.withdraw()
+            
+            messagebox.showerror(
+                "Settings Error", 
+                f"Error occurred while opening settings:\n\n{str(e)}\n\n"
+                "Check application logs for details."
             )
             root.destroy()
 
     async def process_voice_command(self):
-        """Ulepszone przetwarzanie komendy głosowej z walidacją pipeline'u."""
+        """Enhanced voice command processing with pipeline validation."""
         try:
-            # Zmień stan na nasłuchiwanie
-            utils.play_feedback_sound("activation")
             self.animation_server.change_state("listening")
+            utils.play_feedback_sound("activation")
             
-            # Inicjalizacja klientów
-            self.ha_client = HomeAssistantClient()  # Już ulepszona wersja
+            self.ha_client = HomeAssistantClient()
             self.audio_manager = AudioManager()
             
-            # NOWOŚĆ: Pre-validation pipeline'u
             pipeline_id = utils.get_env("HA_PIPELINE_ID")
             if pipeline_id:
-                logger.info(f"Sprawdzam dostępność pipeline'u: {pipeline_id}")
+                logger.info(f"Checking pipeline availability: {pipeline_id}")
             
-            # Inicjalizacja mikrofonu
             self.audio_manager.init_audio()
             
-            # Połączenie z Home Assistant (już z obsługą pipeline'ów)
             if not await self.ha_client.connect():
-                logger.error("Nie udało się połączyć z Home Assistant")
-                self.animation_server.change_state("error", "Nie można połączyć się z Home Assistant")
+                logger.error("Failed to connect to Home Assistant")
+                self.animation_server.change_state("error", "Cannot connect to Home Assistant")
                 await asyncio.sleep(8)
                 self.animation_server.change_state("hidden")
                 utils.play_feedback_sound("deactivation")
                 return False
             
-            logger.info("Połączono z Home Assistant")
+            logger.info("Connected to Home Assistant")
             
-            # NOWOŚĆ: Sprawdź czy wybrany pipeline jest dostępny
             if pipeline_id and not self.ha_client.validate_pipeline_id(pipeline_id):
-                logger.warning(f"Pipeline '{pipeline_id}' nie jest dostępny - używam domyślnego")
-                # Możesz tutaj wyświetlić ostrzeżenie lub zmienić na błąd
+                logger.warning(f"Pipeline '{pipeline_id}' not available - using default")
                 
-            # Uruchomienie pipeline Assist z timeout
             if not await self.ha_client.start_assist_pipeline(timeout_seconds=30):
-                logger.error("Nie udało się uruchomić pipeline Assist")
-                self.animation_server.change_state("error", "Nie można uruchomić asystenta głosowego")
+                logger.error("Failed to start Assist pipeline")
+                self.animation_server.change_state("error", "Cannot start voice assistant")
                 await asyncio.sleep(8)
                 self.animation_server.change_state("hidden")
                 utils.play_feedback_sound("deactivation")
                 return False
             
-            logger.info("Pipeline Assist uruchomiony pomyślnie")
+            logger.info("Assist pipeline started successfully")
             
-            print("\n=== MÓWISZ ===")
-            print("(Oczekiwanie na głos, mów do mikrofonu...)")
+            print("\n=== LISTENING ===")
+            print("(Waiting for voice, speak to microphone...)")
             
-            # Rejestracja funkcji callback dla fragmentów audio
             async def on_audio_chunk(audio_chunk):
-                # Wyślij dane audio do animacji
                 self.animation_server.send_audio_data(audio_chunk)
-                # Wyślij do Home Assistant (z obsługą błędów)
                 success = await self.ha_client.send_audio_chunk(audio_chunk)
                 if not success:
-                    logger.warning("Błąd wysyłania audio chunk")
+                    logger.warning("Error sending audio chunk")
             
             async def on_audio_end():
-                # Zmień stan na przetwarzanie Z MAŁYM OPÓŹNIENIEM
-                logger.info("=== PRZECHODZĘ DO PRZETWARZANIA ===")
+                logger.info("=== SWITCHING TO PROCESSING ===")
                 self.animation_server.change_state("processing")
-                
-                # KRÓTKIE OPÓŹNIENIE - żeby animacja processing była widoczna
                 await asyncio.sleep(0.8)
                 
                 success = await self.ha_client.end_audio()
                 if not success:
-                    logger.warning("Błąd kończenia audio")
+                    logger.warning("Error ending audio")
             
-            # Rozpoczęcie nagrywania
             if await self.audio_manager.record_audio(on_audio_chunk, on_audio_end):
-                logger.info("Audio wysłane pomyślnie")
+                logger.info("Audio sent successfully")
                 
-                # Odbieranie odpowiedzi z konfiguracją timeout
-                logger.info("=== ODBIERAM ODPOWIEDŹ ===")
+                logger.info("=== RECEIVING RESPONSE ===")
                 results = await self.ha_client.receive_response(timeout_seconds=45)
                 
-                # SPRAWDŹ CZY NIE MA BŁĘDU W RESULTS
                 error_found = False
                 for result in results:
                     if result.get('type') == 'event':
                         event = result.get('event', {})
                         if event.get('type') == 'error':
-                            # BŁĄD ZNALEZIONY!
                             error_code = event.get('data', {}).get('code', 'unknown')
-                            error_message = event.get('data', {}).get('message', 'Nieznany błąd')
+                            error_message = event.get('data', {}).get('message', 'Unknown error')
                             
-                            print(f"\n=== BŁĄD ASYSTENTA ===")
-                            print(f"Błąd: {error_code} - {error_message}")
+                            print(f"\n=== ASSISTANT ERROR ===")
+                            print(f"Error: {error_code} - {error_message}")
                             print("===========================\n")
                             
-                            # POKAŻ ERROR ANIMATION Z TEKSTEM BŁĘDU
                             full_error_message = f"{error_code}: {error_message}"
                             
-                            # SPECJALNE OBSŁUGI DLA TYPOWYCH BŁĘDÓW
                             if error_code == "stt-stream-failed":
-                                full_error_message = "Nie rozpoznano mowy. Spróbuj ponownie."
+                                full_error_message = "Speech not recognized. Try again."
                             elif error_code == "intent-failed":
-                                full_error_message = "Nie rozumiem polecenia. Powiedz jaśniej."
+                                full_error_message = "Command not understood. Speak clearer."
                             elif error_code == "pipeline-not-found":
-                                full_error_message = "Błąd konfiguracji. Sprawdź ustawienia."
+                                full_error_message = "Configuration error. Check settings."
+                            elif error_code == "stt-no-text-recognized":
+                                full_error_message = "No words detected. Try again."
                             
                             self.animation_server.change_state("error", full_error_message)
                             await asyncio.sleep(8)
@@ -405,79 +358,69 @@ class HAAssistApp:
                             break
                 
                 if not error_found:
-                    # NIE MA BŁĘDU - NORMALNA ODPOWIEDŹ
                     response = self.ha_client.extract_assistant_response(results)
                     
-                    if response and response != "Brak odpowiedzi od asystenta":
-                        print("\n=== ODPOWIEDŹ ASYSTENTA ===")
+                    if response and response != "No response from assistant":
+                        print("\n=== ASSISTANT RESPONSE ===")
                         print(response)
                         print("===========================\n")
                         
-                        # Zmień stan na odpowiadanie i wyślij tekst
                         self.animation_server.change_state("responding")
                         self.animation_server.send_response_text(response)
                         
-                        # Odtwórz dźwięk odpowiedzi Z ANALIZĄ FFT! 🔥
                         audio_url = self.ha_client.extract_audio_url(results)
                         if audio_url:
-                            print("Odtwarzam odpowiedź głosową z analizą FFT...")
+                            print("Playing voice response with FFT analysis...")
                             success = utils.play_audio_from_url(audio_url, self.ha_client.host, self.animation_server)
                             if not success:
-                                logger.warning("Nie udało się odtworzyć audio odpowiedzi")
+                                logger.warning("Failed to play response audio")
                         
-                        # Powrót do stanu hidden po 3 sekundach
                         await asyncio.sleep(3)
                         self.animation_server.change_state("hidden")
                         utils.play_feedback_sound("deactivation")
                     else:
-                        print("\nBrak odpowiedzi od asystenta lub błąd przetwarzania.")
-                        self.animation_server.change_state("error", "Asystent nie odpowiedział")
+                        print("\nNo response from assistant or processing error.")
+                        self.animation_server.change_state("error", "Assistant did not respond")
                         await asyncio.sleep(8)
                         self.animation_server.change_state("hidden")
                         utils.play_feedback_sound("deactivation")
             else:
-                logger.error("Nie udało się nagrać i wysłać audio")
-                self.animation_server.change_state("error", "Błąd nagrywania audio")
+                logger.error("Failed to record and send audio")
+                self.animation_server.change_state("error", "Audio recording error")
                 await asyncio.sleep(8)
                 self.animation_server.change_state("hidden")
                 utils.play_feedback_sound("deactivation")
                 
         except asyncio.TimeoutError:
-            logger.error("Timeout podczas przetwarzania komendy głosowej")
-            self.animation_server.change_state("error", "Timeout - asystent nie odpowiada")
+            logger.error("Timeout during voice command processing")
+            self.animation_server.change_state("error", "Timeout - assistant not responding")
             await asyncio.sleep(8)
             self.animation_server.change_state("hidden")
             utils.play_feedback_sound("deactivation")
             
         except Exception as e:
-            logger.exception(f"Wystąpił błąd podczas przetwarzania: {str(e)}")
+            logger.exception(f"Error during processing: {str(e)}")
             
-            # WYCIĄGNIJ INFORMACJĘ O BŁĘDZIE I PRZEKAŻ DO ANIMACJI
             error_msg = str(e)
-            if len(error_msg) > 80:  # Ogranicz długość wiadomości błędu
+            if len(error_msg) > 80:
                 error_msg = error_msg[:77] + "..."
             
-            self.animation_server.change_state("error", f"Błąd: {error_msg}")
-            
-            # Po błędzie też wracamy do hidden - WYDŁUŻONO CZAS
+            self.animation_server.change_state("error", f"Error: {error_msg}")
             await asyncio.sleep(10)
             self.animation_server.change_state("hidden")
             utils.play_feedback_sound("deactivation")
         finally:
-            # Cleanup
             if self.audio_manager:
                 self.audio_manager.close_audio()
             if self.ha_client:
                 await self.ha_client.close()
 
     def on_voice_command_trigger(self):
-        """Callback wywoływany gdy użytkownik aktywuje komendę głosową."""
-        # ZMIANA: sprawdzaj 'hidden' zamiast 'idle'
+        """Callback called when user activates voice command."""
         if self.animation_server.current_state != "hidden":
-            logger.info("Aplikacja jest zajęta, ignoruję trigger")
+            logger.info("Application is busy, ignoring trigger")
             return
         
-        # Uruchom przetwarzanie w osobnym wątku
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
@@ -488,25 +431,24 @@ class HAAssistApp:
         thread.start()
     
     def hide_from_taskbar(self):
-        """Ukrycie okna z paska zadań Windows (backup method)."""
+        """Hide window from Windows taskbar."""
         try:
             import ctypes
             from ctypes import wintypes
             
             user32 = ctypes.windll.user32
-            screen_width = user32.GetSystemMetrics(0)   # SM_CXSCREEN
-            screen_height = user32.GetSystemMetrics(1)  # SM_CYSCREEN
+            screen_width = user32.GetSystemMetrics(0)
+            screen_height = user32.GetSystemMetrics(1)
             window_width = 500
             window_height = 500
             pos_x = (screen_width - window_width) // 2
             pos_y = screen_height - window_height + 50
 
-            logger.info(f"Rozmiar ekranu: {screen_width}x{screen_height}")
-            logger.info(f"Pozycja okna: x={pos_x}, y={pos_y}")
+            logger.info(f"Screen size: {screen_width}x{screen_height}")
+            logger.info(f"Window position: x={pos_x}, y={pos_y}")
 
             found_windows = []
             
-            # Znajdź okno aplikacji
             def enum_windows_proc(hwnd, lParam):
                 if ctypes.windll.user32.IsWindowVisible(hwnd):
                     window_text = ctypes.create_unicode_buffer(512)
@@ -517,22 +459,17 @@ class HAAssistApp:
                     window_title = window_text.value
                     class_name_str = class_name.value
                     
-                    # TYLKO okno HA Assist - bardzo precyzyjnie!
                     if window_title == "HA Assist" and "WindowsForms10" in class_name_str:
-                        
                         found_windows.append((hwnd, window_title, class_name_str))
                         
-                        # Ustaw WS_EX_TOOLWINDOW żeby ukryć z paska zadań
                         GWL_EXSTYLE = -20
                         WS_EX_TOOLWINDOW = 0x00000080
                         WS_EX_APPWINDOW = 0x00040000
                         
                         current_style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-                        # Usuń WS_EX_APPWINDOW i dodaj WS_EX_TOOLWINDOW
                         new_style = (current_style & ~WS_EX_APPWINDOW) | WS_EX_TOOLWINDOW
                         ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, new_style)
                         
-                        # Zmuś do odświeżenia
                         SWP_FRAMECHANGED = 0x0020
                         SWP_NOMOVE = 0x0002
                         SWP_NOSIZE = 0x0001
@@ -544,66 +481,61 @@ class HAAssistApp:
                             SWP_FRAMECHANGED | SWP_NOZORDER
                         )
                         
-                        logger.info(f"Okno ukryte z paska zadań: '{window_title}' (klasa: {class_name_str})")
+                        logger.info(f"Window hidden from taskbar: '{window_title}' (class: {class_name_str})")
                 
                 return True
             
             EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
             ctypes.windll.user32.EnumWindows(EnumWindowsProc(enum_windows_proc), 0)
             
-            logger.info(f"Znaleziono {len(found_windows)} okien do ukrycia")
+            logger.info(f"Found {len(found_windows)} windows to hide")
             
         except Exception as e:
-            logger.exception(f"Błąd ukrywania z paska zadań: {e}")
+            logger.exception(f"Error hiding from taskbar: {e}")
     
     def trigger_voice_command(self, icon=None, item=None):
-        """Trigger z menu tray."""
-        logger.info("Aktywacja komendy głosowej z menu tray")
+        """Trigger from tray menu."""
+        logger.info("Voice command activation from tray menu")
         self.on_voice_command_trigger()
     
     def setup_hotkey(self):
-        """Konfiguracja skrótu klawiszowego."""
+        """Setup keyboard shortcut."""
         try:
             import keyboard
             
-            # Skrót Ctrl+Shift+H
             hotkey = utils.get_env("HA_HOTKEY", "ctrl+shift+h")
             keyboard.add_hotkey(hotkey, self.on_voice_command_trigger)
-            logger.info(f"Skrót klawiszowy ustawiony: {hotkey}")
+            logger.info(f"Keyboard shortcut set: {hotkey}")
             return True
             
         except ImportError:
-            logger.warning("Biblioteka keyboard nie jest zainstalowana - uruchom: pip install keyboard")
+            logger.warning("keyboard library not installed - run: pip install keyboard")
             return False
         except Exception as e:
-            logger.error(f"Błąd konfiguracji skrótu klawiszowego: {e}")
+            logger.error(f"Error setting up keyboard shortcut: {e}")
             return False
     
     def toggle_window(self, icon=None, item=None):
-        """Przełączenie widoczności okna."""
+        """Toggle window visibility."""
         if self.window_visible:
-            # Ukryj okno
             if hasattr(webview, 'windows') and webview.windows:
                 webview.windows[0].minimize()
             self.window_visible = False
-            logger.info("Okno ukryte")
+            logger.info("Window hidden")
         else:
-            # Pokaż okno
             if hasattr(webview, 'windows') and webview.windows:
                 webview.windows[0].restore()
             self.window_visible = True
-            logger.info("Okno pokazane")
+            logger.info("Window shown")
     
     def quit_application(self, icon=None, item=None):
-        """Zamknięcie aplikacji z menu tray."""
-        logger.info("Zamykanie aplikacji z menu tray...")
+        """Close application from tray menu."""
+        logger.info("Closing application from tray menu...")
         self.cleanup()
         
-        # Zatrzymaj tray icon
         if self.tray_icon:
             self.tray_icon.stop()
         
-        # Zamknij webview
         if hasattr(webview, 'windows') and webview.windows:
             for window in webview.windows:
                 window.destroy()
@@ -611,52 +543,42 @@ class HAAssistApp:
         sys.exit(0)
     
     def run_tray(self):
-        """Uruchomienie ikony tray w osobnym wątku."""
+        """Run tray icon in separate thread."""
         def tray_thread():
             try:
                 self.tray_icon.run()
             except Exception as e:
-                logger.exception(f"Błąd tray icon: {e}")
+                logger.exception(f"Tray icon error: {e}")
         
         threading.Thread(target=tray_thread, daemon=True).start()
-        logger.info("System tray uruchomiony")
+        logger.info("System tray started")
     
     def run(self):
-        """ORYGINALNA metoda run() - ZACHOWANA!"""
+        """Main run method."""
         try:
-            logger.info("Uruchamianie HA Assist Desktop...")
+            logger.info("Starting HA Assist Desktop...")
             
-            # Konfiguracja serwera animacji
             self.setup_animation_server()
             
-            # Konfiguracja webview
             if not self.setup_webview():
-                logger.error("Nie udało się skonfigurować interfejsu")
+                logger.error("Failed to configure interface")
                 return
             
-            # Konfiguracja skrótu klawiszowego
             self.setup_hotkey()
-            
-            # Konfiguracja system tray
             self.create_tray_icon()
             self.run_tray()
             
-            # Uruchomienie webview (blokujące)
-            logger.info("Uruchamianie interfejsu...")
+            logger.info("Starting interface...")
             
-            # Ukrycie z paska zadań po uruchomieniu  
             def on_window_loaded():
                 import time
-                time.sleep(2)  # Poczekaj na pełne załadowanie okna
-                logger.info("Próba ukrycia okna z paska zadań...")
+                time.sleep(2)
+                logger.info("Attempting to hide window from taskbar...")
                 
-                # Tymczasowo zwiększ poziom logowania
                 old_level = logger.level
-                logger.setLevel(10)  # DEBUG
+                logger.setLevel(10)
                 
                 self.hide_from_taskbar()
-                
-                # Przywróć poziom logowania
                 logger.setLevel(old_level)
             
             threading.Thread(target=on_window_loaded, daemon=True).start()
@@ -664,15 +586,15 @@ class HAAssistApp:
             webview.start(debug=utils.get_env("DEBUG", False, bool))
             
         except KeyboardInterrupt:
-            logger.info("Aplikacja przerwana przez użytkownika")
+            logger.info("Application interrupted by user")
         except Exception as e:
-            logger.exception(f"Błąd aplikacji: {str(e)}")
+            logger.exception(f"Application error: {str(e)}")
         finally:
             self.cleanup()
     
     def cleanup(self):
-        """Sprzątanie zasobów."""
-        logger.info("Sprzątanie zasobów...")
+        """Clean up resources."""
+        logger.info("Cleaning up resources...")
         
         if self.animation_server:
             self.animation_server.stop()
@@ -681,35 +603,31 @@ class HAAssistApp:
             self.audio_manager.close_audio()
 
 
-# NOWOŚĆ: Funkcja pomocnicza do walidacji konfiguracji
 def validate_configuration():
-    """Waliduje konfigurację aplikacji i zwraca listę problemów."""
+    """Validate application configuration and return list of issues."""
     issues = []
     
-    # Sprawdź podstawowe ustawienia
     host = utils.get_env("HA_HOST")
     token = utils.get_env("HA_TOKEN")
     
     if not host:
-        issues.append("Brak adresu serwera Home Assistant (HA_HOST)")
+        issues.append("Missing Home Assistant server address (HA_HOST)")
     
     if not token:
-        issues.append("Brak tokena dostępu (HA_TOKEN)")
+        issues.append("Missing access token (HA_TOKEN)")
     
-    # Sprawdź ustawienia audio
     sample_rate = utils.get_env("HA_SAMPLE_RATE", 16000, int)
     if sample_rate not in [8000, 16000, 22050, 44100, 48000]:
-        issues.append(f"Nietypowa częstotliwość próbkowania: {sample_rate}Hz")
+        issues.append(f"Unusual sample rate: {sample_rate}Hz")
     
     frame_duration = utils.get_env("HA_FRAME_DURATION_MS", 30, int)
     if frame_duration not in [10, 20, 30]:
-        issues.append(f"Nieprawidłowa długość ramki VAD: {frame_duration}ms (dozwolone: 10, 20, 30)")
+        issues.append(f"Invalid VAD frame duration: {frame_duration}ms (allowed: 10, 20, 30)")
     
     vad_mode = utils.get_env("HA_VAD_MODE", 3, int)
     if vad_mode < 0 or vad_mode > 3:
-        issues.append(f"Nieprawidłowy tryb VAD: {vad_mode} (dozwolone: 0-3)")
+        issues.append(f"Invalid VAD mode: {vad_mode} (allowed: 0-3)")
 
-    # Sprawdź dźwięki feedback
     sound_feedback = utils.get_env('HA_SOUND_FEEDBACK', 'true')
     if sound_feedback.lower() in ('true', '1', 'yes', 'y', 't'):
         sound_dir = os.path.join(os.path.dirname(__file__), 'sound')
@@ -717,29 +635,26 @@ def validate_configuration():
         deactivation_sound = os.path.join(sound_dir, 'deactivation.wav')
         
         if not os.path.exists(activation_sound):
-            issues.append(f"Brak pliku dźwięku aktywacji: {activation_sound}")
+            issues.append(f"Missing activation sound file: {activation_sound}")
         
         if not os.path.exists(deactivation_sound):
-            issues.append(f"Brak pliku dźwięku deaktywacji: {deactivation_sound}")
+            issues.append(f"Missing deactivation sound file: {deactivation_sound}")
 
-    
-    # Sprawdź port animacji
     try:
         anim_port = utils.get_env("ANIMATION_PORT", 8765, int)
         if anim_port < 1024 or anim_port > 65535:
-            issues.append(f"Nieprawidłowy port animacji: {anim_port} (dozwolone: 1024-65535)")
+            issues.append(f"Invalid animation port: {anim_port} (allowed: 1024-65535)")
     except (ValueError, TypeError):
-        issues.append("Port animacji musi być liczbą")
+        issues.append("Animation port must be a number")
     
     return issues
 
 
 def main():
-    """Główna funkcja aplikacji z walidacją konfiguracji."""
+    """Main application function with configuration validation."""
     print("=== HA ASSIST DESKTOP ===")
-    print("Uruchamianie aplikacji...")
+    print("Starting application...")
     
-    # Znajdź plik .env i wyświetl jego ścieżkę
     possible_paths = [
         os.path.join(os.path.dirname(__file__), '.env'),
         os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'),
@@ -750,52 +665,48 @@ def main():
     for path in possible_paths:
         if os.path.exists(path):
             abs_path = os.path.abspath(path)
-            print(f"📄 UŻYWAM PLIKU .ENV: {abs_path}")
+            print(f"📄 USING .ENV FILE: {abs_path}")
             env_found = True
             
-            # Wyświetl zawartość pliku (bez tokenów)
             with open(abs_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # Ukryj token w wyświetlaniu
             lines = content.split('\n')
             filtered_lines = []
             for line in lines:
                 if line.startswith('HA_TOKEN=') and len(line) > 20:
-                    filtered_lines.append(f"HA_TOKEN=***UKRYTY*** (długość: {len(line.split('=', 1)[1])} znaków)")
+                    filtered_lines.append(f"HA_TOKEN=***HIDDEN*** (length: {len(line.split('=', 1)[1])} chars)")
                 else:
                     filtered_lines.append(line)
             
-            print("ZAWARTOŚĆ PLIKU .ENV:")
+            print(".ENV FILE CONTENTS:")
             print('\n'.join(filtered_lines))
             print("-" * 50)
             break
     
     if not env_found:
-        print("⚠️  BRAK PLIKU .ENV - używam domyślnych ustawień")
-        print("Uruchom aplikację i przejdź do 'Ustawienia' aby skonfigurować połączenie.")
+        print("⚠️  NO .ENV FILE - using default settings")
+        print("Run application and go to 'Settings' to configure connection.")
         print("-" * 50)
     
-    # Walidacja konfiguracji
-    print("🔍 SPRAWDZAM KONFIGURACJĘ...")
+    print("🔍 CHECKING CONFIGURATION...")
     config_issues = validate_configuration()
     
     if config_issues:
-        print("⚠️  ZNALEZIONE PROBLEMY KONFIGURACJI:")
+        print("⚠️  CONFIGURATION ISSUES FOUND:")
         for issue in config_issues:
             print(f"   • {issue}")
-        print("\nAplikacja może nie działać poprawnie.")
-        print("Przejdź do 'Ustawienia' aby naprawić problemy.")
+        print("\nApplication may not work correctly.")
+        print("Go to 'Settings' to fix issues.")
     else:
-        print("✅ Konfiguracja wygląda poprawnie")
+        print("✅ Configuration looks correct")
     
     print("-" * 50)
     
-    # Wyświetl najważniejsze ustawienia (bez tokena)
-    print("📋 KLUCZOWE USTAWIENIA:")
+    print("📋 KEY SETTINGS:")
     important_settings = {
-        'HA_HOST': utils.get_env('HA_HOST', 'BRAK'),
-        'HA_PIPELINE_ID': utils.get_env('HA_PIPELINE_ID', '(domyślny)'),
+        'HA_HOST': utils.get_env('HA_HOST', 'MISSING'),
+        'HA_PIPELINE_ID': utils.get_env('HA_PIPELINE_ID', '(default)'),
         'HA_HOTKEY': utils.get_env('HA_HOTKEY', 'ctrl+shift+h'),
         'HA_VAD_MODE': utils.get_env('HA_VAD_MODE', '3'),
         'HA_SOUND_FEEDBACK': utils.get_env('HA_SOUND_FEEDBACK', 'true'),
@@ -807,13 +718,12 @@ def main():
     
     token_length = len(utils.get_env('HA_TOKEN', ''))
     if token_length > 0:
-        print(f"   HA_TOKEN = ***UKRYTY*** ({token_length} znaków)")
+        print(f"   HA_TOKEN = ***HIDDEN*** ({token_length} chars)")
     else:
-        print(f"   HA_TOKEN = BRAK")
+        print(f"   HA_TOKEN = MISSING")
     
     print("=" * 50)
     
-    # Uruchom aplikację
     app = HAAssistApp()
     app.run()
 

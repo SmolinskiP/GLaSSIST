@@ -1,5 +1,5 @@
 """
-Ulepszona wersja HomeAssistantClient z obsługą dynamicznej listy pipeline'ów
+Enhanced HomeAssistantClient with dynamic pipeline list support
 """
 import json
 import asyncio
@@ -9,18 +9,17 @@ import utils
 logger = utils.setup_logger()
 
 class HomeAssistantClient:
-    """Ulepszona klasa klienta Home Assistant z obsługą pipeline'ów."""
+    """Enhanced Home Assistant client class with pipeline support."""
     
     def __init__(self):
-        """Inicjalizacja klienta Home Assistant."""
+        """Initialize Home Assistant client."""
         self.host = utils.get_env("HA_HOST", "localhost:8123")
         self.token = utils.get_env("HA_TOKEN")
         self.pipeline_id = utils.get_env("HA_PIPELINE_ID")
         self.sample_rate = utils.get_env("HA_SAMPLE_RATE", 16000, int)
         
-        # Sprawdzenie czy token istnieje
         if not self.token:
-            raise ValueError("Brak tokena dostępu w pliku .env (HA_TOKEN)")
+            raise ValueError("Missing access token in .env file (HA_TOKEN)")
         
         self.websocket = None
         self.message_id = 1
@@ -30,22 +29,21 @@ class HomeAssistantClient:
         self.available_pipelines = []
         
     async def connect(self):
-        """Nawiązanie połączenia WebSocket z Home Assistant."""
+        """Establish WebSocket connection with Home Assistant."""
         if self.host.startswith(('localhost', '127.0.0.1', '192.168.', '10.', '172.')):
             protocol = "ws"
         else:
             protocol = "wss"
         uri = f"{protocol}://{self.host}/api/websocket"
-        logger.info(f"Łączenie z Home Assistant: {uri}")
+        logger.info(f"Connecting to Home Assistant: {uri}")
         
         try:
             self.websocket = await asyncio.wait_for(
                 websockets.connect(uri), 
                 timeout=10.0
             )
-            logger.info("Połączenie ustanowione")
+            logger.info("Connection established")
             
-            # Oczekiwanie na wiadomość auth_required
             auth_message = await asyncio.wait_for(
                 self.websocket.recv(), 
                 timeout=5.0
@@ -53,17 +51,15 @@ class HomeAssistantClient:
             auth_message = json.loads(auth_message)
             
             if auth_message["type"] != "auth_required":
-                logger.error(f"Nieoczekiwana wiadomość: {auth_message}")
+                logger.error(f"Unexpected message: {auth_message}")
                 await self.websocket.close()
                 return False
             
-            # Wysłanie tokena uwierzytelniającego
             await self.websocket.send(json.dumps({
                 "type": "auth",
                 "access_token": self.token
             }))
             
-            # Oczekiwanie na wiadomość auth_ok
             auth_result = await asyncio.wait_for(
                 self.websocket.recv(), 
                 timeout=5.0
@@ -71,33 +67,31 @@ class HomeAssistantClient:
             auth_result = json.loads(auth_result)
             
             if auth_result["type"] != "auth_ok":
-                logger.error(f"Uwierzytelnianie nie powiodło się: {auth_result}")
+                logger.error(f"Authentication failed: {auth_result}")
                 await self.websocket.close()
                 return False
             
-            logger.info("Uwierzytelnianie zakończone sukcesem")
+            logger.info("Authentication completed successfully")
             self.connected = True
             
-            # NOWOŚĆ: Po połączeniu, pobierz listę dostępnych pipeline'ów
             await self.fetch_available_pipelines()
             
             return True
             
         except asyncio.TimeoutError:
-            logger.error("Timeout podczas łączenia z Home Assistant")
+            logger.error("Timeout during connection to Home Assistant")
             return False
         except Exception as e:
-            logger.error(f"Błąd połączenia: {str(e)}")
+            logger.error(f"Connection error: {str(e)}")
             return False
 
     async def fetch_available_pipelines(self):
-        """Pobiera listę dostępnych pipeline'ów Assist - NAPRAWIONA WERSJA."""
+        """Fetch list of available Assist pipelines."""
         self.available_pipelines = []
         
         try:
-            logger.info("🔍 Pobieranie pipeline'ów Assist...")
+            logger.info("🔍 Fetching Assist pipelines...")
             
-            # Wyślij żądanie listy pipeline'ów
             await self.websocket.send(json.dumps({
                 "id": self.message_id,
                 "type": "assist_pipeline/pipeline/list"
@@ -105,7 +99,6 @@ class HomeAssistantClient:
             current_msg_id = self.message_id
             self.message_id += 1
             
-            # Czekaj na odpowiedź
             while True:
                 response = await asyncio.wait_for(
                     self.websocket.recv(), 
@@ -113,28 +106,25 @@ class HomeAssistantClient:
                 )
                 response_json = json.loads(response)
                 
-                # Sprawdź czy to odpowiedź na nasze żądanie
                 if (response_json.get("id") == current_msg_id and 
                     response_json.get("type") == "result"):
                     
                     if response_json.get("success"):
                         result = response_json.get("result", {})
                         
-                        # NAPRAWIONE: Wyciągnij pipeline'y ze słownika
                         if isinstance(result, dict) and "pipelines" in result:
                             pipelines_list = result["pipelines"]
                             preferred_id = result.get("preferred_pipeline")
                             
-                            logger.info(f"✅ Znaleziono {len(pipelines_list)} pipeline'ów")
-                            logger.info(f"🏆 Preferowany pipeline: {preferred_id}")
+                            logger.info(f"✅ Found {len(pipelines_list)} pipelines")
+                            logger.info(f"🏆 Preferred pipeline: {preferred_id}")
                             
-                            # Przetwórz każdy pipeline
                             for pipeline_data in pipelines_list:
                                 if isinstance(pipeline_data, dict):
                                     pipeline = {
                                         "id": pipeline_data.get("id", ""),
-                                        "name": pipeline_data.get("name", "Bez nazwy"),
-                                        "language": pipeline_data.get("language", "nieznany"),
+                                        "name": pipeline_data.get("name", "Unnamed"),
+                                        "language": pipeline_data.get("language", "unknown"),
                                         "conversation_engine": pipeline_data.get("conversation_engine", ""),
                                         "stt_engine": pipeline_data.get("stt_engine", ""),
                                         "tts_engine": pipeline_data.get("tts_engine", ""),
@@ -144,60 +134,57 @@ class HomeAssistantClient:
                                     
                                     self.available_pipelines.append(pipeline)
                                     
-                                    # Dodatkowe info dla preferred
-                                    preferred_marker = " ⭐ (PREFEROWANY)" if pipeline["is_preferred"] else ""
+                                    preferred_marker = " ⭐ (PREFERRED)" if pipeline["is_preferred"] else ""
                                     logger.info(f"  📋 {pipeline['name']}{preferred_marker}")
                                     logger.info(f"      ID: {pipeline['id']}")
-                                    logger.info(f"      Język: {pipeline['language']}")
+                                    logger.info(f"      Language: {pipeline['language']}")
                                     logger.info(f"      Conversation: {pipeline['conversation_engine']}")
                                     logger.info(f"      STT: {pipeline['stt_engine']}")
                                     logger.info(f"      TTS: {pipeline['tts_engine']} ({pipeline['tts_voice']})")
                             
-                            # Zapisz preferred pipeline ID dla łatwego dostępu
                             self.preferred_pipeline_id = preferred_id
                             
-                            logger.info(f"🏁 ZAŁADOWANO {len(self.available_pipelines)} PIPELINE'ÓW")
+                            logger.info(f"🏁 LOADED {len(self.available_pipelines)} PIPELINES")
                             return True
                             
                         else:
-                            logger.error(f"❌ Nieoczekiwany format wyniku: {type(result)}")
-                            logger.info(f"Pełny wynik: {result}")
+                            logger.error(f"❌ Unexpected result format: {type(result)}")
+                            logger.info(f"Full result: {result}")
                             return False
                     else:
                         error = response_json.get("error", {})
-                        logger.error(f"❌ Błąd API: {error}")
+                        logger.error(f"❌ API error: {error}")
                         return False
                         
-                # Jeśli to nie nasza odpowiedź, kontynuuj oczekiwanie
                 elif response_json.get("id") != current_msg_id:
                     continue
                     
         except asyncio.TimeoutError:
-            logger.error("❌ Timeout podczas pobierania pipeline'ów")
+            logger.error("❌ Timeout during pipeline fetching")
             return False
         except Exception as e:
-            logger.error(f"❌ Błąd pobierania pipeline'ów: {e}")
+            logger.error(f"❌ Pipeline fetching error: {e}")
             return False
 
     def get_preferred_pipeline_id(self):
-        """Zwraca ID preferowanego pipeline'u."""
+        """Return preferred pipeline ID."""
         return getattr(self, 'preferred_pipeline_id', None)
 
     def get_available_pipelines(self):
-        """Zwraca listę dostępnych pipeline'ów."""
+        """Return list of available pipelines."""
         return self.available_pipelines
     
     def get_pipeline_by_name(self, name):
-        """Znajduje pipeline po nazwie."""
+        """Find pipeline by name."""
         for pipeline in self.available_pipelines:
             if pipeline.get("name") == name:
                 return pipeline
         return None
     
     def validate_pipeline_id(self, pipeline_id):
-        """Sprawdza czy podane ID pipeline'u jest dostępne."""
+        """Check if given pipeline ID is available."""
         if not pipeline_id:
-            return True  # Brak ID oznacza użycie domyślnego
+            return True  # No ID means use default
             
         for pipeline in self.available_pipelines:
             if pipeline.get("id") == pipeline_id:
@@ -205,13 +192,11 @@ class HomeAssistantClient:
         return False
 
     async def start_assist_pipeline(self, timeout_seconds=300):
-        """Uruchomienie pipeline Assist od etapu STT do TTS z timeout."""
-        logger.info("Uruchamiam pipeline Assist")
+        """Start Assist pipeline from STT to TTS stage with timeout."""
+        logger.info("Starting Assist pipeline")
         
-        # Sprawdź czy podany pipeline_id jest dostępny
         if self.pipeline_id and not self.validate_pipeline_id(self.pipeline_id):
-            logger.warning(f"Pipeline ID '{self.pipeline_id}' nie jest dostępny")
-            # Wyczyść nieprawidłowy ID - użyj domyślnego
+            logger.warning(f"Pipeline ID '{self.pipeline_id}' not available")
             self.pipeline_id = None
         
         pipeline_params = {
@@ -226,9 +211,9 @@ class HomeAssistantClient:
         
         if self.pipeline_id:
             pipeline_params["pipeline"] = self.pipeline_id
-            logger.info(f"Używam pipeline ID: {self.pipeline_id}")
+            logger.info(f"Using pipeline ID: {self.pipeline_id}")
         else:
-            logger.info("Używam domyślnego pipeline'u")
+            logger.info("Using default pipeline")
             
         await self.websocket.send(json.dumps({
             "id": self.message_id,
@@ -236,7 +221,6 @@ class HomeAssistantClient:
         }))
         self.message_id += 1
         
-        # Oczekiwanie na wiadomości z serwera i szukanie binary_handler_id
         start_time = asyncio.get_event_loop().time()
         
         while True:
@@ -246,101 +230,91 @@ class HomeAssistantClient:
                     timeout=10.0
                 )
                 response_json = json.loads(response)
-                logger.info(f"Otrzymano: {response_json}")
+                logger.info(f"Received: {response_json}")
                 
-                # Sprawdź timeout
                 if asyncio.get_event_loop().time() - start_time > timeout_seconds:
-                    logger.error("Timeout podczas uruchamiania pipeline")
+                    logger.error("Timeout during pipeline startup")
                     return False
                 
-                # Szukamy wydarzenia run-start
                 if (response_json.get("type") == "event" and 
                     response_json.get("event", {}).get("type") == "run-start"):
                     
                     event_data = response_json.get("event", {}).get("data", {})
                     
-                    # Pobierz stt_binary_handler_id
                     self.stt_binary_handler_id = event_data.get("runner_data", {}).get("stt_binary_handler_id")
-                    logger.info(f"Otrzymano stt_binary_handler_id: {self.stt_binary_handler_id}")
+                    logger.info(f"Received stt_binary_handler_id: {self.stt_binary_handler_id}")
                     
-                    # Pobierz URL audio z TTS_OUTPUT
                     tts_output = event_data.get("tts_output", {})
                     if tts_output and "url" in tts_output:
                         self.audio_url = tts_output["url"]
-                        logger.info(f"Zapisano URL audio z run-start: {self.audio_url}")
+                        logger.info(f"Saved audio URL from run-start: {self.audio_url}")
                     
                     if self.stt_binary_handler_id is not None:
                         break
                 
-                # Sprawdź czy nie ma błędu
                 elif (response_json.get("type") == "event" and 
                       response_json.get("event", {}).get("type") == "error"):
                     error_data = response_json.get("event", {}).get("data", {})
                     error_code = error_data.get("code", "unknown")
-                    error_message = error_data.get("message", "Nieznany błąd")
-                    logger.error(f"Błąd pipeline: {error_code} - {error_message}")
+                    error_message = error_data.get("message", "Unknown error")
+                    logger.error(f"Pipeline error: {error_code} - {error_message}")
                     return False
                         
             except asyncio.TimeoutError:
-                logger.error("Timeout podczas oczekiwania na odpowiedź pipeline")
+                logger.error("Timeout waiting for pipeline response")
                 return False
             except json.JSONDecodeError:
-                logger.warning("Otrzymano wiadomość, która nie jest JSON")
+                logger.warning("Received non-JSON message")
                 continue
         
         return self.stt_binary_handler_id is not None
 
     async def send_audio_chunk(self, audio_chunk):
-        """Wysyłanie fragmentu audio do Home Assistant z obsługą błędów."""
+        """Send audio chunk to Home Assistant with error handling."""
         if not self.stt_binary_handler_id:
-            logger.error("Nie znaleziono stt_binary_handler_id")
+            logger.error("stt_binary_handler_id not found")
             return False
         
         try:
-            # Prefiks z stt_binary_handler_id
             prefix = bytearray([self.stt_binary_handler_id])
-            
-            # Wysłanie danych audio
             await self.websocket.send(prefix + audio_chunk)
             return True
             
         except websockets.exceptions.ConnectionClosed:
-            logger.error("Połączenie zostało zamknięte podczas wysyłania audio")
+            logger.error("Connection closed during audio sending")
             return False
         except Exception as e:
-            logger.error(f"Błąd wysyłania audio: {e}")
+            logger.error(f"Audio sending error: {e}")
             return False
     
     async def end_audio(self):
-        """Wysłanie sygnału końca audio z obsługą błędów."""
+        """Send end of audio signal with error handling."""
         if not self.stt_binary_handler_id:
-            logger.error("Nie znaleziono stt_binary_handler_id")
+            logger.error("stt_binary_handler_id not found")
             return False
         
         try:
-            # Wysłanie komunikatu kończącego audio
-            logger.info("Wysyłam sygnał końca audio")
+            logger.info("Sending end of audio signal")
             await self.websocket.send(bytearray([self.stt_binary_handler_id]))
             return True
             
         except websockets.exceptions.ConnectionClosed:
-            logger.error("Połączenie zostało zamknięte podczas kończenia audio")
+            logger.error("Connection closed during audio ending")
             return False
         except Exception as e:
-            logger.error(f"Błąd kończenia audio: {e}")
+            logger.error(f"Audio ending error: {e}")
             return False
     
     async def receive_response(self, timeout_seconds=30):
-        """Odbiór odpowiedzi z Assist z konfiguracją timeout."""
+        """Receive response from Assist with timeout configuration."""
         results = []
         start_time = asyncio.get_event_loop().time()
         
         try:
             while True:
-                # Sprawdź timeout
                 elapsed = asyncio.get_event_loop().time() - start_time
                 if elapsed > timeout_seconds:
-                    logger.warning(f"Timeout ({timeout_seconds}s) podczas odbierania odpowiedzi")
+                    logger.warning(f"Timeout ({timeout_seconds}s) during response receiving")
                     break
                 
                 remaining_time = timeout_seconds - elapsed
@@ -351,36 +325,33 @@ class HomeAssistantClient:
                 
                 try:
                     response_json = json.loads(response)
-                    logger.info(f"Otrzymano: {response_json}")
+                    logger.info(f"Received: {response_json}")
                     results.append(response_json)
                     
-                    # Kończymy pętlę na różnych eventach
                     event_type = response_json.get("event", {}).get("type")
                     
                     if (response_json.get("type") == "event" and 
                         event_type in ["intent-end", "run-end", "error", "tts-end"]):
-                        logger.info(f"Kończę odbiór na wydarzeniu: {event_type}")
+                        logger.info(f"Ending reception on event: {event_type}")
                         break
                         
                 except json.JSONDecodeError:
-                    logger.warning(f"Otrzymano wiadomość nie-JSON: {response}")
+                    logger.warning(f"Received non-JSON message: {response}")
                     
         except asyncio.TimeoutError:
-            logger.warning("Timeout podczas odbierania pojedynczej wiadomości")
+            logger.warning("Timeout during single message reception")
         except Exception as e:
-            logger.error(f"Błąd podczas odbierania odpowiedzi: {e}")
+            logger.error(f"Error during response reception: {e}")
         
         return results
     
     def extract_audio_url(self, results):
-        """Wydobycie URL audio z wyników."""
-        # Najpierw sprawdź czy mamy URL z run-start (zapisany wcześniej)
+        """Extract audio URL from results."""
         if self.audio_url:
-            logger.info(f"Używam URL audio z run-start: {self.audio_url}")
+            logger.info(f"Using audio URL from run-start: {self.audio_url}")
             return self.audio_url
         
-        # Backup - sprawdź w wynikach (dla kompatybilności)
-        logger.info("Szukam URL audio w wynikach...")
+        logger.info("Searching for audio URL in results...")
         
         for result in results:
             if (result.get("type") == "event" and 
@@ -388,61 +359,57 @@ class HomeAssistantClient:
                 tts_output = result.get("event", {}).get("data", {}).get("tts_output", {})
                 if tts_output and "url" in tts_output:
                     url = tts_output["url"]
-                    logger.info(f"Znaleziono URL audio w wynikach: {url}")
+                    logger.info(f"Found audio URL in results: {url}")
                     return url
         
-        logger.warning("Nie znaleziono URL audio")
+        logger.warning("Audio URL not found")
         return None
 
     def extract_assistant_response(self, results):
-        """Wydobycie odpowiedzi asystenta z wyników."""
-        # Szukamy odpowiedzi w intent-end
+        """Extract assistant response from results."""
         for result in results:
             if (result.get("type") == "event" and 
                 result.get("event", {}).get("type") == "intent-end"):
                 intent_output = result.get("event", {}).get("data", {}).get("intent_output", {})
                 response = intent_output.get("response", {}).get("speech", {}).get("plain", "")
                 
-                # Jeśli odpowiedź jest obiektem z polem 'speech', to wyodrębnij samo speech
                 if isinstance(response, dict) and 'speech' in response:
                     return response['speech']
                 
                 return response
         
-        # Jeśli nie znaleźliśmy odpowiedzi, sprawdzamy czy wystąpił błąd
         for result in results:
             if (result.get("type") == "event" and 
                 result.get("event", {}).get("type") == "error"):
                 error_code = result.get("event", {}).get("data", {}).get("code", "")
                 error_message = result.get("event", {}).get("data", {}).get("message", "")
-                return f"Błąd: {error_code} - {error_message}"
+                return f"Error: {error_code} - {error_message}"
         
-        return "Brak odpowiedzi od asystenta"
+        return "No response from assistant"
     
     async def test_connection(self):
-        """Test połączenia bez tworzenia pipeline'u."""
+        """Test connection without creating pipeline."""
         try:
             if not self.connected:
                 success = await self.connect()
                 if not success:
-                    return False, "Nie można nawiązać połączenia"
+                    return False, "Cannot establish connection"
             
-            # Jeśli połączenie udane, sprawdź pipeline'y
             if not self.available_pipelines:
                 await self.fetch_available_pipelines()
             
             pipeline_count = len(self.available_pipelines)
-            return True, f"Połączenie OK. Dostępne pipeline'y: {pipeline_count}"
+            return True, f"Connection OK. Available pipelines: {pipeline_count}"
             
         except Exception as e:
-            return False, f"Błąd testowania: {str(e)}"
+            return False, f"Test error: {str(e)}"
     
     async def close(self):
-        """Zamknięcie połączenia."""
+        """Close connection."""
         self.connected = False
         if self.websocket:
             try:
                 await self.websocket.close()
-                logger.info("Połączenie zamknięte")
+                logger.info("Connection closed")
             except Exception as e:
-                logger.error(f"Błąd zamykania połączenia: {e}")
+                logger.error(f"Connection closing error: {e}")
