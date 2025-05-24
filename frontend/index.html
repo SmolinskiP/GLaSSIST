@@ -59,6 +59,30 @@
             animation: pulse-error 0.7s infinite alternate ease-in-out;
         }
         
+        /* NOWY: Tekst sukcesu */
+        #successText {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #4caf50;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 14px;
+            font-weight: bold;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(76, 175, 80, 0.8);
+            pointer-events: none;
+            z-index: 1000;
+            display: none;
+            max-width: 280px;
+            line-height: 1.4;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: 1px solid #4caf50;
+            /* BEZ animacji pulsowania - stała jasność */
+        }
+        
         @keyframes pulse-error {
             from {
                 opacity: 0.8;
@@ -75,6 +99,7 @@
     <div id="container">
         <canvas id="canvas"></canvas>
         <div id="errorText"></div>
+        <div id="successText"></div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -88,6 +113,7 @@
         let isConnected = false;
         let isAnimating = false;
         let errorMessage = '';
+        let successMessage = ''; // NOWY
         
         // Zmienne do normalizacji audio
         let audioBuffer = [];
@@ -103,7 +129,8 @@
             listening: 0x4fc3f7,
             processing: 0xff9800,
             responding: 0x9c27b0,
-            error: 0xf44336
+            error: 0xf44336,
+            success: 0x4caf50  // NOWY: zielony kolor sukcesu
         };
         
         // SHADER Z GRADIENTEM I EFEKTAMI
@@ -179,12 +206,14 @@
                 
                 // Dodajemy poświatę dla wybranego koloru
                 vec3 glowColor;
-                if (color.r > 0.7) {  // Czerwony (error)
+                if (color.r > 0.7 && color.g < 0.5) {  // Czerwony (error)
                     glowColor = vec3(1.0, 0.3, 0.1);
-                } else if (color.g > 0.7) {  // Pomarańczowy (processing)
+                } else if (color.r > 0.7 && color.g > 0.5) {  // Pomarańczowy (processing)
                     glowColor = vec3(1.0, 0.7, 0.2);
                 } else if (color.b > 0.7) {  // Niebieski (listening)
                     glowColor = vec3(0.2, 0.6, 1.0);
+                } else if (color.g > 0.7 && color.r < 0.5) {  // Zielony (success)
+                    glowColor = vec3(0.2, 1.0, 0.3);
                 } else {  // Fioletowy (responding)
                     glowColor = vec3(1.0, 0.2, 1.0);
                 }
@@ -221,7 +250,7 @@
             createAnimations();
             
             renderer.render(scene, camera);
-            console.log('Three.js zainicjalizowane z obsługą tekstu błędu');
+            console.log('Three.js zainicjalizowane z obsługą tekstu błędu i sukcesu');
         }
         
         function createAnimations() {
@@ -270,6 +299,10 @@
                 if (currentState === 'error') {
                     showErrorText(errorMessage);
                 }
+                // NOWY: Pokaż tekst sukcesu tylko w stanie success
+                else if (currentState === 'success') {
+                    showSuccessText(successMessage);
+                }
             }
             
             animate();
@@ -284,8 +317,9 @@
             // Ukryj wszystkie elementy
             ring.visible = false;
             
-            // Ukryj tekst błędu
+            // Ukryj wszystkie teksty
             hideErrorText();
+            hideSuccessText(); // NOWY
             
             if (animationFrameId) {
                 cancelAnimationFrame(animationFrameId);
@@ -309,6 +343,24 @@
             if (errorElement) {
                 errorElement.style.display = 'none';
                 console.log('Ukryto tekst błędu');
+            }
+        }
+        
+        // NOWE: Funkcje dla tekstu sukcesu
+        function showSuccessText(message) {
+            const successElement = document.getElementById('successText');
+            if (successElement && message) {
+                successElement.textContent = message;
+                successElement.style.display = 'block';
+                console.log('Pokazano tekst sukcesu:', message);
+            }
+        }
+        
+        function hideSuccessText() {
+            const successElement = document.getElementById('successText');
+            if (successElement) {
+                successElement.style.display = 'none';
+                console.log('Ukryto tekst sukcesu');
             }
         }
         
@@ -436,6 +488,12 @@
                         ring.material.uniforms.pulseSpeed.value = 6.0;
                         ring.material.uniforms.usePulse.value = 1.0; // Tryb pulsowania
                         break;
+                        
+                    case 'success':
+                        // NOWY: Success - STAŁA JASNOŚĆ, bez pulsowania
+                        ring.material.uniforms.audioLevel.value = 0.8; // Stała wartość dla jasności
+                        ring.material.uniforms.usePulse.value = 0.0; // Bez pulsowania
+                        break;
                 }
             }
         }
@@ -448,6 +506,7 @@
             // Ukryj wszystkie elementy przed zmianą stanu
             if (ring) ring.visible = false;
             hideErrorText();
+            hideSuccessText(); // NOWY
             
             // Resetuj bufory audio przy zmianie stanu
             audioBuffer = [];
@@ -457,6 +516,11 @@
             // Zapisz wiadomość błędu jeśli dostępna
             if (newState === 'error' && data.errorMessage) {
                 errorMessage = data.errorMessage;
+            }
+            
+            // NOWY: Zapisz wiadomość sukcesu jeśli dostępna
+            if (newState === 'success' && data.successMessage) {
+                successMessage = data.successMessage;
             }
             
             if (newState === 'hidden') {
@@ -474,6 +538,9 @@
             
             if (newState === 'error') {
                 showErrorText(errorMessage);
+            } else if (newState === 'success') {
+                // NOWY: Pokaż tekst sukcesu
+                showSuccessText(successMessage);
             }
             
             if (!isAnimating) {
@@ -553,7 +620,7 @@
         }
         
         window.addEventListener('load', function() {
-            console.log('Inicjalizacja aplikacji z obsługą tekstu błędu...');
+            console.log('Inicjalizacja aplikacji z obsługą tekstu błędu i sukcesu...');
             initThree();
             initWebSocket();
             startHeartbeat();

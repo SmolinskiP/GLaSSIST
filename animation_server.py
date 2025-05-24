@@ -127,28 +127,64 @@ class AnimationServer:
         if self.loop and self.loop.is_running():
             asyncio.run_coroutine_threadsafe(self._broadcast(data), self.loop)
     
-    def change_state(self, new_state: str, error_message: str = None, **kwargs):
-        if new_state == self.current_state and not error_message:
-            return
+    def change_state(self, new_state: str, error_message: str = None, success_message: str = None, **kwargs):
+            if new_state == self.current_state and not error_message and not success_message:
+                return
+                
+            logger.info(f"Animation state change: {self.current_state} -> {new_state}")
+            if error_message:
+                logger.info(f"Error message: {error_message}")
+            if success_message:
+                logger.info(f"Success message: {success_message}")
             
-        logger.info(f"Animation state change: {self.current_state} -> {new_state}")
-        if error_message:
-            logger.info(f"Error message: {error_message}")
+            self.current_state = new_state
+            
+            message = {
+                "type": "state_change",
+                "state": new_state,
+                "timestamp": utils.get_timestamp(),
+                **kwargs
+            }
+            
+            # Add error message if available
+            if error_message:
+                message["errorMessage"] = error_message
+                
+            # NOWY: Add success message if available
+            if success_message:
+                message["successMessage"] = success_message
+            
+            self._safe_broadcast(message)
+    
+    def show_success(self, message: str = "Success", duration: float = 3.0):
+        """Pokaż animację sukcesu na określony czas."""
+        self.change_state("success", success_message=message)
         
-        self.current_state = new_state
+        # Zaplanuj powrót do hidden po określonym czasie
+        import threading
+        import time
         
-        message = {
-            "type": "state_change",
-            "state": new_state,
-            "timestamp": utils.get_timestamp(),
-            **kwargs
-        }
+        def hide_after_delay():
+            time.sleep(duration)
+            if self.current_state == "success":  # Tylko jeśli nadal jesteśmy w stanie success
+                self.change_state("hidden")
         
-        # Add error message if available
-        if error_message:
-            message["errorMessage"] = error_message
+        threading.Thread(target=hide_after_delay, daemon=True).start()
+    
+    def show_error(self, message: str = "Error", duration: float = 5.0):
+        """Pokaż animację błędu na określony czas."""
+        self.change_state("error", error_message=message)
         
-        self._safe_broadcast(message)
+        # Zaplanuj powrót do hidden po określonym czasie
+        import threading
+        import time
+        
+        def hide_after_delay():
+            time.sleep(duration)
+            if self.current_state == "error":  # Tylko jeśli nadal jesteśmy w stanie error
+                self.change_state("hidden")
+        
+        threading.Thread(target=hide_after_delay, daemon=True).start()
     
     def send_audio_data(self, audio_chunk: bytes, sample_rate: int = 16000):
         try:

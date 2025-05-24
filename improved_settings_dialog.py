@@ -15,10 +15,11 @@ logger = utils.setup_logger()
 class ImprovedSettingsDialog:
     """Enhanced settings dialog with connection testing and pipeline selection."""
     
-    def __init__(self):
+    def __init__(self, animation_server=None):
         self.root = None
         self.pipelines_data = []
         self.test_client = None
+        self.animation_server = animation_server
         
     def show_settings(self):
         """Display settings dialog."""
@@ -396,14 +397,36 @@ class ImprovedSettingsDialog:
         threading.Thread(target=test_thread, daemon=True).start()
     
     def _update_test_result(self, success, message):
-        """Update connection test result."""
-        self.test_button.config(state="normal", text="Test Connection")
-        
-        if success:
-            self.test_status_label.config(text=f"✅ {message}", style="Success.TLabel")
+            """Update connection test result."""
+            self.test_button.config(state="normal", text="Test Connection")
+            
+            if success:
+                self.test_status_label.config(text=f"✅ {message}", style="Success.TLabel")
+                
+                # NOWY: Wyślij animację sukcesu do animation server jeśli dostępny
+                self._show_success_animation("Connection successful")
+            else:
+                self.test_status_label.config(text=f"❌ {message}", style="Error.TLabel")
+                
+                # OPCJONALNIE: Możesz też wysłać animację błędu
+                self._show_error_animation(f"Connection failed: {message}")
+
+    def _show_success_animation(self, message):
+        """Pokaż animację sukcesu w głównym oknie aplikacji."""
+        if self.animation_server:
+            # Bezpośrednie użycie animation server
+            self.animation_server.show_success(message, duration=3.0)
         else:
-            self.test_status_label.config(text=f"❌ {message}", style="Error.TLabel")
+            logger.debug("Animation server nie jest dostępny - pomijam animację sukcesu")
     
+    def _show_error_animation(self, message):
+        """Pokaż animację błędu w głównym oknie aplikacji."""
+        if self.animation_server:
+            # Bezpośrednie użycie animation server
+            self.animation_server.show_error(message, duration=5.0)
+        else:
+            logger.debug("Animation server nie jest dostępny - pomijam animację błędu")
+
     def _update_pipeline_list(self):
         """Update pipeline list."""
         if not self.pipelines_data:
@@ -610,7 +633,7 @@ class ImprovedSettingsDialog:
             }
 
 
-def show_improved_settings():
+def show_improved_settings(animation_server=None):
     """Helper function to display enhanced settings."""
-    dialog = ImprovedSettingsDialog()
+    dialog = ImprovedSettingsDialog(animation_server)
     dialog.show_settings()

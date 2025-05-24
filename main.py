@@ -82,7 +82,7 @@ class HAAssistApp:
         return image
     
     def _quick_connection_test(self, icon=None, item=None):
-        """Szybki test połączenia z tray."""
+        """Szybki test połączenia z tray - Z ANIMACJĄ!"""
         def test_thread():
             try:
                 # Utwórz tymczasowego klienta
@@ -95,13 +95,21 @@ class HAAssistApp:
                 try:
                     success, message = loop.run_until_complete(test_client.test_connection())
                     
-                    # Pokaż wynik w logach
+                    # Pokaż wynik w logach (jak wcześniej)
                     if success:
                         logger.info(f"Test połączenia: ✅ {message}")
                         print(f"✅ Test połączenia: {message}")
+                        
+                        # NOWY: Pokaż animację sukcesu
+                        if self.animation_server:
+                            self.animation_server.show_success("Connection successful", duration=3.0)
                     else:
                         logger.error(f"Test połączenia: ❌ {message}")
                         print(f"❌ Test połączenia: {message}")
+                        
+                        # NOWY: Pokaż animację błędu
+                        if self.animation_server:
+                            self.animation_server.show_error(f"Connection failed", duration=5.0)
                     
                 finally:
                     loop.close()
@@ -110,6 +118,10 @@ class HAAssistApp:
                 error_msg = f"Błąd testu: {str(e)}"
                 logger.error(error_msg)
                 print(f"❌ {error_msg}")
+                
+                # NOWY: Pokaż animację błędu dla wyjątków
+                if self.animation_server:
+                    self.animation_server.show_error("Test error", duration=5.0)
         
         threading.Thread(target=test_thread, daemon=True).start()
     
@@ -244,7 +256,7 @@ class HAAssistApp:
         
         try:
             from improved_settings_dialog import show_improved_settings
-            show_improved_settings()
+            show_improved_settings(self.animation_server)
             
         except ImportError as e:
             logger.error(f"Nie znaleziono improved_settings_dialog.py: {e}")
