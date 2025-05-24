@@ -35,7 +35,7 @@ class ImprovedSettingsDialog:
         }
         
         self.root = tk.Tk()
-        self.root.title("HA Assist - Settings")
+        self.root.title("GLaSSIST - Settings")
         self.root.geometry("750x600")
         self.root.resizable(True, True)
         
@@ -277,7 +277,7 @@ class ImprovedSettingsDialog:
         main_info_frame = ttk.Frame(parent)
         main_info_frame.pack(fill=tk.BOTH, expand=True, pady=20)
         
-        title_label = ttk.Label(main_info_frame, text="🎤 HA Assist Desktop", 
+        title_label = ttk.Label(main_info_frame, text="🎤 GLaSSIST Desktop", 
                                font=("Segoe UI", 18, "bold"))
         title_label.pack(pady=(0, 10))
         

@@ -61,9 +61,9 @@ class HAAssistApp:
         )
         
         self.tray_icon = pystray.Icon(
-            "HA Assist",
+            "GLaSSIST",
             image,
-            "HA Assist Desktop",
+            "GLaSSIST Desktop",
             menu
         )
         
@@ -206,7 +206,7 @@ class HAAssistApp:
         window_height = utils.get_env("WINDOW_HEIGHT", 400, int)
         
         self.window = webview.create_window(
-            'HA Assist',
+            'GLaSSIST',
             index_path,
             width=window_width,
             height=window_height,
@@ -459,7 +459,7 @@ class HAAssistApp:
                     window_title = window_text.value
                     class_name_str = class_name.value
                     
-                    if window_title == "HA Assist" and "WindowsForms10" in class_name_str:
+                    if window_title == "GLaSSIST" and "WindowsForms10" in class_name_str:
                         found_windows.append((hwnd, window_title, class_name_str))
                         
                         GWL_EXSTYLE = -20
@@ -556,7 +556,7 @@ class HAAssistApp:
     def run(self):
         """Main run method."""
         try:
-            logger.info("Starting HA Assist Desktop...")
+            logger.info("Starting GLaSSIST Desktop...")
             
             self.setup_animation_server()
             
@@ -652,7 +652,7 @@ def validate_configuration():
 
 def main():
     """Main application function with configuration validation."""
-    print("=== HA ASSIST DESKTOP ===")
+    print("=== GLaSSIST DESKTOP ===")
     print("Starting application...")
     
     possible_paths = [
