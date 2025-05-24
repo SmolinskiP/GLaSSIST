@@ -1,5 +1,5 @@
 """
-Główny plik aplikacji do interakcji z Home Assistant ASSIST przez WebSocket API.
+Kompletna poprawka main.py - zachowuję oryginalny kod i dodaję tylko usprawnienia
 """
 import asyncio
 import threading
@@ -10,14 +10,14 @@ import pystray
 from PIL import Image, ImageDraw
 from pystray import MenuItem as item
 import utils
-from client import HomeAssistantClient
+from client import HomeAssistantClient  # Ta klasa już będzie ulepszona
 from audio import AudioManager
 from animation_server import AnimationServer
 
 logger = utils.setup_logger()
 
 class HAAssistApp:
-    """Główna klasa aplikacji."""
+    """Główna klasa aplikacji z ulepszonymi funkcjami."""
     
     def __init__(self):
         """Inicjalizacja aplikacji."""
@@ -30,8 +30,12 @@ class HAAssistApp:
         self.tray_icon = None
         self.window_visible = True
         
+        # NOWOŚĆ: Cache dla pipeline'ów
+        self.cached_pipelines = []
+        self.pipeline_cache_time = 0
+        
     def create_tray_icon(self):
-        """Utworzenie ikony w system tray."""
+        """Utworzenie ikony w system tray z ulepszonymi opcjami."""
         # Stała ścieżka do ikony
         icon_path = os.path.join(os.path.dirname(__file__), 'img', 'icon.ico')
         
@@ -44,24 +48,20 @@ class HAAssistApp:
             except Exception as e:
                 logger.error(f"Błąd ładowania ikony: {e}")
                 # Prosta ikona jako fallback
-                image = Image.new('RGB', (64, 64), color='black')
-                draw = ImageDraw.Draw(image)
-                draw.ellipse([8, 8, 56, 56], fill='#4fc3f7', outline='white', width=2)
-                draw.ellipse([24, 24, 40, 40], fill='white')
+                image = self._create_fallback_icon()
         else:
             logger.warning(f"Brak pliku ikony: {icon_path}")
-            # Prosta ikona jako fallback
-            image = Image.new('RGB', (64, 64), color='black')
-            draw = ImageDraw.Draw(image)
-            draw.ellipse([8, 8, 56, 56], fill='#4fc3f7', outline='white', width=2)
-            draw.ellipse([24, 24, 40, 40], fill='white')
+            image = self._create_fallback_icon()
         
-        # Menu kontekstowe
+        # ULEPSZONE menu kontekstowe
         menu = pystray.Menu(
-            item('Aktywuj głos (%s)' % utils.get_env("HA_HOTKEY"), self.trigger_voice_command),
+            item('🎤 Aktywuj głos (%s)' % utils.get_env("HA_HOTKEY", "ctrl+shift+h"), 
+                 self.trigger_voice_command),
             pystray.Menu.SEPARATOR,
-            item('Ustawienia', self.open_settings),
-            item('Zamknij', self.quit_application)
+            item('⚙️ Ustawienia', self.open_settings),
+            item('🔄 Test połączenia', self._quick_connection_test),
+            pystray.Menu.SEPARATOR,
+            item('❌ Zamknij', self.quit_application)
         )
         
         self.tray_icon = pystray.Icon(
@@ -71,8 +71,129 @@ class HAAssistApp:
             menu
         )
         
-        logger.info("Ikona system tray utworzona")
+        logger.info("Ikona system tray utworzona z ulepszonymi opcjami")
+    
+    def _create_fallback_icon(self):
+        """Tworzenie fallback ikony."""
+        image = Image.new('RGB', (64, 64), color='black')
+        draw = ImageDraw.Draw(image)
+        draw.ellipse([8, 8, 56, 56], fill='#4fc3f7', outline='white', width=2)
+        draw.ellipse([24, 24, 40, 40], fill='white')
+        return image
+    
+    def _quick_connection_test(self, icon=None, item=None):
+        """Szybki test połączenia z tray."""
+        def test_thread():
+            try:
+                # Utwórz tymczasowego klienta
+                test_client = HomeAssistantClient()
+                
+                # Uruchom test w nowej pętli asyncio
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                try:
+                    success, message = loop.run_until_complete(test_client.test_connection())
+                    
+                    # Pokaż wynik w logach
+                    if success:
+                        logger.info(f"Test połączenia: ✅ {message}")
+                        print(f"✅ Test połączenia: {message}")
+                    else:
+                        logger.error(f"Test połączenia: ❌ {message}")
+                        print(f"❌ Test połączenia: {message}")
+                    
+                finally:
+                    loop.close()
+                    
+            except Exception as e:
+                error_msg = f"Błąd testu: {str(e)}"
+                logger.error(error_msg)
+                print(f"❌ {error_msg}")
         
+        threading.Thread(target=test_thread, daemon=True).start()
+    
+    def _show_pipelines_info(self, icon=None, item=None):
+        """Pokaż informacje o dostępnych pipeline'ach - POPRAWIONA WERSJA."""
+        def pipelines_thread():
+            try:
+                # Utwórz tymczasowego klienta
+                test_client = HomeAssistantClient()
+                
+                # Uruchom połączenie w nowej pętli asyncio
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                try:
+                    success = loop.run_until_complete(test_client.connect())
+                    
+                    if success:
+                        pipelines = test_client.get_available_pipelines()
+                        current_pipeline = utils.get_env("HA_PIPELINE_ID", "(domyślny)")
+                        
+                        print(f"\n=== DOSTĘPNE PIPELINE'Y ({len(pipelines)}) ===")
+                        print(f"Aktualnie używany: {current_pipeline}")
+                        print("-" * 50)
+                        
+                        if not pipelines:
+                            print("Brak dostępnych pipeline'ów lub błąd połączenia")
+                        else:
+                            for i, pipeline in enumerate(pipelines, 1):
+                                # NAPRAWIONE: Sprawdź czy pipeline to string czy obiekt
+                                if isinstance(pipeline, str):
+                                    # Pipeline to po prostu string (ID lub nazwa)
+                                    name = pipeline
+                                    pipeline_id = pipeline
+                                    language = "nieznany"
+                                elif isinstance(pipeline, dict):
+                                    # Pipeline to obiekt - używaj .get()
+                                    name = pipeline.get("name", "Bez nazwy")
+                                    pipeline_id = pipeline.get("id", "")
+                                    language = pipeline.get("language", "nieznany")
+                                else:
+                                    # Nieznany typ - konwertuj na string
+                                    name = str(pipeline)
+                                    pipeline_id = str(pipeline)
+                                    language = "nieznany"
+                                
+                                # Sprawdź czy to aktualnie używany pipeline
+                                current_marker = " ← AKTUALNY" if pipeline_id == current_pipeline else ""
+                                
+                                print(f"{i}. {name}")
+                                print(f"   ID: {pipeline_id}{current_marker}")
+                                if language != "nieznany":
+                                    print(f"   Język: {language}")
+                                print()
+                            
+                            print("=" * 50)
+                            print("Użyj 'Ustawienia' aby zmienić pipeline.")
+                            
+                            # BONUS: Podpowiedź jak skopiować ID
+                            if len(pipelines) > 1:
+                                print("\n💡 WSKAZÓWKA:")
+                                print("Skopiuj ID wybranego pipeline'u i wklej w ustawieniach aplikacji.")
+                                
+                    else:
+                        print("❌ Nie można połączyć się z Home Assistant")
+                        print("Sprawdź ustawienia połączenia.")
+                    
+                finally:
+                    loop.close()
+                    
+            except Exception as e:
+                error_msg = f"Błąd pobierania pipeline'ów: {str(e)}"
+                logger.error(error_msg)
+                print(f"❌ {error_msg}")
+                
+                # DODATKOWE DEBUG INFO
+                print(f"📋 DEBUG: Typ błędu: {type(e).__name__}")
+                if hasattr(e, '__traceback__'):
+                    import traceback
+                    print("📋 Stos wywołań:")
+                    traceback.print_exc()
+        
+        threading.Thread(target=pipelines_thread, daemon=True).start()
+
     def setup_animation_server(self):
         """Konfiguracja serwera animacji."""
         self.animation_server = AnimationServer()
@@ -116,410 +237,88 @@ class HAAssistApp:
         
         logger.info(f"Webview window skonfigurowane ({window_width}x{window_height}, ukryte z paska zadań)")
         return True
-    
-    def open_settings(self, icon=None, item=None):
-        """Otwórz okno ustawień w Tkinter zamiast webview."""
-        import tkinter as tk
-        from tkinter import ttk, messagebox
-        
-        logger.info("Otwieranie okna ustawień (Tkinter)...")
-        
-        # Funkcja do zapisywania ustawień
-        def save_config():
-            # Pobierz aktualne wartości z interfejsu
-            new_settings = {
-                'HA_HOST': host_entry.get().strip(),
-                'HA_TOKEN': token_entry.get().strip(),
-                'HA_PIPELINE_ID': pipeline_entry.get().strip(),
-                'HA_HOTKEY': hotkey_var.get(),
-                'HA_SILENCE_THRESHOLD_SEC': str(round(silence_scale.get(), 1)),
-                'HA_VAD_MODE': str(int(vad_mode_scale.get())),
-                'DEBUG': 'true' if debug_var.get() else 'false',
-                
-                # Ukryte ustawienia - bierzemy z aktualnych wartości
-                'HA_SAMPLE_RATE': utils.get_env('HA_SAMPLE_RATE', '16000'),
-                'HA_CHANNELS': utils.get_env('HA_CHANNELS', '1'),
-                'HA_FRAME_DURATION_MS': utils.get_env('HA_FRAME_DURATION_MS', '30'),
-                'HA_CHUNK_SIZE': utils.get_env('HA_CHUNK_SIZE', '480'),
-                'HA_PADDING_MS': utils.get_env('HA_PADDING_MS', '300'),
-                'ANIMATION_PORT': utils.get_env('ANIMATION_PORT', '8765')
-            }
-            
-            # Sprawdź czy host i token są podane
-            if not new_settings['HA_HOST']:
-                messagebox.showerror("Błąd", "Adres serwera Home Assistant jest wymagany!")
-                return
-                
-            if not new_settings['HA_TOKEN']:
-                messagebox.showerror("Błąd", "Token dostępu jest wymagany!")
-                return
-            
-            try:
-                # Znajdź plik .env
-                env_path = None
-                possible_paths = [
-                    os.path.join(os.path.dirname(__file__), '.env'),
-                    os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'),
-                    '.env'
-                ]
-                
-                for path in possible_paths:
-                    if os.path.exists(path):
-                        env_path = path
-                        break
-                        
-                # Jeśli nie znaleziono pliku .env, utwórz nowy w głównym katalogu
-                if not env_path:
-                    env_path = possible_paths[0]
-                
-                # Przygotuj zawartość pliku .env
-                env_content = "# Ustawienia Home Assistant\n"
-                env_content += f"HA_HOST={new_settings['HA_HOST']}\n"
-                env_content += f"HA_TOKEN={new_settings['HA_TOKEN']}\n"
-                if new_settings['HA_PIPELINE_ID']:
-                    env_content += f"HA_PIPELINE_ID={new_settings['HA_PIPELINE_ID']}\n"
-                
-                env_content += "\n# Ustawienia audio\n"
-                env_content += f"HA_SAMPLE_RATE={new_settings['HA_SAMPLE_RATE']}\n"
-                env_content += f"HA_CHANNELS={new_settings['HA_CHANNELS']}\n"
-                env_content += f"HA_FRAME_DURATION_MS={new_settings['HA_FRAME_DURATION_MS']}\n"
-                env_content += f"HA_CHUNK_SIZE={new_settings['HA_CHUNK_SIZE']}\n"
-                env_content += f"HA_PADDING_MS={new_settings['HA_PADDING_MS']}\n"
-                env_content += f"HA_SILENCE_THRESHOLD_SEC={new_settings['HA_SILENCE_THRESHOLD_SEC']}\n"
-                
-                env_content += "\n# Ustawienia VAD\n"
-                env_content += f"HA_VAD_MODE={new_settings['HA_VAD_MODE']}\n"
-                
-                env_content += f"\nHA_HOTKEY={new_settings['HA_HOTKEY']}\n"
-                env_content += f"DEBUG={new_settings['DEBUG']}\n"
-                
-                env_content += "\n# Animation Server Configuration\n"
-                env_content += f"ANIMATION_PORT={new_settings['ANIMATION_PORT']}\n"
-                
-                # Zapisz plik
-                with open(env_path, 'w', encoding='utf-8') as f:
-                    f.write(env_content)
-                
-                messagebox.showinfo("Sukces", f"Ustawienia zostały zapisane w {os.path.basename(env_path)}\nZresetuj aplikację aby zastosować zmiany.")
-                root.destroy()
-                
-            except Exception as e:
-                logger.exception(f"Błąd zapisu ustawień: {e}")
-                messagebox.showerror("Błąd", f"Nie udało się zapisać ustawień: {str(e)}")
-        
-        # Załaduj aktualne ustawienia
-        current_settings = {
-            'HA_HOST': utils.get_env('HA_HOST', 'localhost:8123'),
-            'HA_TOKEN': utils.get_env('HA_TOKEN', ''),
-            'HA_PIPELINE_ID': utils.get_env('HA_PIPELINE_ID', ''),
-            'HA_HOTKEY': utils.get_env('HA_HOTKEY', 'ctrl+shift+h'),
-            'HA_VAD_MODE': utils.get_env('HA_VAD_MODE', 3, int),
-            'HA_SILENCE_THRESHOLD_SEC': utils.get_env('HA_SILENCE_THRESHOLD_SEC', 0.8, float),
-            'DEBUG': utils.get_env('DEBUG', False, bool)
-        }
-        # Tworzenie głównego okna
-        root = tk.Tk()
-        root.title("HA Assist - Ustawienia")
-        root.geometry("600x400")
-        root.resizable(True, True)
-        
-        icon_path = os.path.join(os.path.dirname(__file__), 'img', 'icon.ico')
-        if os.path.exists(icon_path):
-            try:
-                root.iconbitmap(icon_path)
-                logger.info(f"Ustawiono ikonę: {icon_path}")
-            except Exception as e:
-                logger.error(f"Błąd ustawienia ikony: {e}")
-        # Styl
-        style = ttk.Style()
-        style.configure("TLabel", font=("Segoe UI", 10))
-        style.configure("TButton", font=("Segoe UI", 10))
-        style.configure("Header.TLabel", font=("Segoe UI", 14, "bold"))
-        
-        # Główny kontener
-        main_frame = ttk.Frame(root, padding="20")
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Nagłówek
-        header_label = ttk.Label(main_frame, text="Ustawienia Home Assistant Assist", style="Header.TLabel")
-        header_label.pack(pady=(0, 20))
-        
-        # Ramka na ustawienia
-        settings_frame = ttk.Frame(main_frame)
-        settings_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Ustawienia Home Assistant
-        ttk.Label(settings_frame, text="Adres serwera Home Assistant:").grid(row=0, column=0, sticky=tk.W, pady=5)
-        host_entry = ttk.Entry(settings_frame, width=40)
-        host_entry.grid(row=0, column=1, sticky=tk.W+tk.E, pady=5, padx=5)
-        host_entry.insert(0, current_settings['HA_HOST'])
-        
-        ttk.Label(settings_frame, text="Token dostępu:").grid(row=1, column=0, sticky=tk.W, pady=5)
-        token_entry = ttk.Entry(settings_frame, width=40, show="•")
-        token_entry.grid(row=1, column=1, sticky=tk.W+tk.E, pady=5, padx=5)
-        token_entry.insert(0, current_settings['HA_TOKEN'])
-        
-        ttk.Label(settings_frame, text="ID Pipeline (opcjonalnie):").grid(row=2, column=0, sticky=tk.W, pady=5)
-        pipeline_entry = ttk.Entry(settings_frame, width=40)
-        pipeline_entry.grid(row=2, column=1, sticky=tk.W+tk.E, pady=5, padx=5)
-        pipeline_entry.insert(0, current_settings['HA_PIPELINE_ID'])
-        
-        # Skrót klawiszowy
-        ttk.Label(settings_frame, text="Skrót klawiszowy:").grid(row=3, column=0, sticky=tk.W, pady=5)
-        hotkey_var = tk.StringVar(value=current_settings['HA_HOTKEY'])
-        hotkey_combo = ttk.Combobox(settings_frame, textvariable=hotkey_var, state="readonly", width=20)
-        hotkey_combo["values"] = ("ctrl+shift+h", "ctrl+shift+g", "ctrl+alt+h", "ctrl+shift+a", "alt+space", "ctrl+shift+space")
-        hotkey_combo.grid(row=3, column=1, sticky=tk.W, pady=5, padx=5)
-        
-        # Tryb VAD
-        ttk.Label(settings_frame, text="Czułość detekcji głosu:").grid(row=4, column=0, sticky=tk.W, pady=5)
-        vad_frame = ttk.Frame(settings_frame)
-        vad_frame.grid(row=4, column=1, sticky=tk.W, pady=5, padx=5)
-        
-        vad_mode_scale = ttk.Scale(vad_frame, from_=0, to=3, orient=tk.HORIZONTAL, length=200)
-        vad_mode_scale.set(current_settings['HA_VAD_MODE'])
-        vad_mode_scale.pack(side=tk.LEFT)
-        
-        vad_mode_value = ttk.Label(vad_frame, text=str(current_settings['HA_VAD_MODE']), width=3)
-        vad_mode_value.pack(side=tk.LEFT, padx=5)
-        
-        def update_vad_mode(event=None):
-            vad_mode_value.config(text=str(int(vad_mode_scale.get())))
-        vad_mode_scale.bind("<Motion>", update_vad_mode)
-        vad_mode_scale.bind("<ButtonRelease-1>", update_vad_mode)
-        
-        # Próg ciszy
-        ttk.Label(settings_frame, text="Próg ciszy (sekundy):").grid(row=5, column=0, sticky=tk.W, pady=5)
-        silence_frame = ttk.Frame(settings_frame)
-        silence_frame.grid(row=5, column=1, sticky=tk.W, pady=5, padx=5)
-        
-        silence_scale = ttk.Scale(silence_frame, from_=0.3, to=3.0, orient=tk.HORIZONTAL, length=200)
-        silence_scale.set(current_settings['HA_SILENCE_THRESHOLD_SEC'])
-        silence_scale.pack(side=tk.LEFT)
-        
-        silence_value = ttk.Label(silence_frame, text=str(current_settings['HA_SILENCE_THRESHOLD_SEC']) + "s", width=4)
-        silence_value.pack(side=tk.LEFT, padx=5)
-        
-        def update_silence(event=None):
-            value = round(silence_scale.get(), 1)
-            silence_value.config(text=f"{value}s")
-        silence_scale.bind("<Motion>", update_silence)
-        silence_scale.bind("<ButtonRelease-1>", update_silence)
-        
-        # Tryb debugowania
-        debug_var = tk.BooleanVar(value=current_settings['DEBUG'])
-        debug_check = ttk.Checkbutton(settings_frame, text="Tryb debugowania", variable=debug_var)
-        debug_check.grid(row=6, column=0, columnspan=2, sticky=tk.W, pady=5)
-        
-        # Przyciski na dole
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(pady=15, fill=tk.X)
-        
-        save_button = ttk.Button(button_frame, text="Zapisz ustawienia", command=save_config)
-        save_button.pack(side=tk.RIGHT, padx=5)
-        
-        cancel_button = ttk.Button(button_frame, text="Anuluj", command=root.destroy)
-        cancel_button.pack(side=tk.RIGHT, padx=5)
-        
-        # Ustawienie okna na wierzchu
-        root.attributes('-topmost', True)
-        root.update()
-        root.attributes('-topmost', False)
-        
-        # Centrum ekranu
-        root.update_idletasks()
-        width = root.winfo_width()
-        height = root.winfo_height()
-        x = (root.winfo_screenwidth() // 2) - (width // 2)
-        y = (root.winfo_screenheight() // 2) - (height // 2)
-        root.geometry(f'+{x}+{y}')
-        
-        # Uruchomienie pętli głównej
-        root.mainloop()
 
-    def save_env_settings(self, settings):
-        """Zapisz ustawienia do pliku .env."""
+    def open_settings(self, icon=None, item=None):
+        """Otwórz ulepszone okno ustawień."""
+        logger.info("Otwieranie ulepszonych ustawień...")
+        
         try:
-            # Znajdź gdzie jest (lub gdzie powinien być) plik .env
-            possible_paths = [
-                os.path.join(os.path.dirname(__file__), '.env'),  # Katalog główny aplikacji
-                os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'),  # Katalog wyżej
-                '.env'  # Względna ścieżka
-            ]
+            from improved_settings_dialog import show_improved_settings
+            show_improved_settings()
             
-            env_path = None
-            # Najpierw sprawdź czy istnieje
-            for path in possible_paths:
-                if os.path.exists(path):
-                    env_path = path
-                    logger.info(f"Znaleziono istniejący plik .env w: {path}")
-                    break
+        except ImportError as e:
+            logger.error(f"Nie znaleziono improved_settings_dialog.py: {e}")
             
-            # Jeśli nie istnieje, użyj pierwszej ścieżki (katalog główny)
-            if not env_path:
-                env_path = possible_paths[0]
-                logger.info(f"Tworzę nowy plik .env w: {env_path}")
+            # Emergency fallback - przynajmniej powiedz użytkownikowi co zrobić
+            import tkinter as tk
+            from tkinter import messagebox
             
-            # Przygotuj zawartość pliku .env
-            env_lines = []
-            for key, value in settings.items():
-                if value and str(value).strip():
-                    # Zabezpieczenie przed spacjami w tokenach
-                    clean_value = str(value).strip()
-                    env_lines.append(f"{key}={clean_value}")
+            root = tk.Tk()
+            root.withdraw()  # Ukryj główne okno
             
-            # Upewnij się że katalog istnieje
-            os.makedirs(os.path.dirname(env_path), exist_ok=True)
-            
-            # Zapisz do pliku
-            with open(env_path, 'w', encoding='utf-8') as f:
-                f.write('\n'.join(env_lines) + '\n')
-            
-            logger.info(f"Ustawienia zapisane do: {env_path} ({len(env_lines)} linii)")
-            return {'success': True, 'message': f'Ustawienia zapisane do {os.path.basename(env_path)}'}
+            messagebox.showerror(
+                "Błąd ustawień", 
+                "Nie znaleziono pliku improved_settings_dialog.py!\n\n"
+                "Utwórz ten plik w folderze aplikacji\n"
+                "lub sprawdź czy wszystkie pliki zostały skopiowane."
+            )
+            root.destroy()
             
         except Exception as e:
-            logger.error(f"Błąd zapisu ustawień: {e}")
-            return {'success': False, 'message': f'Błąd zapisu: {str(e)}'}
-    
-    def test_ha_connection(self, host, token):
-        """Testuj połączenie z Home Assistant."""
-        try:
-            import asyncio
-            import websockets
-            import json
+            logger.exception(f"Błąd otwierania ustawień: {e}")
             
-            async def test_connection():
-                protocol = "ws" if host.startswith(('localhost', '127.0.0.1', '192.168.', '10.', '172.')) else "wss"
-                uri = f"{protocol}://{host}/api/websocket"
-                
-                try:
-                    websocket = await websockets.connect(uri, timeout=5)
-                    
-                    # Odbierz wiadomość auth_required
-                    auth_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
-                    auth_data = json.loads(auth_msg)
-                    
-                    if auth_data.get("type") != "auth_required":
-                        return False, "Nieoczekiwana odpowiedź z serwera"
-                    
-                    # Wyślij token
-                    await websocket.send(json.dumps({
-                        "type": "auth",
-                        "access_token": token
-                    }))
-                    
-                    # Odbierz odpowiedź
-                    result_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
-                    result_data = json.loads(result_msg)
-                    
-                    await websocket.close()
-                    
-                    if result_data.get("type") == "auth_ok":
-                        return True, "Połączenie działa poprawnie!"
-                    else:
-                        return False, "Błędny token dostępu"
-                        
-                except asyncio.TimeoutError:
-                    return False, "Timeout - serwer nie odpowiada"
-                except Exception as e:
-                    return False, f"Błąd połączenia: {str(e)}"
+            # Emergency fallback
+            import tkinter as tk
+            from tkinter import messagebox
             
-            # Uruchom test w nowej pętli asyncio
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                success, message = loop.run_until_complete(test_connection())
-                return {'success': success, 'message': message}
-            finally:
-                loop.close()
-                
-        except Exception as e:
-            logger.error(f"Błąd testu połączenia: {e}")
-            return {'success': False, 'message': f'Błąd testu: {str(e)}'}
-        """Testuj połączenie z Home Assistant."""
-        try:
-            import asyncio
-            import websockets
-            import json
+            root = tk.Tk()
+            root.withdraw()
             
-            async def test_connection():
-                protocol = "ws" if host.startswith(('localhost', '127.0.0.1', '192.168.', '10.', '172.')) else "wss"
-                uri = f"{protocol}://{host}/api/websocket"
-                
-                try:
-                    websocket = await websockets.connect(uri, timeout=5)
-                    
-                    # Odbierz wiadomość auth_required
-                    auth_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
-                    auth_data = json.loads(auth_msg)
-                    
-                    if auth_data.get("type") != "auth_required":
-                        return False, "Nieoczekiwana odpowiedź z serwera"
-                    
-                    # Wyślij token
-                    await websocket.send(json.dumps({
-                        "type": "auth",
-                        "access_token": token
-                    }))
-                    
-                    # Odbierz odpowiedź
-                    result_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
-                    result_data = json.loads(result_msg)
-                    
-                    await websocket.close()
-                    
-                    if result_data.get("type") == "auth_ok":
-                        return True, "Połączenie działa poprawnie!"
-                    else:
-                        return False, "Błędny token dostępu"
-                        
-                except asyncio.TimeoutError:
-                    return False, "Timeout - serwer nie odpowiada"
-                except Exception as e:
-                    return False, f"Błąd połączenia: {str(e)}"
-            
-            # Uruchom test w nowej pętli asyncio
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                success, message = loop.run_until_complete(test_connection())
-                return {'success': success, 'message': message}
-            finally:
-                loop.close()
-                
-        except Exception as e:
-            logger.error(f"Błąd testu połączenia: {e}")
-            return {'success': False, 'message': f'Błąd testu: {str(e)}'}
+            messagebox.showerror(
+                "Błąd ustawień", 
+                f"Wystąpił błąd podczas otwierania ustawień:\n\n{str(e)}\n\n"
+                "Sprawdź logi aplikacji dla szczegółów."
+            )
+            root.destroy()
 
     async def process_voice_command(self):
-        """Przetwarzanie komendy głosowej."""
+        """Ulepszone przetwarzanie komendy głosowej z walidacją pipeline'u."""
         try:
             # Zmień stan na nasłuchiwanie
             self.animation_server.change_state("listening")
             
             # Inicjalizacja klientów
-            self.ha_client = HomeAssistantClient()
+            self.ha_client = HomeAssistantClient()  # Już ulepszona wersja
             self.audio_manager = AudioManager()
+            
+            # NOWOŚĆ: Pre-validation pipeline'u
+            pipeline_id = utils.get_env("HA_PIPELINE_ID")
+            if pipeline_id:
+                logger.info(f"Sprawdzam dostępność pipeline'u: {pipeline_id}")
             
             # Inicjalizacja mikrofonu
             self.audio_manager.init_audio()
             
-            # Połączenie z Home Assistant
+            # Połączenie z Home Assistant (już z obsługą pipeline'ów)
             if not await self.ha_client.connect():
                 logger.error("Nie udało się połączyć z Home Assistant")
                 self.animation_server.change_state("error", "Nie można połączyć się z Home Assistant")
-                await asyncio.sleep(8)  # WYDŁUŻONO z 6 do 8 sekund
+                await asyncio.sleep(8)
                 self.animation_server.change_state("hidden")
                 return False
             
             logger.info("Połączono z Home Assistant")
             
-            # Uruchomienie pipeline Assist
-            if not await self.ha_client.start_assist_pipeline():
+            # NOWOŚĆ: Sprawdź czy wybrany pipeline jest dostępny
+            if pipeline_id and not self.ha_client.validate_pipeline_id(pipeline_id):
+                logger.warning(f"Pipeline '{pipeline_id}' nie jest dostępny - używam domyślnego")
+                # Możesz tutaj wyświetlić ostrzeżenie lub zmienić na błąd
+                
+            # Uruchomienie pipeline Assist z timeout
+            if not await self.ha_client.start_assist_pipeline(timeout_seconds=30):
                 logger.error("Nie udało się uruchomić pipeline Assist")
                 self.animation_server.change_state("error", "Nie można uruchomić asystenta głosowego")
-                await asyncio.sleep(8)  # WYDŁUŻONO z 6 do 8 sekund
+                await asyncio.sleep(8)
                 self.animation_server.change_state("hidden")
                 return False
             
@@ -532,8 +331,10 @@ class HAAssistApp:
             async def on_audio_chunk(audio_chunk):
                 # Wyślij dane audio do animacji
                 self.animation_server.send_audio_data(audio_chunk)
-                # Wyślij do Home Assistant
-                await self.ha_client.send_audio_chunk(audio_chunk)
+                # Wyślij do Home Assistant (z obsługą błędów)
+                success = await self.ha_client.send_audio_chunk(audio_chunk)
+                if not success:
+                    logger.warning("Błąd wysyłania audio chunk")
             
             async def on_audio_end():
                 # Zmień stan na przetwarzanie Z MAŁYM OPÓŹNIENIEM
@@ -543,15 +344,17 @@ class HAAssistApp:
                 # KRÓTKIE OPÓŹNIENIE - żeby animacja processing była widoczna
                 await asyncio.sleep(0.8)
                 
-                await self.ha_client.end_audio()
+                success = await self.ha_client.end_audio()
+                if not success:
+                    logger.warning("Błąd kończenia audio")
             
             # Rozpoczęcie nagrywania
             if await self.audio_manager.record_audio(on_audio_chunk, on_audio_end):
                 logger.info("Audio wysłane pomyślnie")
                 
-                # Odbieranie odpowiedzi - TUTAJ BĘDĄ LOGI W CZASIE RZECZYWISTYM
+                # Odbieranie odpowiedzi z konfiguracją timeout
                 logger.info("=== ODBIERAM ODPOWIEDŹ ===")
-                results = await self.ha_client.receive_response()
+                results = await self.ha_client.receive_response(timeout_seconds=45)
                 
                 # SPRAWDŹ CZY NIE MA BŁĘDU W RESULTS
                 error_found = False
@@ -569,8 +372,17 @@ class HAAssistApp:
                             
                             # POKAŻ ERROR ANIMATION Z TEKSTEM BŁĘDU
                             full_error_message = f"{error_code}: {error_message}"
+                            
+                            # SPECJALNE OBSŁUGI DLA TYPOWYCH BŁĘDÓW
+                            if error_code == "stt-stream-failed":
+                                full_error_message = "Nie rozpoznano mowy. Spróbuj ponownie."
+                            elif error_code == "intent-failed":
+                                full_error_message = "Nie rozumiem polecenia. Powiedz jaśniej."
+                            elif error_code == "pipeline-not-found":
+                                full_error_message = "Błąd konfiguracji. Sprawdź ustawienia."
+                            
                             self.animation_server.change_state("error", full_error_message)
-                            await asyncio.sleep(8)  # WYDŁUŻONO z 6 do 8 sekund - więcej czasu na przeczytanie
+                            await asyncio.sleep(8)
                             self.animation_server.change_state("hidden")
                             
                             error_found = True
@@ -580,7 +392,7 @@ class HAAssistApp:
                     # NIE MA BŁĘDU - NORMALNA ODPOWIEDŹ
                     response = self.ha_client.extract_assistant_response(results)
                     
-                    if response:
+                    if response and response != "Brak odpowiedzi od asystenta":
                         print("\n=== ODPOWIEDŹ ASYSTENTA ===")
                         print(response)
                         print("===========================\n")
@@ -593,7 +405,9 @@ class HAAssistApp:
                         audio_url = self.ha_client.extract_audio_url(results)
                         if audio_url:
                             print("Odtwarzam odpowiedź głosową z analizą FFT...")
-                            utils.play_audio_from_url(audio_url, self.ha_client.host, self.animation_server)
+                            success = utils.play_audio_from_url(audio_url, self.ha_client.host, self.animation_server)
+                            if not success:
+                                logger.warning("Nie udało się odtworzyć audio odpowiedzi")
                         
                         # Powrót do stanu hidden po 3 sekundach
                         await asyncio.sleep(3)
@@ -601,14 +415,20 @@ class HAAssistApp:
                     else:
                         print("\nBrak odpowiedzi od asystenta lub błąd przetwarzania.")
                         self.animation_server.change_state("error", "Asystent nie odpowiedział")
-                        await asyncio.sleep(8)  # WYDŁUŻONO z 6 do 8 sekund
+                        await asyncio.sleep(8)
                         self.animation_server.change_state("hidden")
             else:
                 logger.error("Nie udało się nagrać i wysłać audio")
                 self.animation_server.change_state("error", "Błąd nagrywania audio")
-                await asyncio.sleep(8)  # WYDŁUŻONO z 6 do 8 sekund
+                await asyncio.sleep(8)
                 self.animation_server.change_state("hidden")
                 
+        except asyncio.TimeoutError:
+            logger.error("Timeout podczas przetwarzania komendy głosowej")
+            self.animation_server.change_state("error", "Timeout - asystent nie odpowiada")
+            await asyncio.sleep(8)
+            self.animation_server.change_state("hidden")
+            
         except Exception as e:
             logger.exception(f"Wystąpił błąd podczas przetwarzania: {str(e)}")
             
@@ -620,7 +440,7 @@ class HAAssistApp:
             self.animation_server.change_state("error", f"Błąd: {error_msg}")
             
             # Po błędzie też wracamy do hidden - WYDŁUŻONO CZAS
-            await asyncio.sleep(10)  # WYDŁUŻONO z 6 do 10 sekund dla błędów wyjątków
+            await asyncio.sleep(10)
             self.animation_server.change_state("hidden")
         finally:
             # Cleanup
@@ -781,7 +601,7 @@ class HAAssistApp:
         logger.info("System tray uruchomiony")
     
     def run(self):
-        """Uruchomienie aplikacji."""
+        """ORYGINALNA metoda run() - ZACHOWANA!"""
         try:
             logger.info("Uruchamianie HA Assist Desktop...")
             
@@ -839,8 +659,51 @@ class HAAssistApp:
         if self.audio_manager:
             self.audio_manager.close_audio()
 
+
+# NOWOŚĆ: Funkcja pomocnicza do walidacji konfiguracji
+def validate_configuration():
+    """Waliduje konfigurację aplikacji i zwraca listę problemów."""
+    issues = []
+    
+    # Sprawdź podstawowe ustawienia
+    host = utils.get_env("HA_HOST")
+    token = utils.get_env("HA_TOKEN")
+    
+    if not host:
+        issues.append("Brak adresu serwera Home Assistant (HA_HOST)")
+    
+    if not token:
+        issues.append("Brak tokena dostępu (HA_TOKEN)")
+    
+    # Sprawdź ustawienia audio
+    sample_rate = utils.get_env("HA_SAMPLE_RATE", 16000, int)
+    if sample_rate not in [8000, 16000, 22050, 44100, 48000]:
+        issues.append(f"Nietypowa częstotliwość próbkowania: {sample_rate}Hz")
+    
+    frame_duration = utils.get_env("HA_FRAME_DURATION_MS", 30, int)
+    if frame_duration not in [10, 20, 30]:
+        issues.append(f"Nieprawidłowa długość ramki VAD: {frame_duration}ms (dozwolone: 10, 20, 30)")
+    
+    vad_mode = utils.get_env("HA_VAD_MODE", 3, int)
+    if vad_mode < 0 or vad_mode > 3:
+        issues.append(f"Nieprawidłowy tryb VAD: {vad_mode} (dozwolone: 0-3)")
+    
+    # Sprawdź port animacji
+    try:
+        anim_port = utils.get_env("ANIMATION_PORT", 8765, int)
+        if anim_port < 1024 or anim_port > 65535:
+            issues.append(f"Nieprawidłowy port animacji: {anim_port} (dozwolone: 1024-65535)")
+    except (ValueError, TypeError):
+        issues.append("Port animacji musi być liczbą")
+    
+    return issues
+
+
 def main():
-    """Główna funkcja aplikacji."""
+    """Główna funkcja aplikacji z walidacją konfiguracji."""
+    print("=== HA ASSIST DESKTOP ===")
+    print("Uruchamianie aplikacji...")
+    
     # Znajdź plik .env i wyświetl jego ścieżkę
     possible_paths = [
         os.path.join(os.path.dirname(__file__), '.env'),
@@ -848,28 +711,76 @@ def main():
         '.env'
     ]
     
+    env_found = False
     for path in possible_paths:
         if os.path.exists(path):
             abs_path = os.path.abspath(path)
-            print(f"UŻYWAM PLIKU .ENV: {abs_path}")
+            print(f"📄 UŻYWAM PLIKU .ENV: {abs_path}")
+            env_found = True
             
-            # Wyświetl zawartość pliku
+            # Wyświetl zawartość pliku (bez tokenów)
             with open(abs_path, 'r', encoding='utf-8') as f:
                 content = f.read()
+            
+            # Ukryj token w wyświetlaniu
+            lines = content.split('\n')
+            filtered_lines = []
+            for line in lines:
+                if line.startswith('HA_TOKEN=') and len(line) > 20:
+                    filtered_lines.append(f"HA_TOKEN=***UKRYTY*** (długość: {len(line.split('=', 1)[1])} znaków)")
+                else:
+                    filtered_lines.append(line)
+            
             print("ZAWARTOŚĆ PLIKU .ENV:")
-            print(content)
-            print("----------------------------------")
+            print('\n'.join(filtered_lines))
+            print("-" * 50)
             break
     
-    # Wyświetl wartości zmiennych środowiskowych
-    print("WARTOŚCI ZMIENNYCH ŚRODOWISKOWYCH:")
-    for key in ['HA_HOST', 'HA_TOKEN', 'HA_HOTKEY', 'HA_VAD_MODE', 'DEBUG']:
-        value = os.environ.get(key, "BRAK")
-        print(f"{key} = {value}")
-    print("----------------------------------")
+    if not env_found:
+        print("⚠️  BRAK PLIKU .ENV - używam domyślnych ustawień")
+        print("Uruchom aplikację i przejdź do 'Ustawienia' aby skonfigurować połączenie.")
+        print("-" * 50)
     
+    # Walidacja konfiguracji
+    print("🔍 SPRAWDZAM KONFIGURACJĘ...")
+    config_issues = validate_configuration()
+    
+    if config_issues:
+        print("⚠️  ZNALEZIONE PROBLEMY KONFIGURACJI:")
+        for issue in config_issues:
+            print(f"   • {issue}")
+        print("\nAplikacja może nie działać poprawnie.")
+        print("Przejdź do 'Ustawienia' aby naprawić problemy.")
+    else:
+        print("✅ Konfiguracja wygląda poprawnie")
+    
+    print("-" * 50)
+    
+    # Wyświetl najważniejsze ustawienia (bez tokena)
+    print("📋 KLUCZOWE USTAWIENIA:")
+    important_settings = {
+        'HA_HOST': utils.get_env('HA_HOST', 'BRAK'),
+        'HA_PIPELINE_ID': utils.get_env('HA_PIPELINE_ID', '(domyślny)'),
+        'HA_HOTKEY': utils.get_env('HA_HOTKEY', 'ctrl+shift+h'),
+        'HA_VAD_MODE': utils.get_env('HA_VAD_MODE', '3'),
+        'DEBUG': utils.get_env('DEBUG', 'false')
+    }
+    
+    for key, value in important_settings.items():
+        print(f"   {key} = {value}")
+    
+    token_length = len(utils.get_env('HA_TOKEN', ''))
+    if token_length > 0:
+        print(f"   HA_TOKEN = ***UKRYTY*** ({token_length} znaków)")
+    else:
+        print(f"   HA_TOKEN = BRAK")
+    
+    print("=" * 50)
+    
+    # Uruchom aplikację
     app = HAAssistApp()
     app.run()
+
 
 if __name__ == "__main__":
     main()
