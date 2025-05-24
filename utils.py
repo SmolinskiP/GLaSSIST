@@ -267,6 +267,50 @@ def validate_audio_format(sample_rate, channels=1):
     
     return True
 
+def play_feedback_sound(sound_name):
+    """
+    Odtwarza dźwięk feedback (activation.wav, deactivation.wav) z folderu 'sound'.
+    
+    Args:
+        sound_name: Nazwa dźwięku ('activation' lub 'deactivation')
+    """
+    # Sprawdź czy dźwięki są włączone
+    sound_enabled = get_env('HA_SOUND_FEEDBACK', 'true')
+    if sound_enabled.lower() not in ('true', '1', 'yes', 'y', 't'):
+        return False
+    
+    logger = setup_logger()
+    
+    try:
+        # Ścieżka do pliku dźwiękowego
+        sound_dir = os.path.join(os.path.dirname(__file__), 'sound')
+        sound_file = os.path.join(sound_dir, f"{sound_name}.wav")
+        
+        if not os.path.exists(sound_file):
+            logger.warning(f"Brak pliku dźwiękowego: {sound_file}")
+            return False
+        
+        # Wczytaj i odtwórz dźwięk w osobnym wątku żeby nie blokować
+        def play_thread():
+            try:
+                data, samplerate = sf.read(sound_file)
+                sd.play(data, samplerate)
+                # Nie używamy sd.wait() żeby nie blokować
+                
+            except Exception as e:
+                logger.error(f"Błąd odtwarzania dźwięku {sound_name}: {e}")
+        
+        # Uruchom w osobnym wątku
+        thread = threading.Thread(target=play_thread, daemon=True)
+        thread.start()
+        
+        logger.debug(f"Odtwarzam dźwięk: {sound_name}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Błąd odtwarzania dźwięku feedback {sound_name}: {e}")
+        return False
+
 def format_duration(seconds):
     """Formatuje czas trwania w sekundach na czytelny string."""
     if seconds < 60:
@@ -280,3 +324,4 @@ def format_duration(seconds):
         minutes = int((seconds % 3600) // 60)
         secs = seconds % 60
         return f"{hours}h {minutes}m {secs:.1f}s"
+    

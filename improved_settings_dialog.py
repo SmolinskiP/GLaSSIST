@@ -31,6 +31,7 @@ class ImprovedSettingsDialog:
             'HA_HOTKEY': utils.get_env('HA_HOTKEY', 'ctrl+shift+h'),
             'HA_VAD_MODE': utils.get_env('HA_VAD_MODE', 3, int),
             'HA_SILENCE_THRESHOLD_SEC': utils.get_env('HA_SILENCE_THRESHOLD_SEC', 0.8, float),
+            'HA_SOUND_FEEDBACK': utils.get_env('HA_SOUND_FEEDBACK', 'true'),
             'DEBUG': utils.get_env('DEBUG', False, bool)
         }
         
@@ -193,6 +194,18 @@ class ImprovedSettingsDialog:
         hotkey_combo["values"] = ("ctrl+shift+h", "ctrl+shift+g", "ctrl+alt+h", "ctrl+shift+a", "alt+space", "ctrl+shift+space")
         hotkey_combo.grid(row=0, column=1, sticky=tk.W, pady=5, padx=5)
         
+        feedback_frame = ttk.LabelFrame(parent, text="Audio Feedback", padding="10")
+        feedback_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        self.sound_feedback_var = tk.BooleanVar(value=current_settings.get('HA_SOUND_FEEDBACK', True))
+        sound_check = ttk.Checkbutton(feedback_frame, text="Play sounds on activation/deactivation", variable=self.sound_feedback_var)
+        sound_check.pack(anchor=tk.W)
+        
+        sound_desc = ttk.Label(feedback_frame, 
+                              text="Plays activation.wav and deactivation.wav from 'sound' folder",
+                              font=("Segoe UI", 9), foreground="gray")
+        sound_desc.pack(anchor=tk.W, pady=(5, 0))
+
         # VAD (Voice Activity Detection)
         vad_frame = ttk.LabelFrame(parent, text="Voice Activity Detection (VAD)", padding="10")
         vad_frame.pack(fill=tk.X, pady=(0, 10))
@@ -524,6 +537,7 @@ class ImprovedSettingsDialog:
                 'HA_SAMPLE_RATE': self.sample_rate_var.get(),
                 'HA_FRAME_DURATION_MS': self.frame_duration_var.get(),
                 'ANIMATION_PORT': self.animation_port_var.get(),
+                'HA_SOUND_FEEDBACK': 'true' if self.sound_feedback_var.get() else 'false',
                 
                 # Keep current values for hidden settings
                 'HA_CHANNELS': utils.get_env('HA_CHANNELS', '1'),
@@ -608,7 +622,8 @@ class ImprovedSettingsDialog:
             
             env_content += "\n# === NETWORK ===\n"
             env_content += f"ANIMATION_PORT={settings['ANIMATION_PORT']}\n"
-            
+            env_content += "\n# === AUDIO FEEDBACK ===\n"
+            env_content += f"HA_SOUND_FEEDBACK={settings['HA_SOUND_FEEDBACK']}\n"
             env_content += "\n# === DEBUG ===\n"
             env_content += f"DEBUG={settings['DEBUG']}\n"
             

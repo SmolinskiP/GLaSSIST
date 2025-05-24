@@ -297,6 +297,7 @@ class HAAssistApp:
         """Ulepszone przetwarzanie komendy głosowej z walidacją pipeline'u."""
         try:
             # Zmień stan na nasłuchiwanie
+            utils.play_feedback_sound("activation")
             self.animation_server.change_state("listening")
             
             # Inicjalizacja klientów
@@ -317,6 +318,7 @@ class HAAssistApp:
                 self.animation_server.change_state("error", "Nie można połączyć się z Home Assistant")
                 await asyncio.sleep(8)
                 self.animation_server.change_state("hidden")
+                utils.play_feedback_sound("deactivation")
                 return False
             
             logger.info("Połączono z Home Assistant")
@@ -332,6 +334,7 @@ class HAAssistApp:
                 self.animation_server.change_state("error", "Nie można uruchomić asystenta głosowego")
                 await asyncio.sleep(8)
                 self.animation_server.change_state("hidden")
+                utils.play_feedback_sound("deactivation")
                 return False
             
             logger.info("Pipeline Assist uruchomiony pomyślnie")
@@ -396,6 +399,7 @@ class HAAssistApp:
                             self.animation_server.change_state("error", full_error_message)
                             await asyncio.sleep(8)
                             self.animation_server.change_state("hidden")
+                            utils.play_feedback_sound("deactivation")
                             
                             error_found = True
                             break
@@ -424,22 +428,26 @@ class HAAssistApp:
                         # Powrót do stanu hidden po 3 sekundach
                         await asyncio.sleep(3)
                         self.animation_server.change_state("hidden")
+                        utils.play_feedback_sound("deactivation")
                     else:
                         print("\nBrak odpowiedzi od asystenta lub błąd przetwarzania.")
                         self.animation_server.change_state("error", "Asystent nie odpowiedział")
                         await asyncio.sleep(8)
                         self.animation_server.change_state("hidden")
+                        utils.play_feedback_sound("deactivation")
             else:
                 logger.error("Nie udało się nagrać i wysłać audio")
                 self.animation_server.change_state("error", "Błąd nagrywania audio")
                 await asyncio.sleep(8)
                 self.animation_server.change_state("hidden")
+                utils.play_feedback_sound("deactivation")
                 
         except asyncio.TimeoutError:
             logger.error("Timeout podczas przetwarzania komendy głosowej")
             self.animation_server.change_state("error", "Timeout - asystent nie odpowiada")
             await asyncio.sleep(8)
             self.animation_server.change_state("hidden")
+            utils.play_feedback_sound("deactivation")
             
         except Exception as e:
             logger.exception(f"Wystąpił błąd podczas przetwarzania: {str(e)}")
@@ -454,6 +462,7 @@ class HAAssistApp:
             # Po błędzie też wracamy do hidden - WYDŁUŻONO CZAS
             await asyncio.sleep(10)
             self.animation_server.change_state("hidden")
+            utils.play_feedback_sound("deactivation")
         finally:
             # Cleanup
             if self.audio_manager:
@@ -699,6 +708,20 @@ def validate_configuration():
     vad_mode = utils.get_env("HA_VAD_MODE", 3, int)
     if vad_mode < 0 or vad_mode > 3:
         issues.append(f"Nieprawidłowy tryb VAD: {vad_mode} (dozwolone: 0-3)")
+
+    # Sprawdź dźwięki feedback
+    sound_feedback = utils.get_env('HA_SOUND_FEEDBACK', 'true')
+    if sound_feedback.lower() in ('true', '1', 'yes', 'y', 't'):
+        sound_dir = os.path.join(os.path.dirname(__file__), 'sound')
+        activation_sound = os.path.join(sound_dir, 'activation.wav')
+        deactivation_sound = os.path.join(sound_dir, 'deactivation.wav')
+        
+        if not os.path.exists(activation_sound):
+            issues.append(f"Brak pliku dźwięku aktywacji: {activation_sound}")
+        
+        if not os.path.exists(deactivation_sound):
+            issues.append(f"Brak pliku dźwięku deaktywacji: {deactivation_sound}")
+
     
     # Sprawdź port animacji
     try:
@@ -775,6 +798,7 @@ def main():
         'HA_PIPELINE_ID': utils.get_env('HA_PIPELINE_ID', '(domyślny)'),
         'HA_HOTKEY': utils.get_env('HA_HOTKEY', 'ctrl+shift+h'),
         'HA_VAD_MODE': utils.get_env('HA_VAD_MODE', '3'),
+        'HA_SOUND_FEEDBACK': utils.get_env('HA_SOUND_FEEDBACK', 'true'),
         'DEBUG': utils.get_env('DEBUG', 'false')
     }
     
