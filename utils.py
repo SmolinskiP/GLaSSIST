@@ -32,6 +32,15 @@ def setup_logger():
     
     return logging.getLogger('haassist')
 
+def get_env_bool(key, default=False):
+    """Get environment variable as boolean with safe parsing."""
+    value = get_env(key, str(default).lower())
+    
+    if isinstance(value, str):
+        return value.lower() in ('true', '1', 'yes', 'y', 't')
+    else:
+        return bool(value)
+
 def get_env(key, default=None, as_type=str):
     """Get environment variable and optionally convert to specified type."""
     value = _read_from_env_file(key)
@@ -43,7 +52,11 @@ def get_env(key, default=None, as_type=str):
         return None
     
     if as_type == bool:
-        return value.lower() in ('true', '1', 'yes', 'y', 't')
+        # Safe boolean parsing
+        if isinstance(value, str):
+            return value.lower() in ('true', '1', 'yes', 'y', 't')
+        else:
+            return bool(value)
     
     try:
         return as_type(value)

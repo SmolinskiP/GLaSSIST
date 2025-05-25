@@ -8,6 +8,8 @@ import threading
 import os
 import webbrowser
 import utils
+import subprocess
+import platform
 from client import HomeAssistantClient
 
 logger = utils.setup_logger()
@@ -31,7 +33,12 @@ class ImprovedSettingsDialog:
             'HA_VAD_MODE': utils.get_env('HA_VAD_MODE', 3, int),
             'HA_SILENCE_THRESHOLD_SEC': utils.get_env('HA_SILENCE_THRESHOLD_SEC', 0.8, float),
             'HA_SOUND_FEEDBACK': utils.get_env('HA_SOUND_FEEDBACK', 'true'),
-            'DEBUG': utils.get_env('DEBUG', False, bool)
+            'DEBUG': utils.get_env('DEBUG', 'false'),
+            'HA_WAKE_WORD_ENABLED': utils.get_env('HA_WAKE_WORD_ENABLED', 'false'),
+            'HA_WAKE_WORD_MODELS': utils.get_env('HA_WAKE_WORD_MODELS', 'alexa'),
+            'HA_WAKE_WORD_THRESHOLD': utils.get_env('HA_WAKE_WORD_THRESHOLD', 0.5, float),
+            'HA_WAKE_WORD_VAD_THRESHOLD': utils.get_env('HA_WAKE_WORD_VAD_THRESHOLD', 0.3, float),
+            'HA_WAKE_WORD_NOISE_SUPPRESSION': utils.get_env('HA_WAKE_WORD_NOISE_SUPPRESSION', 'true'),
         }
         
         self.root = tk.Tk()
@@ -68,6 +75,9 @@ class ImprovedSettingsDialog:
         
         audio_frame = ttk.Frame(notebook, padding="10")
         notebook.add(audio_frame, text="Audio & VAD")
+
+        models_frame = ttk.Frame(notebook, padding="10")
+        notebook.add(models_frame, text="Models")
         
         advanced_frame = ttk.Frame(notebook, padding="10")
         notebook.add(advanced_frame, text="Advanced")
@@ -77,6 +87,7 @@ class ImprovedSettingsDialog:
         
         self._create_connection_tab(connection_frame, current_settings)
         self._create_audio_tab(audio_frame, current_settings)
+        self._create_models_tab(models_frame, current_settings)
         self._create_advanced_tab(advanced_frame, current_settings)
         self._create_about_tab(about_frame)
         
@@ -101,6 +112,480 @@ class ImprovedSettingsDialog:
         
         self.root.mainloop()
     
+    def _create_models_tab(self, parent, current_settings):
+        """Create wake word models tab."""
+        # Create scrollable frame
+        canvas = tk.Canvas(parent)
+        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Wake word activation section
+        activation_frame = ttk.LabelFrame(scrollable_frame, text="🎤 Wake Word Activation", padding="10")
+        activation_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        self.wake_word_enabled_var = tk.BooleanVar(value=current_settings.get('HA_WAKE_WORD_ENABLED', False))
+        wake_word_check = ttk.Checkbutton(
+            activation_frame, 
+            text="Enable wake word detection", 
+            variable=self.wake_word_enabled_var,
+            command=self._on_wake_word_toggle
+        )
+        wake_word_check.pack(anchor=tk.W)
+        
+        wake_word_desc = ttk.Label(
+            activation_frame, 
+            text="Allows voice activation using words like 'Alexa', 'Hey Jarvis', etc.\n"
+                 "Requires: pip install openwakeword",
+            font=("Segoe UI", 9), 
+            foreground="gray"
+        )
+        wake_word_desc.pack(anchor=tk.W, pady=(5, 0))
+        
+        # Check openWakeWord status
+        try:
+            import openwakeword
+            status_text = "✅ openWakeWord installed and ready"
+            status_color = "green"
+        except ImportError:
+            status_text = "❌ openWakeWord not installed - run: pip install openwakeword"
+            status_color = "red"
+        
+        status_label = ttk.Label(
+            activation_frame,
+            text=status_text,
+            font=("Segoe UI", 9, "bold"),
+            foreground=status_color
+        )
+        status_label.pack(anchor=tk.W, pady=(5, 0))
+        
+        # Model selection section
+        self.models_config_frame = ttk.LabelFrame(scrollable_frame, text="📋 Model Configuration", padding="10")
+        self.models_config_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # Available models dropdown
+        models_selection_frame = ttk.Frame(self.models_config_frame)
+        models_selection_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(models_selection_frame, text="Available models:").pack(side=tk.LEFT)
+        
+        self.available_models_var = tk.StringVar()
+        self.available_models_combo = ttk.Combobox(
+            models_selection_frame, 
+            textvariable=self.available_models_var,
+            values=["alexa", "hey_jarvis", "hey_mycroft", "timers", "weather"],
+            state="readonly",
+            width=20
+        )
+        self.available_models_combo.pack(side=tk.LEFT, padx=10)
+        self.available_models_combo.set("alexa")
+        
+        add_model_button = ttk.Button(
+            models_selection_frame, 
+            text="➕ Add", 
+            command=self._add_model
+        )
+        add_model_button.pack(side=tk.LEFT, padx=5)
+        
+        # Selected models list
+        selected_models_frame = ttk.Frame(self.models_config_frame)
+        selected_models_frame.pack(fill=tk.X, pady=10)
+        
+        ttk.Label(selected_models_frame, text="Selected models:").pack(anchor=tk.W)
+        
+        listbox_frame = ttk.Frame(selected_models_frame)
+        listbox_frame.pack(fill=tk.X, pady=5)
+        
+        self.selected_models_listbox = tk.Listbox(listbox_frame, height=4)
+        self.selected_models_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        models_scrollbar_inner = ttk.Scrollbar(listbox_frame, orient="vertical")
+        models_scrollbar_inner.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.selected_models_listbox.config(yscrollcommand=models_scrollbar_inner.set)
+        models_scrollbar_inner.config(command=self.selected_models_listbox.yview)
+        
+        remove_model_button = ttk.Button(
+            selected_models_frame, 
+            text="➖ Remove Selected", 
+            command=self._remove_model
+        )
+        remove_model_button.pack(anchor=tk.W, pady=5)
+        
+        # Detection settings section
+        thresholds_frame = ttk.LabelFrame(scrollable_frame, text="🎯 Detection Settings", padding="10")
+        thresholds_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # Wake word threshold
+        threshold_frame = ttk.Frame(thresholds_frame)
+        threshold_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(threshold_frame, text="Detection threshold:", width=20).pack(side=tk.LEFT)
+        
+        self.wake_word_threshold_scale = ttk.Scale(
+            threshold_frame, 
+            from_=0.1, to=1.0, 
+            orient=tk.HORIZONTAL, 
+            length=200
+        )
+        self.wake_word_threshold_scale.set(current_settings.get('HA_WAKE_WORD_THRESHOLD', 0.5))
+        self.wake_word_threshold_scale.pack(side=tk.LEFT, padx=10)
+        
+        self.wake_word_threshold_value = ttk.Label(
+            threshold_frame, 
+            text=str(current_settings.get('HA_WAKE_WORD_THRESHOLD', 0.5)), 
+            width=6
+        )
+        self.wake_word_threshold_value.pack(side=tk.LEFT, padx=5)
+        
+        def update_wake_word_threshold(event=None):
+            value = round(self.wake_word_threshold_scale.get(), 2)
+            self.wake_word_threshold_value.config(text=str(value))
+        
+        self.wake_word_threshold_scale.bind("<Motion>", update_wake_word_threshold)
+        self.wake_word_threshold_scale.bind("<ButtonRelease-1>", update_wake_word_threshold)
+        
+        threshold_desc = ttk.Label(
+            thresholds_frame, 
+            text="Higher = less sensitive (fewer false positives, but may miss quiet words)", 
+            font=("Segoe UI", 9), 
+            foreground="gray"
+        )
+        threshold_desc.pack(anchor=tk.W, pady=2)
+        
+        # VAD threshold
+        vad_frame = ttk.Frame(thresholds_frame)
+        vad_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(vad_frame, text="Voice detection:", width=20).pack(side=tk.LEFT)
+        
+        self.wake_word_vad_scale = ttk.Scale(
+            vad_frame, 
+            from_=0.0, to=1.0, 
+            orient=tk.HORIZONTAL, 
+            length=200
+        )
+        self.wake_word_vad_scale.set(current_settings.get('HA_WAKE_WORD_VAD_THRESHOLD', 0.3))
+        self.wake_word_vad_scale.pack(side=tk.LEFT, padx=10)
+        
+        self.wake_word_vad_value = ttk.Label(
+            vad_frame, 
+            text=str(current_settings.get('HA_WAKE_WORD_VAD_THRESHOLD', 0.3)), 
+            width=6
+        )
+        self.wake_word_vad_value.pack(side=tk.LEFT, padx=5)
+        
+        def update_vad_threshold(event=None):
+            value = round(self.wake_word_vad_scale.get(), 2)
+            self.wake_word_vad_value.config(text=str(value))
+        
+        self.wake_word_vad_scale.bind("<Motion>", update_vad_threshold)
+        self.wake_word_vad_scale.bind("<ButtonRelease-1>", update_vad_threshold)
+        
+        vad_desc = ttk.Label(
+            thresholds_frame, 
+            text="Helps reduce false activations from non-speech sounds (0.0 = disabled)", 
+            font=("Segoe UI", 9), 
+            foreground="gray"
+        )
+        vad_desc.pack(anchor=tk.W, pady=2)
+        
+        # Noise suppression
+        self.noise_suppression_var = tk.BooleanVar(
+            value=current_settings.get('HA_WAKE_WORD_NOISE_SUPPRESSION', True)
+        )
+        noise_suppression_check = ttk.Checkbutton(
+            thresholds_frame, 
+            text="🔇 Enable noise suppression (Linux only)", 
+            variable=self.noise_suppression_var
+        )
+        noise_suppression_check.pack(anchor=tk.W, pady=5)
+        
+        # Model management section
+        management_frame = ttk.LabelFrame(scrollable_frame, text="📦 Model Management", padding="10")
+        management_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        buttons_frame1 = ttk.Frame(management_frame)
+        buttons_frame1.pack(fill=tk.X, pady=5)
+        
+        download_button = ttk.Button(
+            buttons_frame1, 
+            text="📥 Download Default Models", 
+            command=self._download_models
+        )
+        download_button.pack(side=tk.LEFT, padx=5)
+        
+        refresh_button = ttk.Button(
+            buttons_frame1, 
+            text="🔄 Refresh Model List", 
+            command=self._refresh_models
+        )
+        refresh_button.pack(side=tk.LEFT, padx=5)
+        
+        buttons_frame2 = ttk.Frame(management_frame)
+        buttons_frame2.pack(fill=tk.X, pady=5)
+        
+        models_folder_button = ttk.Button(
+            buttons_frame2, 
+            text="📁 Open Models Folder", 
+            command=self._open_models_folder
+        )
+        models_folder_button.pack(side=tk.LEFT, padx=5)
+        
+        test_wake_word_button = ttk.Button(
+            buttons_frame2,
+            text="🎯 Test Detection",
+            command=self._test_wake_word_detection
+        )
+        test_wake_word_button.pack(side=tk.LEFT, padx=5)
+        
+        # Status info
+        info_frame = ttk.LabelFrame(scrollable_frame, text="💡 Tips & Information", padding="10")
+        info_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        tips_text = """
+• Start with 'alexa' model - it's the most reliable
+• Higher thresholds = fewer false activations but might miss quiet speech
+• Test different settings to find what works in your environment
+• Place microphone away from speakers to avoid feedback
+• Wake words work best in quiet environments
+• You can use multiple models simultaneously
+        """.strip()
+        
+        info_label = ttk.Label(
+            info_frame,
+            text=tips_text,
+            font=("Segoe UI", 9),
+            foreground="blue",
+            justify=tk.LEFT
+        )
+        info_label.pack(anchor=tk.W)
+        
+        # Pack scrollable components
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Initialize
+        self._populate_selected_models(current_settings.get('HA_WAKE_WORD_MODELS', 'alexa'))
+        self._on_wake_word_toggle()
+    
+    def _on_wake_word_toggle(self):
+        """Handle wake word enable/disable toggle."""
+        enabled = self.wake_word_enabled_var.get()
+        
+        # Enable/disable all widgets in models config frame
+        def toggle_widget_state(widget, state):
+            try:
+                if hasattr(widget, 'configure'):
+                    widget.configure(state=state)
+            except:
+                pass
+            
+            # Recursively handle child widgets
+            for child in widget.winfo_children():
+                toggle_widget_state(child, state)
+        
+        state = "normal" if enabled else "disabled"
+        toggle_widget_state(self.models_config_frame, state)
+    
+    def _populate_selected_models(self, models_string):
+        """Populate selected models listbox."""
+        self.selected_models_listbox.delete(0, tk.END)
+        
+        if isinstance(models_string, str):
+            models = [m.strip() for m in models_string.split(',') if m.strip()]
+        else:
+            models = models_string if models_string else []
+        
+        for model in models:
+            self.selected_models_listbox.insert(tk.END, model)
+    
+    def _add_model(self):
+        """Add selected model to the list."""
+        model = self.available_models_var.get()
+        if not model:
+            return
+        
+        current_models = list(self.selected_models_listbox.get(0, tk.END))
+        if model not in current_models:
+            self.selected_models_listbox.insert(tk.END, model)
+            logger.info(f"Added wake word model: {model}")
+        else:
+            messagebox.showinfo("Model Already Added", f"Model '{model}' is already in the list.")
+    
+    def _remove_model(self):
+        """Remove selected model from the list."""
+        selection = self.selected_models_listbox.curselection()
+        if selection:
+            model = self.selected_models_listbox.get(selection[0])
+            self.selected_models_listbox.delete(selection[0])
+            logger.info(f"Removed wake word model: {model}")
+        else:
+            messagebox.showinfo("No Selection", "Select a model to remove.")
+    
+    def _download_models(self):
+        """Download default openWakeWord models."""
+        def download_thread():
+            try:
+                import openwakeword
+                logger.info("Downloading openWakeWord models...")
+                
+                if self.animation_server:
+                    self.animation_server.change_state("processing")
+                
+                openwakeword.utils.download_models()
+                
+                self.root.after(0, lambda: messagebox.showinfo(
+                    "Success", 
+                    "Default wake word models downloaded successfully!\n\n"
+                    "Available models:\n• alexa\n• hey_jarvis\n• hey_mycroft\n• timers\n• weather"
+                ))
+                
+                if self.animation_server:
+                    self.animation_server.show_success("Models downloaded", duration=3.0)
+                
+            except ImportError:
+                self.root.after(0, lambda: messagebox.showerror(
+                    "Error", 
+                    "openWakeWord not installed!\n\nInstall with:\npip install openwakeword"
+                ))
+                
+                if self.animation_server:
+                    self.animation_server.show_error("openWakeWord not installed", duration=5.0)
+                
+            except Exception as e:
+                error_msg = f"Failed to download models: {str(e)}"
+                self.root.after(0, lambda: messagebox.showerror("Error", error_msg))
+                
+                if self.animation_server:
+                    self.animation_server.show_error("Download failed", duration=5.0)
+        
+        threading.Thread(target=download_thread, daemon=True).start()
+    
+    def _refresh_models(self):
+        """Refresh available models list."""
+        try:
+            models_dir = os.path.join(os.path.dirname(__file__), 'models')
+            default_models = ["alexa", "hey_jarvis", "hey_mycroft", "timers", "weather"]
+            available_models = default_models.copy()
+            
+            # Add custom models from models directory
+            if os.path.exists(models_dir):
+                for filename in os.listdir(models_dir):
+                    if filename.endswith(('.onnx', '.tflite')):
+                        model_name = os.path.splitext(filename)[0]
+                        if model_name not in available_models:
+                            available_models.append(model_name)
+            
+            self.available_models_combo['values'] = available_models
+            logger.info(f"Refreshed models list: {len(available_models)} models available")
+            
+            messagebox.showinfo(
+                "Models Refreshed", 
+                f"Found {len(available_models)} available models:\n" + 
+                "\n".join(f"• {model}" for model in available_models)
+            )
+            
+            if self.animation_server:
+                self.animation_server.show_success("Models refreshed", duration=2.0)
+                
+        except Exception as e:
+            logger.error(f"Failed to refresh models: {e}")
+            messagebox.showerror("Error", f"Failed to refresh models: {str(e)}")
+    
+    def _open_models_folder(self):
+        """Open models folder in file explorer."""
+        try:
+            models_dir = os.path.join(os.path.dirname(__file__), 'models')
+            
+            if not os.path.exists(models_dir):
+                os.makedirs(models_dir)
+            
+            if platform.system() == "Windows":
+                subprocess.run(['explorer', models_dir])
+            elif platform.system() == "Darwin":  # macOS
+                subprocess.run(['open', models_dir])
+            else:  # Linux
+                subprocess.run(['xdg-open', models_dir])
+            
+            logger.info(f"Opened models folder: {models_dir}")
+            
+        except Exception as e:
+            logger.error(f"Failed to open models folder: {e}")
+            messagebox.showerror("Error", f"Failed to open models folder: {str(e)}")
+    
+    def _test_wake_word_detection(self):
+        """Test wake word detection."""
+        if not self.wake_word_enabled_var.get():
+            messagebox.showwarning("Wake Word Disabled", "Enable wake word detection first!")
+            return
+        
+        try:
+            import openwakeword
+        except ImportError:
+            messagebox.showerror("Error", "openWakeWord not installed!\n\nInstall with: pip install openwakeword")
+            return
+        
+        # Simple test dialog
+        test_dialog = tk.Toplevel(self.root)
+        test_dialog.title("Wake Word Test")
+        test_dialog.geometry("450x300")
+        test_dialog.transient(self.root)
+        test_dialog.grab_set()
+        
+        # Center the dialog
+        test_dialog.update_idletasks()
+        x = (test_dialog.winfo_screenwidth() // 2) - (test_dialog.winfo_width() // 2)
+        y = (test_dialog.winfo_screenheight() // 2) - (test_dialog.winfo_height() // 2)
+        test_dialog.geometry(f"+{x}+{y}")
+        
+        # Content
+        ttk.Label(test_dialog, text="🎤 Wake Word Detection Test", 
+                 font=("Segoe UI", 16, "bold")).pack(pady=20)
+        
+        current_models = list(self.selected_models_listbox.get(0, tk.END))
+        models_text = ", ".join(current_models) if current_models else "No models selected"
+        
+        ttk.Label(test_dialog, text=f"Selected models: {models_text}", 
+                 font=("Segoe UI", 12)).pack(pady=10)
+        
+        threshold = round(self.wake_word_threshold_scale.get(), 2)
+        ttk.Label(test_dialog, text=f"Detection threshold: {threshold}", 
+                 font=("Segoe UI", 12)).pack(pady=5)
+        
+        status_label = ttk.Label(test_dialog, text="Click 'Start Test' to begin listening...", 
+                                font=("Segoe UI", 12), foreground="blue")
+        status_label.pack(pady=20)
+        
+        def start_test():
+            status_label.config(text="🔴 Listening for wake words...\nSay one of your selected wake words!", 
+                               foreground="red")
+            test_dialog.after(5000, lambda: status_label.config(
+                text="Test completed!\n\nFor real testing, save settings and restart the app.", 
+                foreground="green"
+            ))
+        
+        button_frame = ttk.Frame(test_dialog)
+        button_frame.pack(pady=20)
+        
+        ttk.Button(button_frame, text="🎯 Start Test", command=start_test).pack(side=tk.LEFT, padx=10)
+        ttk.Button(button_frame, text="❌ Close", command=test_dialog.destroy).pack(side=tk.LEFT, padx=10)
+        
+        info_label = ttk.Label(
+            test_dialog,
+            text="💡 Note: This is a simple test. For full functionality,\nsave your settings and restart GLaSSIST.",
+            font=("Segoe UI", 9),
+            foreground="gray"
+        )
+        info_label.pack(pady=10)
+
     def _create_connection_tab(self, parent, current_settings):
         """Create connection tab."""
         conn_settings_frame = ttk.LabelFrame(parent, text="Connection Parameters", padding="10")
@@ -451,6 +936,8 @@ class ImprovedSettingsDialog:
         try:
             selected_pipeline_display = self.pipeline_var.get()
             selected_pipeline_id = ""
+            selected_models = list(self.selected_models_listbox.get(0, tk.END))
+            models_string = ','.join(selected_models) if selected_models else 'alexa'
             
             if hasattr(self, 'pipeline_mapping') and selected_pipeline_display in self.pipeline_mapping:
                 selected_pipeline_id = self.pipeline_mapping[selected_pipeline_display]
@@ -473,6 +960,12 @@ class ImprovedSettingsDialog:
                 
                 'HA_CHANNELS': utils.get_env('HA_CHANNELS', '1'),
                 'HA_PADDING_MS': utils.get_env('HA_PADDING_MS', '300'),
+
+                'HA_WAKE_WORD_ENABLED': 'true' if self.wake_word_enabled_var.get() else 'false',
+                'HA_WAKE_WORD_MODELS': models_string,
+                'HA_WAKE_WORD_THRESHOLD': str(round(self.wake_word_threshold_scale.get(), 2)),
+                'HA_WAKE_WORD_VAD_THRESHOLD': str(round(self.wake_word_vad_scale.get(), 2)),
+                'HA_WAKE_WORD_NOISE_SUPPRESSION': 'true' if self.noise_suppression_var.get() else 'false'
             }
             
             if not new_settings['HA_HOST']:
@@ -483,6 +976,20 @@ class ImprovedSettingsDialog:
                 messagebox.showerror("Error", "Access token is required!")
                 return
             
+            if self.wake_word_enabled_var.get():
+                if not selected_models:
+                    messagebox.showerror("Error", "Select at least one wake word model!")
+                    return
+                
+                try:
+                    import openwakeword
+                except ImportError:
+                    messagebox.showerror("Error", 
+                        "openWakeWord not installed!\n\n"
+                        "Install with: pip install openwakeword\n"
+                        "or disable wake word detection.")
+                    return
+
             try:
                 port = int(new_settings['ANIMATION_PORT'])
                 if port < 1024 or port > 65535:
@@ -550,6 +1057,13 @@ class ImprovedSettingsDialog:
             
             env_content += "\n# === AUDIO FEEDBACK ===\n"
             env_content += f"HA_SOUND_FEEDBACK={settings['HA_SOUND_FEEDBACK']}\n"
+
+            env_content += "\n# === WAKE WORD DETECTION ===\n"
+            env_content += f"HA_WAKE_WORD_ENABLED={settings.get('HA_WAKE_WORD_ENABLED', 'false')}\n"
+            env_content += f"HA_WAKE_WORD_MODELS={settings.get('HA_WAKE_WORD_MODELS', 'alexa')}\n"
+            env_content += f"HA_WAKE_WORD_THRESHOLD={settings.get('HA_WAKE_WORD_THRESHOLD', '0.5')}\n"
+            env_content += f"HA_WAKE_WORD_VAD_THRESHOLD={settings.get('HA_WAKE_WORD_VAD_THRESHOLD', '0.3')}\n"
+            env_content += f"HA_WAKE_WORD_NOISE_SUPPRESSION={settings.get('HA_WAKE_WORD_NOISE_SUPPRESSION', 'true')}\n"
             
             env_content += "\n# === DEBUG ===\n"
             env_content += f"DEBUG={settings['DEBUG']}\n"

@@ -13,6 +13,7 @@ import utils
 from client import HomeAssistantClient
 from audio import AudioManager
 from animation_server import AnimationServer
+from wake_word_detector import WakeWordDetector, validate_wake_word_config
 
 logger = utils.setup_logger()
 
@@ -29,11 +30,58 @@ class HAAssistApp:
         self.is_running = False
         self.tray_icon = None
         self.window_visible = True
+        self.wake_word_detector = None
         
         # Pipeline caching
         self.cached_pipelines = []
         self.pipeline_cache_time = 0
+        self._setup_wake_word_detector()
+
+    def _setup_wake_word_detector(self):
+        """Setup wake word detector with callback."""
+        try:
+            self.wake_word_detector = WakeWordDetector(
+                callback=self.on_wake_word_detected
+            )
+            
+            if self.wake_word_detector.enabled:
+                logger.info("Wake word detector initialized and enabled")
+            else:
+                logger.info("Wake word detector disabled in configuration")
+                
+        except Exception as e:
+            logger.error(f"Failed to setup wake word detector: {e}")
+            self.wake_word_detector = None
+
+    def on_wake_word_detected(self, model_name, confidence):
+        """Callback when wake word is detected."""
+        logger.info(f"🎯 Wake word '{model_name}' detected (confidence: {confidence:.3f})")
         
+        # Check if we're not already processing a command
+        if self.animation_server.current_state != "hidden":
+            logger.info("Application is busy, ignoring wake word")
+            return
+        
+        # Trigger voice command processing
+        self.on_voice_command_trigger()
+
+    def start_wake_word_detection(self):
+        """Start wake word detection if enabled."""
+        if self.wake_word_detector and self.wake_word_detector.enabled:
+            success = self.wake_word_detector.start_detection()
+            if success:
+                logger.info("✅ Wake word detection started")
+            else:
+                logger.error("❌ Failed to start wake word detection")
+            return success
+        return False
+    
+    def stop_wake_word_detection(self):
+        """Stop wake word detection."""
+        if self.wake_word_detector:
+            self.wake_word_detector.stop_detection()
+            logger.info("Wake word detection stopped")
+
     def create_tray_icon(self):
         """Create system tray icon with enhanced options."""
         icon_path = os.path.join(os.path.dirname(__file__), 'img', 'icon.ico')
@@ -54,6 +102,9 @@ class HAAssistApp:
             item('🎤 Activate voice (%s)' % utils.get_env("HA_HOTKEY", "ctrl+shift+h"), 
                  self.trigger_voice_command),
             pystray.Menu.SEPARATOR,
+            item('🎯 Wake word status', self._show_wake_word_status),
+            item('🔄 Restart wake word', self._restart_wake_word),
+            pystray.Menu.SEPARATOR,
             item('⚙️ Settings', self.open_settings),
             item('🔄 Test connection', self._quick_connection_test),
             pystray.Menu.SEPARATOR,
@@ -69,6 +120,56 @@ class HAAssistApp:
         
         logger.info("System tray icon created")
     
+    def _show_wake_word_status(self, icon=None, item=None):
+        """Show wake word detection status."""
+        if not self.wake_word_detector:
+            print("❌ Wake word detector not initialized")
+            return
+        
+        info = self.wake_word_detector.get_model_info()
+        
+        print("\n=== WAKE WORD STATUS ===")
+        print(f"Enabled: {'✅ Yes' if info['enabled'] else '❌ No'}")
+        print(f"Running: {'✅ Yes' if info['is_running'] else '❌ No'}")
+        print(f"Models: {', '.join(info['selected_models'])}")
+        print(f"Detection threshold: {info['detection_threshold']}")
+        print(f"VAD threshold: {info['vad_threshold']}")
+        print(f"Noise suppression: {'✅ Yes' if info['noise_suppression'] else '❌ No'}")
+        print(f"Available models: {len(info['available_models'])}")
+        print("========================\n")
+        
+        if info['enabled'] and info['is_running']:
+            print("💡 Say your wake word to test detection!")
+        elif info['enabled'] and not info['is_running']:
+            print("⚠️ Wake word detection enabled but not running")
+        else:
+            print("💡 Enable wake word detection in Settings > Models")
+
+    def _restart_wake_word(self, icon=None, item=None):
+        """Restart wake word detection."""
+        if not self.wake_word_detector:
+            print("❌ Wake word detector not available")
+            return
+        
+        print("🔄 Restarting wake word detection...")
+        
+        # Stop current detection
+        self.stop_wake_word_detection()
+        
+        # Reload configuration and restart
+        success = self.wake_word_detector.reload_models()
+        
+        if success:
+            print("✅ Wake word detection restarted successfully")
+            
+            if self.animation_server:
+                self.animation_server.show_success("Wake word restarted", duration=3.0)
+        else:
+            print("❌ Failed to restart wake word detection")
+            
+            if self.animation_server:
+                self.animation_server.show_error("Wake word restart failed", duration=5.0)
+
     def _create_fallback_icon(self):
         """Create fallback icon."""
         image = Image.new('RGB', (64, 64), color='black')
@@ -567,7 +668,8 @@ class HAAssistApp:
             self.setup_hotkey()
             self.create_tray_icon()
             self.run_tray()
-            
+            self.start_wake_word_detection()
+
             logger.info("Starting interface...")
             
             def on_window_loaded():
@@ -596,6 +698,8 @@ class HAAssistApp:
         """Clean up resources."""
         logger.info("Cleaning up resources...")
         
+        self.stop_wake_word_detection()
+
         if self.animation_server:
             self.animation_server.stop()
         
@@ -646,7 +750,8 @@ def validate_configuration():
             issues.append(f"Invalid animation port: {anim_port} (allowed: 1024-65535)")
     except (ValueError, TypeError):
         issues.append("Animation port must be a number")
-    
+    wake_word_issues = validate_wake_word_config()
+    issues.extend(wake_word_issues)
     return issues
 
 
@@ -710,12 +815,24 @@ def main():
         'HA_HOTKEY': utils.get_env('HA_HOTKEY', 'ctrl+shift+h'),
         'HA_VAD_MODE': utils.get_env('HA_VAD_MODE', '3'),
         'HA_SOUND_FEEDBACK': utils.get_env('HA_SOUND_FEEDBACK', 'true'),
+        'HA_WAKE_WORD_ENABLED': utils.get_env('HA_WAKE_WORD_ENABLED', 'false'),
         'DEBUG': utils.get_env('DEBUG', 'false')
     }
     
     for key, value in important_settings.items():
         print(f"   {key} = {value}")
-    
+
+    wake_word_enabled_str = utils.get_env('HA_WAKE_WORD_ENABLED', 'false')
+    if isinstance(wake_word_enabled_str, str):
+        wake_word_enabled = wake_word_enabled_str.lower() in ('true', '1', 'yes', 'y', 't')
+    else:
+        wake_word_enabled = bool(wake_word_enabled_str)
+
+    if wake_word_enabled:
+        models = utils.get_env('HA_WAKE_WORD_MODELS', 'alexa')
+        print(f"   HA_WAKE_WORD_MODELS = {models}")
+        print(f"   HA_WAKE_WORD_THRESHOLD = {utils.get_env('HA_WAKE_WORD_THRESHOLD', '0.5')}")
+        
     token_length = len(utils.get_env('HA_TOKEN', ''))
     if token_length > 0:
         print(f"   HA_TOKEN = ***HIDDEN*** ({token_length} chars)")
