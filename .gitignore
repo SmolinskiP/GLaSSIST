@@ -23,6 +23,12 @@ Thumbs.db
 *.egg-info/
 dist/
 build/
+inno/
+post-install-info.txt
+pre-install-info.txt
+setup.iss
+build.bat
+LICENSE.txt
 *.manifest
 *.spec
 

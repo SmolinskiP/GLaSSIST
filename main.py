@@ -55,7 +55,7 @@ class HAAssistApp:
 
     def on_wake_word_detected(self, model_name, confidence):
         """Callback when wake word is detected."""
-        logger.info(f"🎯 Wake word '{model_name}' detected (confidence: {confidence:.3f})")
+        logger.info(f" Wake word '{model_name}' detected (confidence: {confidence:.3f})")
         
         # Check if we're not already processing a command
         if self.animation_server.current_state != "hidden":
@@ -70,9 +70,9 @@ class HAAssistApp:
         if self.wake_word_detector and self.wake_word_detector.enabled:
             success = self.wake_word_detector.start_detection()
             if success:
-                logger.info("✅ Wake word detection started")
+                logger.info(" Wake word detection started")
             else:
-                logger.error("❌ Failed to start wake word detection")
+                logger.error(" Failed to start wake word detection")
             return success
         return False
     
@@ -108,7 +108,7 @@ class HAAssistApp:
             item('⚙️ Settings', self.open_settings),
             item('🔄 Test connection', self._quick_connection_test),
             pystray.Menu.SEPARATOR,
-            item('❌ Close', self.quit_application)
+            item(' Close', self.quit_application)
         )
         
         self.tray_icon = pystray.Icon(
@@ -123,7 +123,7 @@ class HAAssistApp:
     def _show_wake_word_status(self, icon=None, item=None):
         """Show wake word detection status with animation."""
         if not self.wake_word_detector:
-            print("❌ Wake word detector not initialized")
+            print(" Wake word detector not initialized")
             if self.animation_server:
                 self.animation_server.show_error("Wake word detector not initialized", duration=4.0)
             return
@@ -131,8 +131,8 @@ class HAAssistApp:
         info = self.wake_word_detector.get_model_info()
         
         status_lines = []
-        status_lines.append(f"Enabled: {'✅ Yes' if info['enabled'] else '❌ No'}")
-        status_lines.append(f"Running: {'✅ Yes' if info['is_running'] else '❌ No'}")
+        status_lines.append(f"Enabled: {' Yes' if info['enabled'] else ' No'}")
+        status_lines.append(f"Running: {' Yes' if info['is_running'] else ' No'}")
         status_lines.append(f"Models: {', '.join(info['selected_models'])}")
         status_lines.append(f"Threshold: {info['detection_threshold']}")
         
@@ -140,7 +140,7 @@ class HAAssistApp:
         for line in status_lines:
             print(line)
         print(f"VAD threshold: {info['vad_threshold']}")
-        print(f"Noise suppression: {'✅ Yes' if info['noise_suppression'] else '❌ No'}")
+        print(f"Noise suppression: {' Yes' if info['noise_suppression'] else ' No'}")
         print(f"Available models: {len(info['available_models'])}")
         print("========================\n")
         
@@ -158,7 +158,7 @@ class HAAssistApp:
             if self.animation_server:
                 self.animation_server.show_error(animation_message, duration=5.0)
             
-            print("⚠️ Wake word detection enabled but not running")
+            print(" Wake word detection enabled but not running")
             
         else:
             animation_message = "Wake word detection disabled"
@@ -171,10 +171,10 @@ class HAAssistApp:
     def _restart_wake_word(self, icon=None, item=None):
         """Restart wake word detection."""
         if not self.wake_word_detector:
-            print("❌ Wake word detector not available")
+            print(" Wake word detector not available")
             return
         
-        print("🔄 Restarting wake word detection...")
+        print(" Restarting wake word detection...")
         
         # Stop current detection
         self.stop_wake_word_detection()
@@ -183,12 +183,12 @@ class HAAssistApp:
         success = self.wake_word_detector.reload_models()
         
         if success:
-            print("✅ Wake word detection restarted successfully")
+            print(" Wake word detection restarted successfully")
             
             if self.animation_server:
                 self.animation_server.show_success("Wake word restarted", duration=3.0)
         else:
-            print("❌ Failed to restart wake word detection")
+            print(" Failed to restart wake word detection")
             
             if self.animation_server:
                 self.animation_server.show_error("Wake word restart failed", duration=5.0)
@@ -213,14 +213,14 @@ class HAAssistApp:
                     success, message = loop.run_until_complete(test_client.test_connection())
                     
                     if success:
-                        logger.info(f"Connection test: ✅ {message}")
-                        print(f"✅ Connection test: {message}")
+                        logger.info(f"Connection test:  {message}")
+                        print(f" Connection test: {message}")
                         
                         if self.animation_server:
                             self.animation_server.show_success("Connection successful", duration=3.0)
                     else:
-                        logger.error(f"Connection test: ❌ {message}")
-                        print(f"❌ Connection test: {message}")
+                        logger.error(f"Connection test:  {message}")
+                        print(f" Connection test: {message}")
                         
                         if self.animation_server:
                             self.animation_server.show_error(f"Connection failed", duration=5.0)
@@ -231,7 +231,7 @@ class HAAssistApp:
             except Exception as e:
                 error_msg = f"Test error: {str(e)}"
                 logger.error(error_msg)
-                print(f"❌ {error_msg}")
+                print(f" {error_msg}")
                 
                 if self.animation_server:
                     self.animation_server.show_error("Test error", duration=5.0)
@@ -290,7 +290,7 @@ class HAAssistApp:
                                 print("Copy the ID of chosen pipeline and paste it in app settings.")
                                 
                     else:
-                        print("❌ Cannot connect to Home Assistant")
+                        print("Cannot connect to Home Assistant")
                         print("Check connection settings.")
                     
                 finally:
@@ -299,12 +299,12 @@ class HAAssistApp:
             except Exception as e:
                 error_msg = f"Error fetching pipelines: {str(e)}"
                 logger.error(error_msg)
-                print(f"❌ {error_msg}")
+                print(f"{error_msg}")
                 
-                print(f"📋 DEBUG: Error type: {type(e).__name__}")
+                print(f" DEBUG: Error type: {type(e).__name__}")
                 if hasattr(e, '__traceback__'):
                     import traceback
-                    print("📋 Stack trace:")
+                    print(" Stack trace:")
                     traceback.print_exc()
         
         threading.Thread(target=pipelines_thread, daemon=True).start()
@@ -793,7 +793,7 @@ def main():
     for path in possible_paths:
         if os.path.exists(path):
             abs_path = os.path.abspath(path)
-            print(f"📄 USING .ENV FILE: {abs_path}")
+            print(f"USING .ENV FILE: {abs_path}")
             env_found = True
             
             with open(abs_path, 'r', encoding='utf-8') as f:
@@ -813,25 +813,25 @@ def main():
             break
     
     if not env_found:
-        print("⚠️  NO .ENV FILE - using default settings")
+        print("NO .ENV FILE - using default settings")
         print("Run application and go to 'Settings' to configure connection.")
         print("-" * 50)
     
-    print("🔍 CHECKING CONFIGURATION...")
+    print("CHECKING CONFIGURATION...")
     config_issues = validate_configuration()
     
     if config_issues:
-        print("⚠️  CONFIGURATION ISSUES FOUND:")
+        print("  CONFIGURATION ISSUES FOUND:")
         for issue in config_issues:
             print(f"   • {issue}")
         print("\nApplication may not work correctly.")
         print("Go to 'Settings' to fix issues.")
     else:
-        print("✅ Configuration looks correct")
+        print(" Configuration looks correct")
     
     print("-" * 50)
     
-    print("📋 KEY SETTINGS:")
+    print(" KEY SETTINGS:")
     important_settings = {
         'HA_HOST': utils.get_env('HA_HOST', 'MISSING'),
         'HA_PIPELINE_ID': utils.get_env('HA_PIPELINE_ID', '(default)'),
