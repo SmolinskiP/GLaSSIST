@@ -14,12 +14,30 @@ Desktop voice application for Home Assistant with visual animations and VAD (Voi
 
 ## 📋 Requirements
 
+### For .exe Installation (Recommended)
 - **Home Assistant** with Assist enabled
-- **Python 3.8+** 
-- **Windows** 
-- **Access token** for HA (long-lived access token)
+- **Windows 10/11** (64-bit)
+- **Microphone** (obviously)
+- **Long-lived access token** for HA
+
+### For Python Installation (Advanced users)
+- **Home Assistant** with Assist enabled
+- **Python 3.8+**
+- **Windows 10/11**
+- **Microphone**
+- **Long-lived access token** for HA
 
 ## 🛠️ Installation
+
+### Option 1: Windows Installer (Easy)
+1. **Download** [GLaSSIST-Setup.exe](releases/latest) from releases
+2. **Run installer** and follow setup wizard
+3. **Enter your HA details** during installation
+4. **Launch** and start talking to your smart home
+
+No Python knowledge required. Everything is bundled and configured automatically.
+
+### Option 2: From Source (For developers)
 
 ### 1. Clone repository
 ```bash
@@ -58,6 +76,7 @@ DEBUG=false
 ```
 
 **Pro tip:** Use the "Settings" button in the app instead of manually creating the file. This isn't 1995, we have GUIs.
+**Pro tip:** Use the installer unless you want to modify the code. It's way fucking easier.
 
 ### 4. Run
 ```bash
