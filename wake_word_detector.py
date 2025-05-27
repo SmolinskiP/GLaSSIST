@@ -130,7 +130,7 @@ class WakeWordDetector:
                     print(f"DEBUG: Re-raising model error: {model_error}")
                     raise model_error
             
-            logger.info(f"✅ Wake word detection initialized")
+            logger.info(f" Wake word detection initialized")
             logger.info(f"   Models: {', '.join(self.selected_models)}")
             logger.info(f"   Threshold: {self.detection_threshold}")
             logger.info(f"   VAD threshold: {self.vad_threshold}")
@@ -190,7 +190,7 @@ class WakeWordDetector:
             )
             self.detection_thread.start()
             
-            logger.info("🎤 Wake word detection started")
+            logger.info(" Wake word detection started")
             return True
             
         except Exception as e:
@@ -313,7 +313,7 @@ class WakeWordDetector:
         """Process wake word predictions and trigger callback if detected."""
         for model_name, score in predictions.items():
             if score >= self.detection_threshold:
-                logger.info(f"🎯 Wake word detected: '{model_name}' (confidence: {score:.3f})")
+                logger.info(f"Wake word detected: '{model_name}' (confidence: {score:.3f})")
                 
                 # Call detection callback
                 if self.detection_callback:
@@ -388,7 +388,7 @@ def download_default_models():
         import openwakeword
         logger.info("Downloading default wake word models...")
         openwakeword.utils.download_models()
-        logger.info("✅ Default models downloaded successfully")
+        logger.info(" Default models downloaded successfully")
         return True
     except ImportError:
         logger.error("openWakeWord not installed")

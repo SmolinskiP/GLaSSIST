@@ -150,7 +150,7 @@ class HAAssistApp:
             if self.animation_server:
                 self.animation_server.show_success(animation_message, duration=5.0)
             
-            print("💡 Say your wake word to test detection!")
+            print("Say your wake word to test detection!")
             
         elif info['enabled'] and not info['is_running']:
             animation_message = "Wake word enabled but not running"
@@ -166,7 +166,7 @@ class HAAssistApp:
             if self.animation_server:
                 self.animation_server.show_error(animation_message, duration=4.0)
             
-            print("💡 Enable wake word detection in Settings > Models")
+            print("Enable wake word detection in Settings > Models")
 
     def _restart_wake_word(self, icon=None, item=None):
         """Restart wake word detection."""
@@ -286,7 +286,7 @@ class HAAssistApp:
                             print("Use 'Settings' to change pipeline.")
                             
                             if len(pipelines) > 1:
-                                print("\n💡 TIP:")
+                                print("\n TIP:")
                                 print("Copy the ID of chosen pipeline and paste it in app settings.")
                                 
                     else:
@@ -782,7 +782,14 @@ def main():
     """Main application function with configuration validation."""
     print("=== GLaSSIST DESKTOP ===")
     print("Starting application...")
-    
+    print("Pre-initializing audio system...")
+    try:
+        import pyaudio
+        temp_audio = pyaudio.PyAudio()
+        temp_audio.terminate()
+        print("Audio system ready")
+    except Exception as e:
+        print(f"Audio initialization warning: {e}")
     possible_paths = [
         os.path.join(os.path.dirname(__file__), '.env'),
         os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'),
