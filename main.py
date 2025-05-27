@@ -121,28 +121,57 @@ class HAAssistApp:
         logger.info("System tray icon created")
     
     def _show_wake_word_status(self, icon=None, item=None):
-        """Show wake word detection status."""
+        """Show wake word detection status with animation."""
         if not self.wake_word_detector:
             print("❌ Wake word detector not initialized")
+            if self.animation_server:
+                self.animation_server.show_error("Wake word detector not initialized", duration=4.0)
             return
         
         info = self.wake_word_detector.get_model_info()
         
+        # Przygotuj status message
+        status_lines = []
+        status_lines.append(f"Enabled: {'✅ Yes' if info['enabled'] else '❌ No'}")
+        status_lines.append(f"Running: {'✅ Yes' if info['is_running'] else '❌ No'}")
+        status_lines.append(f"Models: {', '.join(info['selected_models'])}")
+        status_lines.append(f"Threshold: {info['detection_threshold']}")
+        
+        # Wyświetl w konsoli (dla deweloperów)
         print("\n=== WAKE WORD STATUS ===")
-        print(f"Enabled: {'✅ Yes' if info['enabled'] else '❌ No'}")
-        print(f"Running: {'✅ Yes' if info['is_running'] else '❌ No'}")
-        print(f"Models: {', '.join(info['selected_models'])}")
-        print(f"Detection threshold: {info['detection_threshold']}")
+        for line in status_lines:
+            print(line)
         print(f"VAD threshold: {info['vad_threshold']}")
         print(f"Noise suppression: {'✅ Yes' if info['noise_suppression'] else '❌ No'}")
         print(f"Available models: {len(info['available_models'])}")
         print("========================\n")
         
+        # Przygotuj message dla animacji
         if info['enabled'] and info['is_running']:
+            # Wszystko działa - pokaż sukces
+            animation_message = f"Wake word: ON | Models: {', '.join(info['selected_models'][:2])}"  # Max 2 modele żeby się zmieściło
+            
+            if self.animation_server:
+                self.animation_server.show_success(animation_message, duration=5.0)
+            
             print("💡 Say your wake word to test detection!")
+            
         elif info['enabled'] and not info['is_running']:
+            # Włączone ale nie działa - pokaż błąd
+            animation_message = "Wake word enabled but not running"
+            
+            if self.animation_server:
+                self.animation_server.show_error(animation_message, duration=5.0)
+            
             print("⚠️ Wake word detection enabled but not running")
+            
         else:
+            # Wyłączone - pokaż info jako błąd (żeby było widać)
+            animation_message = "Wake word detection disabled"
+            
+            if self.animation_server:
+                self.animation_server.show_error(animation_message, duration=4.0)
+            
             print("💡 Enable wake word detection in Settings > Models")
 
     def _restart_wake_word(self, icon=None, item=None):
