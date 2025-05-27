@@ -78,12 +78,13 @@ DEBUG=false
 ```
 
 **Pro tip:** Use the "Settings" button in the app instead of manually creating the file. This isn't 1995, we have GUIs.
-**Pro tip:** Use the installer unless you want to modify the code. It's way fucking easier.
 
 ### 4. Run
 ```bash
 python main.py
 ```
+
+**Pro tip:** Use the installer unless you want to modify the code. It's way fucking easier.
 
 ## ⚙️ Home Assistant Configuration
 
