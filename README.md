@@ -76,7 +76,7 @@ Without this, the app will be as useful as a calculator without batteries.
 ### Pipelines (optional)
 The app automatically fetches available pipelines. If you have more than one, select it in settings.
 
-### Wake Word Models
+## 🤖 Wake Word Models
 GLaSSIST includes over **100 pre-trained wake word models** converted to ONNX format for Windows compatibility. Models are sourced from the [Home Assistant Wakewords Collection](https://github.com/fwartner/home-assistant-wakewords-collection/tree/main) and optimized for desktop use.
 
 Available wake words include:
