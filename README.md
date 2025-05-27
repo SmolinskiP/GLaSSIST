@@ -5,6 +5,7 @@ Desktop voice application for Home Assistant with visual animations and VAD (Voi
 ## 🚀 Key Features
 
 - **Voice activation** - Hotkey or click to activate
+- **Wake word detection** - Over 100 pre-trained models (alexa, jarvis, glados etc.)
 - **WebRTC VAD** - Smart speech detection (doesn't react to every fridge beep)
 - **Visual animations** - Three.js with shaders and FFT audio analysis (because a simple circle is not enough)
 - **Tray integration** - Lives in system tray like a proper application
@@ -38,6 +39,11 @@ Create `.env` file:
 HA_HOST=your-homeassistant.local:8123
 HA_TOKEN=your_long_lived_access_token_here
 
+# === WAKE WORD ===
+HA_WAKE_WORD_ENABLED=true
+HA_WAKE_WORD_MODELS=alexa,hey_jarvis
+HA_WAKE_WORD_THRESHOLD=0.5
+
 # === ACTIVATION ===
 HA_HOTKEY=ctrl+shift+h
 
@@ -70,11 +76,46 @@ Without this, the app will be as useful as a calculator without batteries.
 ### Pipelines (optional)
 The app automatically fetches available pipelines. If you have more than one, select it in settings.
 
+### Wake Word Models
+GLaSSIST includes over **100 pre-trained wake word models** converted to ONNX format for Windows compatibility. Models are sourced from the [Home Assistant Wakewords Collection](https://github.com/fwartner/home-assistant-wakewords-collection/tree/main) and optimized for desktop use.
+
+Available wake words include:
+- **Standard**: `Alexa`, `Hey Jarvis`, `Hey Mycroft`
+- **Creative**: `Computer`, `Scarlett`, `Glados`, `Mr. Anderson`, `Scooby`
+
+### Custom Wake Word Training
+
+Want to create your own wake words? Thanks to the brilliant work by [dscripka/openWakeWord](https://github.com/dscripka/openWakeWord), you can train custom models using Google Colab.
+
+#### Training Options
+
+**Basic Training (Recommended for beginners):**
+[🔗 Google Colab - Basic Training](https://colab.research.google.com/drive/1q1oe2zOyZp7UsB3jJiQ1IFn8z5YfjwEb?usp=sharing)
+
+**Advanced Training (For experienced users):**
+[🔗 Google Colab - Advanced Training](https://colab.research.google.com/drive/1yyFH-fpguX2BTAW8wSQxTrJnJTM-0QAd?usp=sharing)
+
+#### Model Conversion for Windows
+
+After training your model in Colab (which outputs `.tflite` format), you need to convert it to ONNX for Windows compatibility:
+
+```bash
+# Install conversion tools
+pip install tf2onnx tensorflow
+
+# Convert TFLite to ONNX (one command)
+python -m tf2onnx.convert --tflite your_model.tflite --output your_model.onnx
+```
+
+Once converted, place your `your_model.onnx` file in the `models/` directory and add the model name (without extension) to your wake word configuration.
+
+**Pro tip:** Test your custom model thoroughly before relying on it. Custom models can be finicky as fuck and might not work as well as the pre-trained ones.
+
 ## 🎯 Usage
 
 ### Voice activation
 - **Hotkey**: `Ctrl+Shift+H` (default)
-- **Click**: Click on animation when hidden
+- **Wake word**: Say "Alexa" or other configured wake words
 - **Tray menu**: Right click on tray icon
 
 ### Application states
@@ -102,6 +143,7 @@ The app plays sounds from `sound/` directory:
 ├── frontend/
 │   └── index.html              # Three.js interface
 ├── sound/                      # Sound files
+├── models/                     # OpenWakeWord model files
 ├── img/                        # Icons
 └── requirements.txt            # Python dependencies
 ```
@@ -118,6 +160,12 @@ The app plays sounds from `sound/` directory:
 - `HA_SILENCE_THRESHOLD_SEC` - Silence time to end recording
 - `HA_SAMPLE_RATE` - Sample rate (8000/16000/32000)
 - `HA_FRAME_DURATION_MS` - VAD frame length (10/20/30ms)
+
+### Wake Word Detection
+- `HA_WAKE_WORD_ENABLED` - Enable wake word detection (true/false)
+- `HA_WAKE_WORD_MODELS` - Comma-separated list of wake word models
+- `HA_WAKE_WORD_THRESHOLD` - Detection sensitivity (0.0-1.0)
+- `HA_WAKE_WORD_VAD_THRESHOLD` - Voice activity threshold (0.0-1.0)
 
 ### Interface
 - `HA_HOTKEY` - Activation hotkey
@@ -159,11 +207,6 @@ A: Because it works better than homemade algorithms. Tested by Google, so probab
 
 **Q: App uses too much CPU?**  
 A: Disable debug mode and lower `HA_SAMPLE_RATE` to 8000. Or buy a better computer.
-
-## 🛣️ TODO
-
-- [ ] **Wake word activation** - Activation by custom keyword
-- [ ] **Custom wake words** - Ability to train your own wake words
 
 ## 📄 License
 
