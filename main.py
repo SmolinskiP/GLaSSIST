@@ -130,14 +130,12 @@ class HAAssistApp:
         
         info = self.wake_word_detector.get_model_info()
         
-        # Przygotuj status message
         status_lines = []
         status_lines.append(f"Enabled: {'✅ Yes' if info['enabled'] else '❌ No'}")
         status_lines.append(f"Running: {'✅ Yes' if info['is_running'] else '❌ No'}")
         status_lines.append(f"Models: {', '.join(info['selected_models'])}")
         status_lines.append(f"Threshold: {info['detection_threshold']}")
         
-        # Wyświetl w konsoli (dla deweloperów)
         print("\n=== WAKE WORD STATUS ===")
         for line in status_lines:
             print(line)
@@ -146,10 +144,8 @@ class HAAssistApp:
         print(f"Available models: {len(info['available_models'])}")
         print("========================\n")
         
-        # Przygotuj message dla animacji
         if info['enabled'] and info['is_running']:
-            # Wszystko działa - pokaż sukces
-            animation_message = f"Wake word: ON | Models: {', '.join(info['selected_models'][:2])}"  # Max 2 modele żeby się zmieściło
+            animation_message = f"Wake word: ON | Models: {', '.join(info['selected_models'])}"
             
             if self.animation_server:
                 self.animation_server.show_success(animation_message, duration=5.0)
@@ -157,7 +153,6 @@ class HAAssistApp:
             print("💡 Say your wake word to test detection!")
             
         elif info['enabled'] and not info['is_running']:
-            # Włączone ale nie działa - pokaż błąd
             animation_message = "Wake word enabled but not running"
             
             if self.animation_server:
@@ -166,7 +161,6 @@ class HAAssistApp:
             print("⚠️ Wake word detection enabled but not running")
             
         else:
-            # Wyłączone - pokaż info jako błąd (żeby było widać)
             animation_message = "Wake word detection disabled"
             
             if self.animation_server:
@@ -412,7 +406,7 @@ class HAAssistApp:
             if not await self.ha_client.connect():
                 logger.error("Failed to connect to Home Assistant")
                 self.animation_server.change_state("error", "Cannot connect to Home Assistant")
-                await asyncio.sleep(8)
+                await asyncio.sleep(5)
                 self.animation_server.change_state("hidden")
                 utils.play_feedback_sound("deactivation")
                 return False
@@ -425,7 +419,7 @@ class HAAssistApp:
             if not await self.ha_client.start_assist_pipeline(timeout_seconds=30):
                 logger.error("Failed to start Assist pipeline")
                 self.animation_server.change_state("error", "Cannot start voice assistant")
-                await asyncio.sleep(8)
+                await asyncio.sleep(5)
                 self.animation_server.change_state("hidden")
                 utils.play_feedback_sound("deactivation")
                 return False
@@ -480,7 +474,7 @@ class HAAssistApp:
                                 full_error_message = "No words detected. Try again."
                             
                             self.animation_server.change_state("error", full_error_message)
-                            await asyncio.sleep(8)
+                            await asyncio.sleep(5)
                             self.animation_server.change_state("hidden")
                             utils.play_feedback_sound("deactivation")
                             
@@ -511,20 +505,20 @@ class HAAssistApp:
                     else:
                         print("\nNo response from assistant or processing error.")
                         self.animation_server.change_state("error", "Assistant did not respond")
-                        await asyncio.sleep(8)
+                        await asyncio.sleep(5)
                         self.animation_server.change_state("hidden")
                         utils.play_feedback_sound("deactivation")
             else:
                 logger.error("Failed to record and send audio")
                 self.animation_server.change_state("error", "Audio recording error")
-                await asyncio.sleep(8)
+                await asyncio.sleep(5)
                 self.animation_server.change_state("hidden")
                 utils.play_feedback_sound("deactivation")
                 
         except asyncio.TimeoutError:
             logger.error("Timeout during voice command processing")
             self.animation_server.change_state("error", "Timeout - assistant not responding")
-            await asyncio.sleep(8)
+            await asyncio.sleep(5)
             self.animation_server.change_state("hidden")
             utils.play_feedback_sound("deactivation")
             
@@ -536,7 +530,7 @@ class HAAssistApp:
                 error_msg = error_msg[:77] + "..."
             
             self.animation_server.change_state("error", f"Error: {error_msg}")
-            await asyncio.sleep(10)
+            await asyncio.sleep(5)
             self.animation_server.change_state("hidden")
             utils.play_feedback_sound("deactivation")
         finally:

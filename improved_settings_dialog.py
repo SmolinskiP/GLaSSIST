@@ -983,7 +983,7 @@ class ImprovedSettingsDialog:
     def _show_error_animation(self, message):
         """Show error animation in main application window."""
         if self.animation_server:
-            self.animation_server.show_error(message, duration=5.0)
+            self.animation_server.show_error(message, duration=3.0)
         else:
             logger.debug("Animation server not available - skipping error animation")
 
