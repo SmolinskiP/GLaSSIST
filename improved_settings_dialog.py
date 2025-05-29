@@ -43,7 +43,7 @@ class ImprovedSettingsDialog:
         
         self.root = tk.Tk()
         self.root.title("GLaSSIST - Settings")
-        self.root.geometry("750x600")
+        self.root.geometry("750x650")
         self.root.resizable(True, True)
         
         icon_path = os.path.join(os.path.dirname(__file__), 'img', 'icon.ico')
