@@ -64,8 +64,10 @@ class ImprovedSettingsDialog:
         main_frame = ttk.Frame(self.root, padding="20")
         main_frame.pack(fill=tk.BOTH, expand=True)
         
-        header_label = ttk.Label(main_frame, text="Home Assistant Assist Settings", style="Header.TLabel")
-        header_label.pack(pady=(0, 20))
+        header_label = ttk.Label(main_frame, text="GLaSSIST Desktop Settings", style="Header.TLabel")
+        header_label.pack(pady=(0, 5))
+        warning_label = ttk.Label(main_frame, text="⚠ If settings are not responding restart the application. ⚠", style="TLabel")
+        warning_label.pack(pady=(0, 20))
         
         notebook = ttk.Notebook(main_frame)
         notebook.pack(fill=tk.X, pady=(0, 10))
@@ -1210,7 +1212,7 @@ class ImprovedSettingsDialog:
             if not env_path:
                 env_path = possible_paths[0]
             
-            env_content = "# Home Assistant Assist Settings\n"
+            env_content = "# GLaSSIST Desktop Settings\n"
             env_content += "# Generated automatically by the application\n\n"
             
             env_content += "# === CONNECTION ===\n"
