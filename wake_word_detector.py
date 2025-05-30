@@ -183,10 +183,11 @@ class WakeWordDetector:
             self._init_audio_stream()
             self.is_running = True
             
-            # Start detection thread
+            # Start detection thread with lower priority
             self.detection_thread = threading.Thread(
-                target=self._detection_loop, 
-                daemon=True
+                target=self._detection_loop_wrapper, 
+                daemon=True,
+                name="WakeWordDetection"
             )
             self.detection_thread.start()
             
@@ -196,6 +197,30 @@ class WakeWordDetector:
         except Exception as e:
             logger.error(f"Failed to start wake word detection: {e}")
             return False
+    
+    def _detection_loop_wrapper(self):
+        """Wrapper for detection loop with priority adjustment."""
+        import os
+        
+        try:
+            # Lower thread priority on Windows for better GUI responsiveness
+            if os.name == 'nt':
+                import ctypes
+                
+                # Get current thread handle
+                kernel32 = ctypes.windll.kernel32
+                current_thread = kernel32.GetCurrentThread()
+                
+                # Set to below normal priority
+                THREAD_PRIORITY_BELOW_NORMAL = -1
+                kernel32.SetThreadPriority(current_thread, THREAD_PRIORITY_BELOW_NORMAL)
+                logger.debug("Wake word detection thread priority lowered")
+                
+        except Exception as e:
+            logger.debug(f"Could not lower thread priority: {e}")
+        
+        # Run actual detection loop
+        self._detection_loop()
     
     def stop_detection(self):
         """Stop wake word detection."""
@@ -298,6 +323,11 @@ class WakeWordDetector:
                     
                     # Check for wake word detection
                     self._process_predictions(predictions)
+                    
+                    # Small delay to prevent CPU saturation and improve system responsiveness
+                    # This is crucial for keeping GUI responsive
+                    import time
+                    time.sleep(0.01)  # 10ms delay - imperceptible for wake word detection
                     
                 except Exception as e:
                     if self.is_running:  # Only log if we're supposed to be running

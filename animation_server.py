@@ -221,10 +221,35 @@ class AnimationServer:
         self._safe_broadcast(message)
     
     def stop(self):
-        if self.loop and self.loop.is_running():
-            self.loop.call_soon_threadsafe(self.loop.stop)
+        """Stop animation server with proper cleanup."""
+        logger.info("Stopping animation server...")
         
+        try:
+            # Stop the event loop
+            if self.loop and not self.loop.is_closed():
+                if self.loop.is_running():
+                    self.loop.call_soon_threadsafe(self.loop.stop)
+                
+                # Cancel any pending tasks
+                try:
+                    pending = asyncio.all_tasks(self.loop)
+                    if pending:
+                        for task in pending:
+                            if not task.done():
+                                task.cancel()
+                except Exception as e:
+                    logger.error(f"Error cancelling animation server tasks: {e}")
+        
+        except Exception as e:
+            logger.error(f"Error stopping animation server loop: {e}")
+        
+        # Wait for thread to finish
         if self.thread and self.thread.is_alive():
-            self.thread.join(timeout=2)
+            try:
+                self.thread.join(timeout=3)
+                if self.thread.is_alive():
+                    logger.warning("Animation server thread didn't stop gracefully")
+            except Exception as e:
+                logger.error(f"Error joining animation server thread: {e}")
         
         logger.info("Animation server stopped")

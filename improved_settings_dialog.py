@@ -24,7 +24,7 @@ class ImprovedSettingsDialog:
         self.animation_server = animation_server
         
     def show_settings(self):
-        """Display settings dialog."""
+        """Display settings dialog with proper cleanup."""
         current_settings = {
             'HA_HOST': utils.get_env('HA_HOST', 'localhost:8123'),
             'HA_TOKEN': utils.get_env('HA_TOKEN', ''),
@@ -41,78 +41,152 @@ class ImprovedSettingsDialog:
             'HA_WAKE_WORD_NOISE_SUPPRESSION': utils.get_env('HA_WAKE_WORD_NOISE_SUPPRESSION', 'false'),
         }
         
-        self.root = tk.Tk()
-        self.root.title("GLaSSIST - Settings")
-        self.root.geometry("750x650")
-        self.root.resizable(True, True)
+        # Pause wake word detection temporarily for better GUI responsiveness
+        wake_word_was_paused = False
+        try:
+            # Try to pause wake word detection if animation_server is available
+            if self.animation_server and hasattr(self.animation_server, 'pause_wake_word_detection'):
+                self.animation_server.pause_wake_word_detection()
+                wake_word_was_paused = True
+                logger.info("Wake word detection paused for settings dialog")
+        except Exception as e:
+            logger.debug(f"Could not pause wake word detection: {e}")
         
-        icon_path = os.path.join(os.path.dirname(__file__), 'img', 'icon.ico')
-        if os.path.exists(icon_path):
-            try:
-                self.root.iconbitmap(icon_path)
-            except Exception as e:
-                logger.error(f"Error setting icon: {e}")
-        
-        style = ttk.Style()
-        style.configure("TLabel", font=("Segoe UI", 10))
-        style.configure("TButton", font=("Segoe UI", 10))
-        style.configure("Header.TLabel", font=("Segoe UI", 14, "bold"))
-        style.configure("Success.TLabel", foreground="green")
-        style.configure("Error.TLabel", foreground="red")
-        style.configure("Link.TLabel", foreground="blue", cursor="hand2")
-        
-        main_frame = ttk.Frame(self.root, padding="20")
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        
-        header_label = ttk.Label(main_frame, text="GLaSSIST Desktop Settings", style="Header.TLabel")
-        header_label.pack(pady=(0, 5))
-        warning_label = ttk.Label(main_frame, text="⚠ If settings are not responding restart the application. ⚠", style="TLabel")
-        warning_label.pack(pady=(0, 20))
-        
-        notebook = ttk.Notebook(main_frame)
-        notebook.pack(fill=tk.X, pady=(0, 10))
-        
-        connection_frame = ttk.Frame(notebook, padding="10")
-        notebook.add(connection_frame, text="Connection")
-        
-        audio_frame = ttk.Frame(notebook, padding="10")
-        notebook.add(audio_frame, text="Audio & VAD")
+        try:
+            self.root = tk.Tk()
+            self.root.title("GLaSSIST - Settings")
+            self.root.geometry("750x650")
+            self.root.resizable(True, True)
+            
+            # Add proper cleanup on window close
+            self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
+            
+            icon_path = os.path.join(os.path.dirname(__file__), 'img', 'icon.ico')
+            if os.path.exists(icon_path):
+                try:
+                    self.root.iconbitmap(icon_path)
+                except Exception as e:
+                    logger.error(f"Error setting icon: {e}")
+            
+            style = ttk.Style()
+            style.configure("TLabel", font=("Segoe UI", 10))
+            style.configure("TButton", font=("Segoe UI", 10))
+            style.configure("Header.TLabel", font=("Segoe UI", 14, "bold"))
+            style.configure("Success.TLabel", foreground="green")
+            style.configure("Error.TLabel", foreground="red")
+            style.configure("Link.TLabel", foreground="blue", cursor="hand2")
+            
+            main_frame = ttk.Frame(self.root, padding="20")
+            main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            header_label = ttk.Label(main_frame, text="GLaSSIST Desktop Settings", style="Header.TLabel")
+            header_label.pack(pady=(0, 5))
+            
+            # Update warning text to be more informative
+            warning_text = "💡 Wake word detection is temporarily paused for better responsiveness" if wake_word_was_paused else "⚠ If settings are not responding restart the application. ⚠"
+            warning_label = ttk.Label(main_frame, text=warning_text, style="TLabel")
+            warning_label.pack(pady=(0, 20))
+            
+            notebook = ttk.Notebook(main_frame)
+            notebook.pack(fill=tk.X, pady=(0, 10))
+            
+            connection_frame = ttk.Frame(notebook, padding="10")
+            notebook.add(connection_frame, text="Connection")
+            
+            audio_frame = ttk.Frame(notebook, padding="10")
+            notebook.add(audio_frame, text="Audio & VAD")
 
-        models_frame = ttk.Frame(notebook, padding="10")
-        notebook.add(models_frame, text="Wake Word")
+            models_frame = ttk.Frame(notebook, padding="10")
+            notebook.add(models_frame, text="Wake Word")
+            
+            advanced_frame = ttk.Frame(notebook, padding="10")
+            notebook.add(advanced_frame, text="Advanced")
+            
+            about_frame = ttk.Frame(notebook, padding="10")
+            notebook.add(about_frame, text="About")
+            
+            self._create_connection_tab(connection_frame, current_settings)
+            self._create_audio_tab(audio_frame, current_settings)
+            self._create_models_tab(models_frame, current_settings)
+            self._create_advanced_tab(advanced_frame, current_settings)
+            self._create_about_tab(about_frame)
+            
+            button_frame = ttk.Frame(main_frame)
+            button_frame.pack(pady=15, fill=tk.X)
+            
+            save_button = ttk.Button(button_frame, text="💾 Save Settings", command=self._save_config)
+            save_button.pack(side=tk.RIGHT, padx=5)
+            
+            test_button = ttk.Button(button_frame, text="🔄 Test Connection", command=self._test_connection)
+            test_button.pack(side=tk.RIGHT, padx=5)
+            
+            cancel_button = ttk.Button(button_frame, text="❌ Cancel", command=self._on_closing)
+            cancel_button.pack(side=tk.RIGHT, padx=5)
+            
+            self.root.update_idletasks()
+            width = self.root.winfo_width()
+            height = self.root.winfo_height()
+            x = (self.root.winfo_screenwidth() // 2) - (width // 2)
+            y = (self.root.winfo_screenheight() // 2) - (height // 2)
+            self.root.geometry(f'+{x}+{y}')
+            
+            # Start mainloop with proper exception handling
+            self.root.mainloop()
+            
+        except Exception as e:
+            logger.error(f"Error in settings dialog: {e}")
+            self._cleanup()
+            raise
+        finally:
+            # Resume wake word detection if it was paused
+            if wake_word_was_paused:
+                try:
+                    if self.animation_server and hasattr(self.animation_server, 'resume_wake_word_detection'):
+                        self.animation_server.resume_wake_word_detection()
+                        logger.info("Wake word detection resumed")
+                except Exception as e:
+                    logger.error(f"Error resuming wake word detection: {e}")
+            
+            self._cleanup()
+    
+    def _on_closing(self):
+        """Handle window closing with proper cleanup."""
+        global _settings_dialog_instance
+        logger.info("Settings dialog closing")
         
-        advanced_frame = ttk.Frame(notebook, padding="10")
-        notebook.add(advanced_frame, text="Advanced")
-        
-        about_frame = ttk.Frame(notebook, padding="10")
-        notebook.add(about_frame, text="About")
-        
-        self._create_connection_tab(connection_frame, current_settings)
-        self._create_audio_tab(audio_frame, current_settings)
-        self._create_models_tab(models_frame, current_settings)
-        self._create_advanced_tab(advanced_frame, current_settings)
-        self._create_about_tab(about_frame)
-        
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(pady=15, fill=tk.X)
-        
-        save_button = ttk.Button(button_frame, text="💾 Save Settings", command=self._save_config)
-        save_button.pack(side=tk.RIGHT, padx=5)
-        
-        test_button = ttk.Button(button_frame, text="🔄 Test Connection", command=self._test_connection)
-        test_button.pack(side=tk.RIGHT, padx=5)
-        
-        cancel_button = ttk.Button(button_frame, text="❌ Cancel", command=self.root.destroy)
-        cancel_button.pack(side=tk.RIGHT, padx=5)
-        
-        self.root.update_idletasks()
-        width = self.root.winfo_width()
-        height = self.root.winfo_height()
-        x = (self.root.winfo_screenwidth() // 2) - (width // 2)
-        y = (self.root.winfo_screenheight() // 2) - (height // 2)
-        self.root.geometry(f'+{x}+{y}')
-        
-        self.root.mainloop()
+        try:
+            # Cancel any running operations
+            if hasattr(self, 'test_client') and self.test_client:
+                try:
+                    # Close test client connections
+                    self.test_client = None
+                except Exception:
+                    pass
+            
+            # Destroy the window
+            if self.root:
+                self.root.quit()
+                self.root.destroy()
+                
+        except Exception as e:
+            logger.error(f"Error during settings cleanup: {e}")
+        finally:
+            _settings_dialog_instance = None
+    
+    def _cleanup(self):
+        """Clean up resources."""
+        try:
+            if hasattr(self, 'test_client') and self.test_client:
+                self.test_client = None
+            
+            if hasattr(self, 'root') and self.root:
+                try:
+                    self.root.quit()
+                except:
+                    pass
+                    
+        except Exception as e:
+            logger.error(f"Error in cleanup: {e}")
     
     def _create_models_tab(self, parent, current_settings):
         """Create wake word models tab with proper scrollable layout."""
@@ -410,106 +484,60 @@ class ImprovedSettingsDialog:
         self._on_wake_word_toggle()
 
     def _on_wake_word_toggle(self):
-        """Handle wake word enable/disable toggle with proper widget management."""
-        enabled = self.wake_word_enabled_var.get()
-        state = "normal" if enabled else "disabled"
-        
-        # Toggle all model-related widgets
-        for widget in self.models_widgets:
-            try:
-                if hasattr(widget, 'configure'):
-                    widget.configure(state=state)
-            except Exception:
-                # Some widgets might not support state changes
-                pass
-        
-        # Also toggle the entire frames
-        frame_state = "normal" if enabled else "disabled"
-        for frame in [self.models_config_frame, self.thresholds_frame, self.management_frame]:
-            try:
-                # Change the label frame style to indicate disabled state
-                if not enabled:
-                    frame.configure(style="Disabled.TLabelFrame")
-                else:
-                    frame.configure(style="TLabelFrame")
-            except Exception:
-                pass
-
-    def _on_wake_word_toggle(self):
-        """Handle wake word enable/disable toggle with proper widget management."""
-        enabled = self.wake_word_enabled_var.get()
-        state = "normal" if enabled else "disabled"
-        
-        # Toggle all model-related widgets
-        for widget in self.models_widgets:
-            try:
-                if hasattr(widget, 'configure'):
-                    widget.configure(state=state)
-            except Exception:
-                # Some widgets might not support state changes
-                pass
-        
-        # Also toggle the entire frames
-        frame_state = "normal" if enabled else "disabled"
-        for frame in [self.models_config_frame, self.thresholds_frame, self.management_frame]:
-            try:
-                # Change the label frame style to indicate disabled state
-                if not enabled:
-                    frame.configure(style="Disabled.TLabelFrame")
-                else:
-                    frame.configure(style="TLabelFrame")
-            except Exception:
-                pass
-
-    def _on_wake_word_toggle(self):
-        """Handle wake word enable/disable toggle with proper widget management."""
-        enabled = self.wake_word_enabled_var.get()
-        state = "normal" if enabled else "disabled"
-        
-        # Lista wszystkich kontrolek do toggle
-        widgets_to_toggle = [
-            self.available_models_combo,
-            self.add_model_button,
-            self.selected_models_listbox,
-            self.remove_model_button,
-            self.wake_word_threshold_scale,
-            self.wake_word_vad_scale,
-            self.download_button,
-            self.refresh_button,
-            self.models_folder_button,
-            self.test_wake_word_button
-        ]
-        
-        for widget in widgets_to_toggle:
-            try:
-                if hasattr(widget, 'configure'):
-                    if isinstance(widget, tk.Listbox):
-                        # Listbox ma inne opcje state
-                        widget.configure(state=state if state == "normal" else "disabled")
-                    else:
-                        widget.configure(state=state)
-            except Exception as e:
-                # Niektóre widgety mogą nie wspierać state
-                pass
-
-    def _on_wake_word_toggle(self):
         """Handle wake word enable/disable toggle."""
-        enabled = self.wake_word_enabled_var.get()
-        
-        # Enable/disable all widgets in models config frame
-        def toggle_widget_state(widget, state):
-            try:
-                if hasattr(widget, 'configure'):
-                    widget.configure(state=state)
-            except:
-                pass
+        try:
+            enabled = self.wake_word_enabled_var.get()
+            state = "normal" if enabled else "disabled"
             
+            # Lista wszystkich kontrolek do toggle
+            widgets_to_toggle = [
+                self.available_models_combo,
+                self.add_model_button,
+                self.selected_models_listbox,
+                self.remove_model_button,
+                self.wake_word_threshold_scale,
+                self.wake_word_vad_scale,
+                self.download_button,
+                self.refresh_button,
+                self.models_folder_button,
+                self.test_wake_word_button
+            ]
+            
+            # Toggle poszczególnych kontrolek
+            for widget in widgets_to_toggle:
+                try:
+                    if hasattr(widget, 'configure'):
+                        if isinstance(widget, tk.Listbox):
+                            widget.configure(state=state if state == "normal" else "disabled")
+                        else:
+                            widget.configure(state=state)
+                except Exception:
+                    # Niektóre widgety mogą nie wspierać state
+                    continue
+            
+            # Toggle całych ramek
+            frames_to_toggle = [self.models_config_frame, self.thresholds_frame, self.management_frame]
+            for frame in frames_to_toggle:
+                try:
+                    if hasattr(frame, 'winfo_children'):
+                        self._toggle_frame_widgets(frame, state)
+                except Exception:
+                    continue
+                    
+        except Exception as e:
+            logger.error(f"Error in wake word toggle: {e}")
+    
+    def _toggle_frame_widgets(self, frame, state):
+        """Recursively toggle widget states in a frame."""
+        for child in frame.winfo_children():
+            try:
+                if hasattr(child, 'configure'):
+                    child.configure(state=state)
+            except Exception:
+                pass
             # Recursively handle child widgets
-            for child in widget.winfo_children():
-                toggle_widget_state(child, state)
-        
-        state = "normal" if enabled else "disabled"
-        toggle_widget_state(self.models_config_frame, state)
+            if hasattr(child, 'winfo_children'):
+                self._toggle_frame_widgets(child, state)
     
     def _populate_selected_models(self, models_string):
         """Populate selected models listbox."""
@@ -547,7 +575,10 @@ class ImprovedSettingsDialog:
             messagebox.showinfo("No Selection", "Select a model to remove.")
     
     def _download_models(self):
-        """Download default openWakeWord models."""
+        """Download default openWakeWord models with better thread safety."""
+        # Disable button to prevent multiple clicks
+        self.download_button.config(state="disabled", text="Downloading...")
+        
         def download_thread():
             try:
                 import openwakeword
@@ -558,27 +589,48 @@ class ImprovedSettingsDialog:
                 
                 openwakeword.utils.download_models()
                 
-                self.root.after(0, lambda: messagebox.showinfo(
-                    "Success", 
-                    "Default wake word models downloaded successfully!\n\n"
-                    "Available models:\n• alexa\n• hey_jarvis\n• hey_mycroft\n• timers\n• weather"
-                ))
+                # Use thread-safe GUI update
+                def show_success():
+                    if self.root and self.root.winfo_exists():
+                        messagebox.showinfo(
+                            "Success", 
+                            "Default wake word models downloaded successfully!\n\n"
+                            "Available models:\n• alexa\n• hey_jarvis\n• hey_mycroft\n• timers\n• weather"
+                        )
+                        self.download_button.config(state="normal", text="📥 Download Default Models")
+                
+                if self.root and self.root.winfo_exists():
+                    self.root.after(0, show_success)
                 
                 if self.animation_server:
                     self.animation_server.show_success("Models downloaded", duration=3.0)
                 
             except ImportError:
-                self.root.after(0, lambda: messagebox.showerror(
-                    "Error", 
-                    "openWakeWord not installed!\n\nInstall with:\npip install openwakeword"
-                ))
+                def show_import_error():
+                    if self.root and self.root.winfo_exists():
+                        messagebox.showerror(
+                            "Error", 
+                            "openWakeWord not installed!\n\nInstall with:\npip install openwakeword"
+                        )
+                        self.download_button.config(state="normal", text="📥 Download Default Models")
+                
+                if self.root and self.root.winfo_exists():
+                    self.root.after(0, show_import_error)
                 
                 if self.animation_server:
                     self.animation_server.show_error("openWakeWord not installed", duration=5.0)
                 
             except Exception as e:
                 error_msg = f"Failed to download models: {str(e)}"
-                self.root.after(0, lambda: messagebox.showerror("Error", error_msg))
+                logger.error(error_msg)
+                
+                def show_general_error():
+                    if self.root and self.root.winfo_exists():
+                        messagebox.showerror("Error", error_msg)
+                        self.download_button.config(state="normal", text="📥 Download Default Models")
+                
+                if self.root and self.root.winfo_exists():
+                    self.root.after(0, show_general_error)
                 
                 if self.animation_server:
                     self.animation_server.show_error("Download failed", duration=5.0)
@@ -924,7 +976,7 @@ class ImprovedSettingsDialog:
         coffee_link.bind("<Button-1>", lambda e: webbrowser.open("https://buymeacoffee.com/smolinskip"))
     
     def _test_connection(self):
-        """Test connection to Home Assistant with improved feedback."""
+        """Test connection to Home Assistant with improved thread safety."""
         host = self.host_entry.get().strip()
         token = self.token_entry.get().strip()
         
@@ -934,60 +986,78 @@ class ImprovedSettingsDialog:
                 self.animation_server.show_error("Missing connection details", duration=4.0)
             return
         
+        # Prevent multiple concurrent tests
+        if hasattr(self, '_testing') and self._testing:
+            return
+            
+        self._testing = True
         self.test_button.config(state="disabled", text="Testing...")
         self.test_status_label.config(text="Connecting...", style="")
         
         def test_thread():
             try:
-                self.test_client = HomeAssistantClient()
-                self.test_client.host = host
-                self.test_client.token = token
+                test_client = HomeAssistantClient()
+                test_client.host = host
+                test_client.token = token
                 
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 
                 try:
-                    success, message = loop.run_until_complete(self.test_client.test_connection())
-                    self.root.after(0, self._update_test_result, success, message)
+                    success, message = loop.run_until_complete(test_client.test_connection())
                     
+                    # Store results for GUI update
+                    pipelines_data = None
                     if success:
-                        # Automatically fetch pipelines after successful connection
-                        self.pipelines_data = self.test_client.get_available_pipelines()
-                        self.root.after(0, self._update_pipeline_list)
+                        try:
+                            pipelines_data = test_client.get_available_pipelines()
+                        except Exception as e:
+                            logger.warning(f"Failed to get pipelines: {e}")
+                    
+                    # Thread-safe GUI update
+                    def update_gui():
+                        if self.root and self.root.winfo_exists():
+                            self._testing = False
+                            self.test_button.config(state="normal", text="Test Connection")
+                            
+                            if success:
+                                self.test_status_label.config(text=f"✅ {message}", style="Success.TLabel")
+                                if self.animation_server:
+                                    self.animation_server.show_success("Connection successful", duration=3.0)
+                                
+                                # Update pipelines if available
+                                if pipelines_data:
+                                    self.pipelines_data = pipelines_data
+                                    self._update_pipeline_list()
+                            else:
+                                self.test_status_label.config(text=f"❌ {message}", style="Error.TLabel")
+                                if self.animation_server:
+                                    self.animation_server.show_error(f"Connection failed: {message}", duration=5.0)
+                    
+                    if self.root and self.root.winfo_exists():
+                        self.root.after(0, update_gui)
                     
                 finally:
                     loop.close()
                     
             except Exception as e:
                 error_msg = f"Test error: {str(e)}"
-                self.root.after(0, self._update_test_result, False, error_msg)
+                logger.error(error_msg)
+                
+                def update_error_gui():
+                    if self.root and self.root.winfo_exists():
+                        self._testing = False
+                        self.test_button.config(state="normal", text="Test Connection")
+                        self.test_status_label.config(text=f"❌ {error_msg}", style="Error.TLabel")
+                        if self.animation_server:
+                            self.animation_server.show_error(f"Test failed: {error_msg}", duration=5.0)
+                
+                if self.root and self.root.winfo_exists():
+                    self.root.after(0, update_error_gui)
         
         threading.Thread(target=test_thread, daemon=True).start()
 
-    def _update_test_result(self, success, message):
-        """Update connection test result."""
-        self.test_button.config(state="normal", text="Test Connection")
-        
-        if success:
-            self.test_status_label.config(text=f"✅ {message}", style="Success.TLabel")
-            self._show_success_animation("Connection successful")
-        else:
-            self.test_status_label.config(text=f"❌ {message}", style="Error.TLabel")
-            self._show_error_animation(f"Connection failed: {message}")
 
-    def _show_success_animation(self, message):
-        """Show success animation in main application window."""
-        if self.animation_server:
-            self.animation_server.show_success(message, duration=3.0)
-        else:
-            logger.debug("Animation server not available - skipping success animation")
-    
-    def _show_error_animation(self, message):
-        """Show error animation in main application window."""
-        if self.animation_server:
-            self.animation_server.show_error(message, duration=3.0)
-        else:
-            logger.debug("Animation server not available - skipping error animation")
 
     def _update_pipeline_list(self):
         """Update pipeline list."""
@@ -1269,7 +1339,32 @@ class ImprovedSettingsDialog:
             }
 
 
+# Global variable to prevent multiple settings windows
+_settings_dialog_instance = None
+
 def show_improved_settings(animation_server=None):
-    """Helper function to display enhanced settings."""
-    dialog = ImprovedSettingsDialog(animation_server)
-    dialog.show_settings()
+    """Helper function to display enhanced settings with singleton pattern."""
+    global _settings_dialog_instance
+    
+    # Prevent multiple instances
+    if _settings_dialog_instance is not None:
+        try:
+            # Try to bring existing window to front
+            if _settings_dialog_instance.root and _settings_dialog_instance.root.winfo_exists():
+                _settings_dialog_instance.root.lift()
+                _settings_dialog_instance.root.focus_force()
+                logger.info("Settings window already open - bringing to front")
+                return _settings_dialog_instance
+        except (tk.TclError, AttributeError):
+            # Window was destroyed, reset the instance
+            _settings_dialog_instance = None
+    
+    # Create new instance
+    try:
+        _settings_dialog_instance = ImprovedSettingsDialog(animation_server)
+        _settings_dialog_instance.show_settings()
+        return _settings_dialog_instance
+    except Exception as e:
+        logger.error(f"Failed to create settings dialog: {e}")
+        _settings_dialog_instance = None
+        raise

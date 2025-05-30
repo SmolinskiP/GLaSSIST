@@ -390,20 +390,25 @@ class HAAssistApp:
 
     async def process_voice_command(self):
         """Enhanced voice command processing with pipeline validation."""
+        # Store references to temporary instances for cleanup
+        temp_ha_client = None
+        temp_audio_manager = None
+        
         try:
             self.animation_server.change_state("listening")
             utils.play_feedback_sound("activation")
             
-            self.ha_client = HomeAssistantClient()
-            self.audio_manager = AudioManager()
+            # Create temporary instances for this session
+            temp_ha_client = HomeAssistantClient()
+            temp_audio_manager = AudioManager()
             
             pipeline_id = utils.get_env("HA_PIPELINE_ID")
             if pipeline_id:
                 logger.info(f"Checking pipeline availability: {pipeline_id}")
             
-            self.audio_manager.init_audio()
+            temp_audio_manager.init_audio()
             
-            if not await self.ha_client.connect():
+            if not await temp_ha_client.connect():
                 logger.error("Failed to connect to Home Assistant")
                 self.animation_server.change_state("error", "Cannot connect to Home Assistant")
                 await asyncio.sleep(5)
@@ -413,10 +418,10 @@ class HAAssistApp:
             
             logger.info("Connected to Home Assistant")
             
-            if pipeline_id and not self.ha_client.validate_pipeline_id(pipeline_id):
+            if pipeline_id and not temp_ha_client.validate_pipeline_id(pipeline_id):
                 logger.warning(f"Pipeline '{pipeline_id}' not available - using default")
                 
-            if not await self.ha_client.start_assist_pipeline(timeout_seconds=30):
+            if not await temp_ha_client.start_assist_pipeline(timeout_seconds=30):
                 logger.error("Failed to start Assist pipeline")
                 self.animation_server.change_state("error", "Cannot start voice assistant")
                 await asyncio.sleep(5)
@@ -431,7 +436,7 @@ class HAAssistApp:
             
             async def on_audio_chunk(audio_chunk):
                 self.animation_server.send_audio_data(audio_chunk)
-                success = await self.ha_client.send_audio_chunk(audio_chunk)
+                success = await temp_ha_client.send_audio_chunk(audio_chunk)
                 if not success:
                     logger.warning("Error sending audio chunk")
             
@@ -440,15 +445,15 @@ class HAAssistApp:
                 self.animation_server.change_state("processing")
                 await asyncio.sleep(0.8)
                 
-                success = await self.ha_client.end_audio()
+                success = await temp_ha_client.end_audio()
                 if not success:
                     logger.warning("Error ending audio")
             
-            if await self.audio_manager.record_audio(on_audio_chunk, on_audio_end):
+            if await temp_audio_manager.record_audio(on_audio_chunk, on_audio_end):
                 logger.info("Audio sent successfully")
                 
                 logger.info("=== RECEIVING RESPONSE ===")
-                results = await self.ha_client.receive_response(timeout_seconds=45)
+                results = await temp_ha_client.receive_response(timeout_seconds=45)
                 
                 error_found = False
                 for result in results:
@@ -482,7 +487,7 @@ class HAAssistApp:
                             break
                 
                 if not error_found:
-                    response = self.ha_client.extract_assistant_response(results)
+                    response = temp_ha_client.extract_assistant_response(results)
                     
                     if response and response != "No response from assistant":
                         print("\n=== ASSISTANT RESPONSE ===")
@@ -492,10 +497,10 @@ class HAAssistApp:
                         self.animation_server.change_state("responding")
                         self.animation_server.send_response_text(response)
                         
-                        audio_url = self.ha_client.extract_audio_url(results)
+                        audio_url = temp_ha_client.extract_audio_url(results)
                         if audio_url:
                             print("Playing voice response with FFT analysis...")
-                            success = utils.play_audio_from_url(audio_url, self.ha_client.host, self.animation_server)
+                            success = utils.play_audio_from_url(audio_url, temp_ha_client.host, self.animation_server)
                             if not success:
                                 logger.warning("Failed to play response audio")
                         
@@ -534,10 +539,24 @@ class HAAssistApp:
             self.animation_server.change_state("hidden")
             utils.play_feedback_sound("deactivation")
         finally:
-            if self.audio_manager:
-                self.audio_manager.close_audio()
-            if self.ha_client:
-                await self.ha_client.close()
+            # Proper cleanup of temporary instances
+            logger.info("Cleaning up voice command session...")
+            
+            if temp_audio_manager:
+                try:
+                    temp_audio_manager.close_audio()
+                    logger.debug("Temp audio manager closed")
+                except Exception as e:
+                    logger.error(f"Error closing temp audio manager: {e}")
+                
+            if temp_ha_client:
+                try:
+                    await temp_ha_client.close()
+                    logger.debug("Temp HA client closed")
+                except Exception as e:
+                    logger.error(f"Error closing temp HA client: {e}")
+            
+            logger.info("Voice command session cleanup completed")
 
     def on_voice_command_trigger(self):
         """Callback called when user activates voice command."""
@@ -653,18 +672,37 @@ class HAAssistApp:
             logger.info("Window shown")
     
     def quit_application(self, icon=None, item=None):
-        """Close application from tray menu."""
+        """Close application from tray menu with proper cleanup."""
         logger.info("Closing application from tray menu...")
+        
+        # First cleanup resources
         self.cleanup()
         
+        # Stop tray icon
         if self.tray_icon:
-            self.tray_icon.stop()
+            try:
+                self.tray_icon.stop()
+                logger.info("Tray icon stopped")
+            except Exception as e:
+                logger.error(f"Error stopping tray icon: {e}")
         
+        # Close webview windows
         if hasattr(webview, 'windows') and webview.windows:
-            for window in webview.windows:
-                window.destroy()
+            try:
+                for window in webview.windows:
+                    window.destroy()
+                logger.info("Webview windows closed")
+            except Exception as e:
+                logger.error(f"Error closing webview windows: {e}")
         
-        sys.exit(0)
+        # Give some time for cleanup to complete
+        import time
+        time.sleep(0.5)
+        
+        logger.info("Application shutdown complete")
+        
+        # Exit cleanly
+        os._exit(0)  # Force exit without calling atexit handlers
     
     def run_tray(self):
         """Run tray icon in separate thread."""
@@ -718,16 +756,96 @@ class HAAssistApp:
             self.cleanup()
     
     def cleanup(self):
-        """Clean up resources."""
+        """Clean up resources properly."""
+        # Prevent duplicate cleanup
+        if hasattr(self, '_cleanup_done') and self._cleanup_done:
+            logger.debug("Cleanup already performed, skipping")
+            return
+            
         logger.info("Cleaning up resources...")
+        self._cleanup_done = True
         
+        # Stop wake word detection first
         self.stop_wake_word_detection()
 
+        # Close HA client connection if exists
+        if hasattr(self, 'ha_client') and self.ha_client:
+            try:
+                # Run close in asyncio loop if one exists
+                loop = None
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    # No running loop, create a new one
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    
+                if loop and not loop.is_closed():
+                    if loop.is_running():
+                        # Schedule close for later
+                        asyncio.create_task(self.ha_client.close())
+                    else:
+                        # Run close synchronously
+                        loop.run_until_complete(self.ha_client.close())
+                        
+                self.ha_client = None
+                logger.info("HA Client connection closed")
+                
+            except Exception as e:
+                logger.error(f"Error closing HA client: {e}")
+
+        # Stop animation server
         if self.animation_server:
-            self.animation_server.stop()
+            try:
+                self.animation_server.stop()
+                logger.info("Animation server stopped")
+            except Exception as e:
+                logger.error(f"Error stopping animation server: {e}")
         
+        # Close audio manager
         if self.audio_manager:
-            self.audio_manager.close_audio()
+            try:
+                self.audio_manager.close_audio()
+                logger.info("Audio manager closed")
+            except Exception as e:
+                logger.error(f"Error closing audio manager: {e}")
+                
+        # Cancel any remaining asyncio tasks
+        try:
+            # Check if there's a running event loop
+            try:
+                loop = asyncio.get_running_loop()
+                loop_exists = True
+            except RuntimeError:
+                # No running loop, try to get the current one
+                try:
+                    loop = asyncio.get_event_loop()
+                    loop_exists = not loop.is_closed()
+                except RuntimeError:
+                    loop_exists = False
+                    loop = None
+            
+            if loop_exists and loop:
+                pending = asyncio.all_tasks(loop)
+                if pending:
+                    logger.info(f"Cancelling {len(pending)} pending tasks...")
+                    for task in pending:
+                        if not task.done():
+                            task.cancel()
+                    
+                    # Give tasks a moment to cancel gracefully
+                    if not loop.is_running():
+                        try:
+                            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                        except Exception as e:
+                            logger.error(f"Error waiting for task cancellation: {e}")
+            else:
+                logger.debug("No active event loop found - skipping task cancellation")
+                            
+        except Exception as e:
+            logger.error(f"Error cancelling asyncio tasks: {e}")
+            
+        logger.info("Cleanup completed")
 
 
 def validate_configuration():
