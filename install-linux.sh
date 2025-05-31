@@ -475,6 +475,54 @@ EOF
 chmod +x "$INSTALL_DIR/glassist.sh"
 echo -e "${GREEN}✅ Launch script created${NC}"
 
+# Download wake word models
+echo ""
+echo -e "${BLUE}🎤 Downloading wake word models...${NC}"
+if python3 -c "import openwakeword" 2>/dev/null; then
+    echo -e "${YELLOW}Downloading default openWakeWord models (this may take a few minutes)...${NC}"
+    
+    python3 -c "
+import openwakeword
+try:
+    print('📥 Downloading models...')
+    openwakeword.utils.download_models()
+    print('✅ Wake word models downloaded successfully!')
+    
+    # List available models
+    import os
+    models_dir = os.path.join(os.path.dirname(openwakeword.__file__), 'resources')
+    if os.path.exists(models_dir):
+        models = [f for f in os.listdir(models_dir) if f.endswith('.onnx')]
+        if models:
+            print(f'📋 Available models: {len(models)}')
+            for model in models[:10]:  # Show first 10
+                print(f'   • {model.replace(\".onnx\", \"\")}')
+            if len(models) > 10:
+                print(f'   ... and {len(models) - 10} more')
+        else:
+            print('⚠️  No models found in resources directory')
+    else:
+        print('⚠️  Models directory not found')
+        
+except Exception as e:
+    print(f'❌ Failed to download models: {e}')
+    print('💡 You can download them later from the app settings')
+" || echo -e "${YELLOW}⚠️  Model download failed (you can try later from app settings)${NC}"
+    
+else
+    echo -e "${YELLOW}⚠️  openWakeWord not installed - skipping model download${NC}"
+fi
+
+# Fix NumPy compatibility for openWakeWord
+echo ""
+echo -e "${BLUE}🔧 Fixing NumPy compatibility...${NC}"
+echo -e "${YELLOW}Downgrading NumPy for openWakeWord compatibility...${NC}"
+pip install "numpy<2.0" --force-reinstall || echo -e "${YELLOW}⚠️  NumPy downgrade failed (may cause wake word issues)${NC}"
+
+# Install TensorFlow Lite runtime for Linux
+echo -e "${YELLOW}Installing TensorFlow Lite runtime for wake word models...${NC}"
+pip install tflite-runtime || echo -e "${YELLOW}⚠️  TFLite runtime installation failed (ONNX models will be used)${NC}"
+
 # Optional: System service setup
 echo ""
 echo -e "${BLUE}🔧 System Integration Options${NC}"
@@ -555,54 +603,6 @@ try:
 except Exception as e:
     print(f'❌ Pystray - FAILED: {e}')
 "
-
-# Download wake word models
-echo ""
-echo -e "${BLUE}🎤 Downloading wake word models...${NC}"
-if python3 -c "import openwakeword" 2>/dev/null; then
-    echo -e "${YELLOW}Downloading default openWakeWord models (this may take a few minutes)...${NC}"
-    
-    python3 -c "
-import openwakeword
-try:
-    print('📥 Downloading models...')
-    openwakeword.utils.download_models()
-    print('✅ Wake word models downloaded successfully!')
-    
-    # List available models
-    import os
-    models_dir = os.path.join(os.path.dirname(openwakeword.__file__), 'resources')
-    if os.path.exists(models_dir):
-        models = [f for f in os.listdir(models_dir) if f.endswith('.onnx')]
-        if models:
-            print(f'📋 Available models: {len(models)}')
-            for model in models[:10]:  # Show first 10
-                print(f'   • {model.replace(\".onnx\", \"\")}')
-            if len(models) > 10:
-                print(f'   ... and {len(models) - 10} more')
-        else:
-            print('⚠️  No models found in resources directory')
-    else:
-        print('⚠️  Models directory not found')
-        
-except Exception as e:
-    print(f'❌ Failed to download models: {e}')
-    print('💡 You can download them later from the app settings')
-" || echo -e "${YELLOW}⚠️  Model download failed (you can try later from app settings)${NC}"
-    
-else
-    echo -e "${YELLOW}⚠️  openWakeWord not installed - skipping model download${NC}"
-fi
-
-# Fix NumPy compatibility for openWakeWord
-echo ""
-echo -e "${BLUE}🔧 Fixing NumPy compatibility...${NC}"
-echo -e "${YELLOW}Downgrading NumPy for openWakeWord compatibility...${NC}"
-pip install "numpy<2.0" --force-reinstall || echo -e "${YELLOW}⚠️  NumPy downgrade failed (may cause wake word issues)${NC}"
-
-# Install TensorFlow Lite runtime for Linux
-echo -e "${YELLOW}Installing TensorFlow Lite runtime for wake word models...${NC}"
-pip install tflite-runtime || echo -e "${YELLOW}⚠️  TFLite runtime installation failed (ONNX models will be used)${NC}"
 
 # Installation complete
 echo ""
