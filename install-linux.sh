@@ -119,19 +119,32 @@ fi
 
 # Install system dependencies
 echo -e "${BLUE}📦 Installing system dependencies...${NC}"
+# Install system dependencies
+echo -e "${BLUE}📦 Installing system dependencies...${NC}"
 case $PKG_MANAGER in
     "apt")
         sudo apt update
+        
+        # Install base dependencies
         sudo apt install -y \
-            python3-dev python3-pip python3-venv \
+            python3-dev python3-pip python3-venv python3-wheel \
+            build-essential pkg-config cmake \
+            git curl
+        
+        # Install audio dependencies
+        sudo apt install -y \
             libasound2-dev portaudio19-dev \
-            python3-gi python3-gi-cairo \
-            gir1.2-gtk-3.0 gir1.2-webkit2-4.0 \
-            libgirepository1.0-dev \
-            libcairo2-dev libxt-dev libgirepository1.0-dev \
-            wmctrl xdotool \
-            libpulse-dev libspeex-dev \
-            build-essential pkg-config
+            libpulse-dev libspeex-dev
+        
+        # Install GTK/WebKit dependencies
+        sudo apt install -y \
+            libgirepository1.0-dev gobject-introspection \
+            libcairo2-dev libxt-dev libffi-dev \
+            python3-gi python3-gi-cairo python3-pycairo \
+            gir1.2-gtk-3.0 gir1.2-webkit2-4.0
+        
+        # Install window management tools
+        sudo apt install -y wmctrl xdotool
         ;;
     "dnf")
         sudo dnf install -y \
@@ -210,15 +223,38 @@ fi
 # Install Linux-specific packages
 echo -e "${BLUE}🐧 Installing Linux-specific packages...${NC}"
 
-# Try to use system packages first (faster and more reliable)
+# For Ubuntu/Debian, use system packages to avoid compilation hell
 if command -v apt &> /dev/null; then
-    echo -e "${YELLOW}Using system packages for better compatibility...${NC}"
-    sudo apt install -y python3-pycairo python3-gi python3-gi-cairo || {
-        echo -e "${YELLOW}System packages failed, trying pip...${NC}"
-        pip install PyGObject pycairo
-    }
+    echo -e "${YELLOW}Using system packages (no compilation needed)...${NC}"
+    
+    # System packages are already installed above, now configure venv to use them
+    PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+    SITE_PACKAGES="$PWD/venv/lib/python$PYTHON_VERSION/site-packages"
+    
+    echo -e "${YELLOW}Configuring virtual environment to use system GTK packages...${NC}"
+    
+    # Create .pth file to include system packages
+    cat > "$SITE_PACKAGES/system-packages.pth" << EOF
+/usr/lib/python3/dist-packages
+/usr/lib/python$PYTHON_VERSION/dist-packages
+EOF
+    
+    # Verify GTK is accessible
+    if python3 -c "import gi; gi.require_version('Gtk', '3.0'); from gi.repository import Gtk; print('✅ GTK accessible')" 2>/dev/null; then
+        echo -e "${GREEN}✅ GTK packages configured successfully${NC}"
+    else
+        echo -e "${YELLOW}⚠️  GTK test failed, trying pip fallback...${NC}"
+        pip install --no-cache-dir PyGObject pycairo || echo -e "${RED}❌ PyGObject installation failed${NC}"
+    fi
+    
 else
-    pip install PyGObject pycairo
+    # Non-Debian systems - try pip
+    echo -e "${YELLOW}Installing via pip (may require compilation)...${NC}"
+    pip install --no-cache-dir PyGObject pycairo || {
+        echo -e "${RED}❌ PyGObject/pycairo installation failed${NC}"
+        echo -e "${YELLOW}You may need to install development packages manually${NC}"
+        exit 1
+    }
 fi
 
 # Install optional packages
