@@ -600,6 +600,10 @@ echo -e "${BLUE}🔧 Fixing NumPy compatibility...${NC}"
 echo -e "${YELLOW}Downgrading NumPy for openWakeWord compatibility...${NC}"
 pip install "numpy<2.0" --force-reinstall || echo -e "${YELLOW}⚠️  NumPy downgrade failed (may cause wake word issues)${NC}"
 
+# Install TensorFlow Lite runtime for Linux
+echo -e "${YELLOW}Installing TensorFlow Lite runtime for wake word models...${NC}"
+pip install tflite-runtime || echo -e "${YELLOW}⚠️  TFLite runtime installation failed (ONNX models will be used)${NC}"
+
 # Installation complete
 echo ""
 echo -e "${GREEN}🎉 Installation Complete!${NC}"
