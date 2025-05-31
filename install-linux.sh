@@ -129,7 +129,7 @@ case $PKG_MANAGER in
             gir1.2-gtk-3.0 gir1.2-webkit2-4.0 \
             libgirepository1.0-dev \
             wmctrl xdotool \
-            pulseaudio-dev libspeex-dev \
+            libpulse-dev libspeex-dev \
             build-essential pkg-config
         ;;
     "dnf")
