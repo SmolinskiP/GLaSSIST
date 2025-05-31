@@ -128,6 +128,7 @@ case $PKG_MANAGER in
             python3-gi python3-gi-cairo \
             gir1.2-gtk-3.0 gir1.2-webkit2-4.0 \
             libgirepository1.0-dev \
+            libcairo2-dev libxt-dev libgirepository1.0-dev \
             wmctrl xdotool \
             libpulse-dev libspeex-dev \
             build-essential pkg-config
@@ -208,7 +209,17 @@ fi
 
 # Install Linux-specific packages
 echo -e "${BLUE}🐧 Installing Linux-specific packages...${NC}"
-pip install PyGObject pycairo
+
+# Try to use system packages first (faster and more reliable)
+if command -v apt &> /dev/null; then
+    echo -e "${YELLOW}Using system packages for better compatibility...${NC}"
+    sudo apt install -y python3-pycairo python3-gi python3-gi-cairo || {
+        echo -e "${YELLOW}System packages failed, trying pip...${NC}"
+        pip install PyGObject pycairo
+    }
+else
+    pip install PyGObject pycairo
+fi
 
 # Install optional packages
 echo -e "${BLUE}🎤 Installing optional enhancements...${NC}"
