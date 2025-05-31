@@ -594,6 +594,12 @@ else
     echo -e "${YELLOW}⚠️  openWakeWord not installed - skipping model download${NC}"
 fi
 
+# Fix NumPy compatibility for openWakeWord
+echo ""
+echo -e "${BLUE}🔧 Fixing NumPy compatibility...${NC}"
+echo -e "${YELLOW}Downgrading NumPy for openWakeWord compatibility...${NC}"
+pip install "numpy<2.0" --force-reinstall || echo -e "${YELLOW}⚠️  NumPy downgrade failed (may cause wake word issues)${NC}"
+
 # Installation complete
 echo ""
 echo -e "${GREEN}🎉 Installation Complete!${NC}"
