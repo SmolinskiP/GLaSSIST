@@ -7,6 +7,7 @@ import threading
 import numpy as np
 import pyaudio
 import utils
+import platform
 from platform_utils import check_wake_word_noise_suppression
 
 logger = utils.setup_logger()
@@ -95,16 +96,39 @@ class WakeWordDetector:
             # Try to load specific models first
             model_paths = self._get_model_paths()
             if model_paths:
-                # Filter out .tflite models on Windows if tflite-runtime not available
                 onnx_paths = [p for p in model_paths if p.endswith('.onnx')]
                 tflite_paths = [p for p in model_paths if p.endswith('.tflite')]
                 
-                if tflite_paths and not onnx_paths:
-                    logger.warning("Found .tflite models but tflite-runtime not available on Windows")
-                    logger.info("Falling back to default openWakeWord models")
+                # Platform-specific model preference
+                if platform.system() == "Linux":
+                    # Linux: prefer .tflite models (better performance)
+                    if tflite_paths:
+                        try:
+                            import tflite_runtime
+                            model_kwargs['wakeword_models'] = tflite_paths
+                            logger.info(f"Loading TFLite models on Linux: {', '.join(self.selected_models)}")
+                        except ImportError:
+                            logger.warning("TFLite runtime not available, trying ONNX...")
+                            if onnx_paths:
+                                model_kwargs['wakeword_models'] = onnx_paths
+                                logger.info(f"Loading ONNX models as fallback: {', '.join(self.selected_models)}")
+                            else:
+                                logger.info("Falling back to default openWakeWord models")
+                    elif onnx_paths:
+                        model_kwargs['wakeword_models'] = onnx_paths
+                        logger.info(f"Loading ONNX models on Linux: {', '.join(self.selected_models)}")
+                    else:
+                        logger.info("No custom models found, using defaults")
                 else:
-                    model_kwargs['wakeword_models'] = onnx_paths if onnx_paths else model_paths
-                    logger.info(f"Loading specific models: {', '.join(self.selected_models)}")
+                    # Windows: prefer ONNX, avoid TFLite due to compatibility issues
+                    if onnx_paths:
+                        model_kwargs['wakeword_models'] = onnx_paths
+                        logger.info(f"Loading ONNX models on Windows: {', '.join(self.selected_models)}")
+                    elif tflite_paths:
+                        logger.warning("Found .tflite models but tflite-runtime not reliable on Windows")
+                        logger.info("Falling back to default openWakeWord models")
+                    else:
+                        logger.info("Using default openWakeWord models")
             else:
                 logger.info("Using default openWakeWord models")
             
@@ -147,21 +171,29 @@ class WakeWordDetector:
             return False
     
     def _get_model_paths(self):
-        """Get full paths to selected model files."""
+        """Get full paths to selected model files with Linux preference."""
         paths = []
         
-        # Check if models exist in local models directory
         for model_name in self.selected_models:
-            for ext in ['.onnx', '.tflite']:
+            model_found = False
+            
+            # On Linux, prefer .tflite first
+            if platform.system() == "Linux":
+                extensions = ['.tflite', '.onnx']
+            else:
+                extensions = ['.onnx', '.tflite']
+            
+            for ext in extensions:
                 model_file = f"{model_name}{ext}"
                 local_path = os.path.join(self.models_dir, model_file)
                 
                 if os.path.exists(local_path):
                     paths.append(local_path)
                     logger.info(f"Found local model: {local_path}")
+                    model_found = True
                     break
-            else:
-                # Model not found locally, will use default if available
+            
+            if not model_found:
                 logger.info(f"Model '{model_name}' not found locally, using default if available")
         
         return paths
