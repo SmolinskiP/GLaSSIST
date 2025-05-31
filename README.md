@@ -25,7 +25,7 @@ Desktop voice application for Home Assistant with visual animations and VAD (Voi
 ### For Python Installation (Advanced users)
 - **Home Assistant** with Assist enabled
 - **Python 3.8+**
-- **Windows 10/11**
+- **Windows 10/11** or **Linux** (Ubuntu, Debian, Fedora, Arch)
 - **Microphone**
 - **Long-lived access token** for HA
 
@@ -39,7 +39,12 @@ Desktop voice application for Home Assistant with visual animations and VAD (Voi
 
 No Python knowledge required. Everything is bundled and configured automatically.
 
-### Option 2: From Source (For developers)
+### Option 2: Linux (Beta)
+```bash
+wget https://raw.githubusercontent.com/SmolinskiP/GLaSSIST/main/install-linux.sh && chmod +x install-linux.sh && ./install-linux.sh
+```
+
+### Option 3: From Source (For developers)
 
 ### 1. Clone repository
 ```bash
@@ -219,7 +224,7 @@ The app plays sounds from `sound/` directory:
 ## 📚 FAQ
 
 **Q: Does it work on Linux/Mac?**  
-A: Windows only for now. No plans for other platforms.
+A: Linux support added in v1.1.0 (beta). Use the install script. Mac support not planned.
 
 **Q: Can I change the animation?**  
 A: Yes, edit `frontend/index.html`. Shaders are in GLSL, so you need to know what you're doing.
