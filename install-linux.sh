@@ -139,9 +139,11 @@ case $PKG_MANAGER in
         # Install GTK/WebKit dependencies
         sudo apt install -y \
             libgirepository1.0-dev gobject-introspection \
+            libglib2.0-dev libglib2.0-dev-bin \
             libcairo2-dev libxt-dev libffi-dev \
             python3-gi python3-gi-cairo \
-            gir1.2-gtk-3.0 gir1.2-webkit2-4.0
+            gir1.2-gtk-3.0 gir1.2-webkit2-4.0 \
+            gir1.2-glib-2.0
         
         # Install window management tools
         sudo apt install -y wmctrl xdotool
@@ -223,9 +225,9 @@ fi
 # Install Linux-specific packages
 echo -e "${BLUE}🐧 Installing Linux-specific packages...${NC}"
 
-# For Ubuntu/Debian, use system packages to avoid compilation hell
+# For Ubuntu/Debian, skip pip compilation hell and use only system packages
 if command -v apt &> /dev/null; then
-    echo -e "${YELLOW}Configuring system GTK packages for virtual environment...${NC}"
+    echo -e "${YELLOW}Using system packages only (no compilation)...${NC}"
     
     PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
     SITE_PACKAGES="$PWD/venv/lib/python$PYTHON_VERSION/site-packages"
@@ -234,25 +236,29 @@ if command -v apt &> /dev/null; then
     cat > "$SITE_PACKAGES/system-packages.pth" << EOF
 /usr/lib/python3/dist-packages
 /usr/lib/python$PYTHON_VERSION/dist-packages
+/usr/local/lib/python$PYTHON_VERSION/dist-packages
 EOF
     
-    echo -e "${YELLOW}Installing pycairo via pip (using system cairo libraries)...${NC}"
-    pip install --no-cache-dir pycairo || echo -e "${YELLOW}⚠️  pycairo installation failed, but gi.repository.cairo should work${NC}"
+    echo -e "${GREEN}✅ System packages configured for virtual environment${NC}"
     
-    # Verify GTK is accessible
-    if python3 -c "import gi; gi.require_version('Gtk', '3.0'); from gi.repository import Gtk; print('✅ GTK accessible')" 2>/dev/null; then
-        echo -e "${GREEN}✅ GTK packages configured successfully${NC}"
+    # Test system packages
+    echo -e "${YELLOW}Testing GTK/Cairo availability...${NC}"
+    if python3 -c "import gi; gi.require_version('Gtk', '3.0'); from gi.repository import Gtk, GLib; print('✅ GTK works')" 2>/dev/null; then
+        echo -e "${GREEN}✅ GTK system packages working${NC}"
     else
-        echo -e "${YELLOW}⚠️  GTK test failed, trying PyGObject via pip...${NC}"
-        pip install --no-cache-dir PyGObject || echo -e "${RED}❌ PyGObject installation failed${NC}"
+        echo -e "${RED}❌ GTK system packages test failed${NC}"
+        echo -e "${YELLOW}Attempting emergency pip install...${NC}"
+        
+        # Last resort: try pip with --no-build-isolation
+        pip install --no-build-isolation --no-cache-dir pycairo || echo -e "${YELLOW}pycairo pip failed${NC}"
+        pip install --no-build-isolation --no-cache-dir PyGObject || echo -e "${YELLOW}PyGObject pip failed${NC}"
     fi
     
 else
-    # Non-Debian systems - try pip
+    # Non-Debian systems
     echo -e "${YELLOW}Installing via pip (may require compilation)...${NC}"
     pip install --no-cache-dir PyGObject pycairo || {
         echo -e "${RED}❌ PyGObject/pycairo installation failed${NC}"
-        echo -e "${YELLOW}You may need to install development packages manually${NC}"
         exit 1
     }
 fi
