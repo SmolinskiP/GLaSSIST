@@ -143,7 +143,8 @@ case $PKG_MANAGER in
             libcairo2-dev libxt-dev libffi-dev \
             python3-gi python3-gi-cairo \
             gir1.2-gtk-3.0 gir1.2-webkit2-4.0 \
-            gir1.2-glib-2.0
+            gir1.2-glib-2.0 \
+            gir1.2-appindicator3-0.1 gir1.2-ayatanaappindicator3-0.1
         
         # Install window management tools
         sudo apt install -y wmctrl xdotool
