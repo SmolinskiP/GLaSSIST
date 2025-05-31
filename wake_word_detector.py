@@ -7,6 +7,7 @@ import threading
 import numpy as np
 import pyaudio
 import utils
+from platform_utils import check_wake_word_noise_suppression
 
 logger = utils.setup_logger()
 
@@ -84,16 +85,12 @@ class WakeWordDetector:
             if self.vad_threshold > 0:
                 model_kwargs['vad_threshold'] = self.vad_threshold
             
-            # Set noise suppression if enabled (Linux only)
-            if self.noise_suppression:
-                try:
-                    # Test if speexdsp_ns is available before enabling
-                    import speexdsp_ns
-                    model_kwargs['enable_speex_noise_suppression'] = True
-                    print("DEBUG: Noise suppression enabled")
-                except ImportError:
-                    logger.warning("Noise suppression not available on this platform (speexdsp_ns not found)")
-                    print("DEBUG: Noise suppression disabled - speexdsp_ns not found")
+            if self.noise_suppression and check_wake_word_noise_suppression():
+                model_kwargs['enable_speex_noise_suppression'] = True
+                logger.info("Noise suppression enabled")
+            else:
+                if self.noise_suppression:
+                    logger.warning("Noise suppression requested but not available")
             
             # Try to load specific models first
             model_paths = self._get_model_paths()

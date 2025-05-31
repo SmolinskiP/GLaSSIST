@@ -669,26 +669,25 @@ class ImprovedSettingsDialog:
             messagebox.showerror("Error", f"Failed to refresh models: {str(e)}")
     
     def _open_models_folder(self):
-        """Open models folder in file explorer."""
+        """Open models folder in file explorer - cross-platform."""
         try:
+            from platform_utils import open_file_manager
+            
             models_dir = os.path.join(os.path.dirname(__file__), 'models')
             
             if not os.path.exists(models_dir):
                 os.makedirs(models_dir)
             
-            if platform.system() == "Windows":
-                subprocess.run(['explorer', models_dir])
-            elif platform.system() == "Darwin":  # macOS
-                subprocess.run(['open', models_dir])
-            else:  # Linux
-                subprocess.run(['xdg-open', models_dir])
-            
-            logger.info(f"Opened models folder: {models_dir}")
+            success = open_file_manager(models_dir)
+            if success:
+                logger.info(f"Opened models folder: {models_dir}")
+            else:
+                messagebox.showerror("Error", f"Failed to open models folder: {models_dir}")
             
         except Exception as e:
             logger.error(f"Failed to open models folder: {e}")
             messagebox.showerror("Error", f"Failed to open models folder: {str(e)}")
-    
+
     def _test_wake_word_detection(self):
         """Test wake word detection."""
         if not self.wake_word_enabled_var.get():

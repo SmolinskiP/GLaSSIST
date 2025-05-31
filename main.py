@@ -14,6 +14,8 @@ from client import HomeAssistantClient
 from audio import AudioManager
 from animation_server import AnimationServer
 from wake_word_detector import WakeWordDetector, validate_wake_word_config
+import platform
+from platform_utils import check_linux_dependencies, hide_window_from_taskbar, get_icon_path
 
 logger = utils.setup_logger()
 
@@ -32,6 +34,14 @@ class HAAssistApp:
         self.window_visible = True
         self.wake_word_detector = None
         
+        # Platform detection
+        self.is_linux = platform.system() == "Linux"
+        self.is_windows = platform.system() == "Windows"
+        # Check platform-specific dependencies
+        if self.is_linux and not check_linux_dependencies():
+            logger.error("Missing required dependencies for Linux")
+            sys.exit(1)
+
         # Pipeline caching
         self.cached_pipelines = []
         self.pipeline_cache_time = 0
@@ -83,10 +93,10 @@ class HAAssistApp:
             logger.info("Wake word detection stopped")
 
     def create_tray_icon(self):
-        """Create system tray icon with enhanced options."""
-        icon_path = os.path.join(os.path.dirname(__file__), 'img', 'icon.ico')
+        """Create system tray icon with cross-platform support."""
+        icon_path = get_icon_path()
         
-        if os.path.exists(icon_path):
+        if icon_path and os.path.exists(icon_path):
             try:
                 from PIL import Image
                 image = Image.open(icon_path)
@@ -95,12 +105,12 @@ class HAAssistApp:
                 logger.error(f"Error loading icon: {e}")
                 image = self._create_fallback_icon()
         else:
-            logger.warning(f"Icon file not found: {icon_path}")
+            logger.warning(f"Icon file not found, using fallback")
             image = self._create_fallback_icon()
         
         menu = pystray.Menu(
             item('🎤 Activate voice (%s)' % utils.get_env("HA_HOTKEY", "ctrl+shift+h"), 
-                 self.trigger_voice_command),
+                self.trigger_voice_command),
             pystray.Menu.SEPARATOR,
             item('🎯 Wake word status', self._show_wake_word_status),
             item('🔄 Restart wake word', self._restart_wake_word),
@@ -108,7 +118,7 @@ class HAAssistApp:
             item('⚙️ Settings', self.open_settings),
             item('🔄 Test connection', self._quick_connection_test),
             pystray.Menu.SEPARATOR,
-            item(' Close', self.quit_application)
+            item('❌ Close', self.quit_application)
         )
         
         self.tray_icon = pystray.Icon(
@@ -119,7 +129,7 @@ class HAAssistApp:
         )
         
         logger.info("System tray icon created")
-    
+
     def _show_wake_word_status(self, icon=None, item=None):
         """Show wake word detection status with animation."""
         if not self.wake_word_detector:
@@ -574,68 +584,16 @@ class HAAssistApp:
         thread.start()
     
     def hide_from_taskbar(self):
-        """Hide window from Windows taskbar."""
+        """Hide window from taskbar using cross-platform implementation."""
         try:
-            import ctypes
-            from ctypes import wintypes
-            
-            user32 = ctypes.windll.user32
-            screen_width = user32.GetSystemMetrics(0)
-            screen_height = user32.GetSystemMetrics(1)
-            window_width = 500
-            window_height = 500
-            pos_x = (screen_width - window_width) // 2
-            pos_y = screen_height - window_height + 50
-
-            logger.info(f"Screen size: {screen_width}x{screen_height}")
-            logger.info(f"Window position: x={pos_x}, y={pos_y}")
-
-            found_windows = []
-            
-            def enum_windows_proc(hwnd, lParam):
-                if ctypes.windll.user32.IsWindowVisible(hwnd):
-                    window_text = ctypes.create_unicode_buffer(512)
-                    ctypes.windll.user32.GetWindowTextW(hwnd, window_text, 512)
-                    class_name = ctypes.create_unicode_buffer(512)
-                    ctypes.windll.user32.GetClassNameW(hwnd, class_name, 512)
-                    
-                    window_title = window_text.value
-                    class_name_str = class_name.value
-                    
-                    if window_title == "GLaSSIST" and "WindowsForms10" in class_name_str:
-                        found_windows.append((hwnd, window_title, class_name_str))
-                        
-                        GWL_EXSTYLE = -20
-                        WS_EX_TOOLWINDOW = 0x00000080
-                        WS_EX_APPWINDOW = 0x00040000
-                        
-                        current_style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-                        new_style = (current_style & ~WS_EX_APPWINDOW) | WS_EX_TOOLWINDOW
-                        ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, new_style)
-                        
-                        SWP_FRAMECHANGED = 0x0020
-                        SWP_NOMOVE = 0x0002
-                        SWP_NOSIZE = 0x0001
-                        SWP_NOZORDER = 0x0004
-                        ctypes.windll.user32.SetWindowPos(
-                            hwnd, 0,
-                            pos_x, pos_y,
-                            window_width, window_height,
-                            SWP_FRAMECHANGED | SWP_NOZORDER
-                        )
-                        
-                        logger.info(f"Window hidden from taskbar: '{window_title}' (class: {class_name_str})")
-                
-                return True
-            
-            EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
-            ctypes.windll.user32.EnumWindows(EnumWindowsProc(enum_windows_proc), 0)
-            
-            logger.info(f"Found {len(found_windows)} windows to hide")
-            
+            success = hide_window_from_taskbar("GLaSSIST")
+            if success:
+                logger.info("Window successfully hidden from taskbar")
+            else:
+                logger.warning("Failed to hide window from taskbar")
         except Exception as e:
-            logger.exception(f"Error hiding from taskbar: {e}")
-    
+            logger.exception(f"Error hiding window from taskbar: {e}")
+
     def trigger_voice_command(self, icon=None, item=None):
         """Trigger from tray menu."""
         logger.info("Voice command activation from tray menu")
