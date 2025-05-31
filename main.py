@@ -93,6 +93,9 @@ class HAAssistApp:
             logger.info("Wake word detection stopped")
 
     def create_tray_icon(self):
+        if platform.system() == "Linux":
+            logger.info("System tray disabled on Linux - use hotkey ctrl+shift+h")
+            return
         """Create system tray icon with cross-platform support."""
         icon_path = get_icon_path()
         
