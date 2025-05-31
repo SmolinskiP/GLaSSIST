@@ -140,7 +140,7 @@ case $PKG_MANAGER in
         sudo apt install -y \
             libgirepository1.0-dev gobject-introspection \
             libcairo2-dev libxt-dev libffi-dev \
-            python3-gi python3-gi-cairo python3-pycairo \
+            python3-gi python3-gi-cairo \
             gir1.2-gtk-3.0 gir1.2-webkit2-4.0
         
         # Install window management tools
@@ -225,13 +225,10 @@ echo -e "${BLUE}🐧 Installing Linux-specific packages...${NC}"
 
 # For Ubuntu/Debian, use system packages to avoid compilation hell
 if command -v apt &> /dev/null; then
-    echo -e "${YELLOW}Using system packages (no compilation needed)...${NC}"
+    echo -e "${YELLOW}Configuring system GTK packages for virtual environment...${NC}"
     
-    # System packages are already installed above, now configure venv to use them
     PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
     SITE_PACKAGES="$PWD/venv/lib/python$PYTHON_VERSION/site-packages"
-    
-    echo -e "${YELLOW}Configuring virtual environment to use system GTK packages...${NC}"
     
     # Create .pth file to include system packages
     cat > "$SITE_PACKAGES/system-packages.pth" << EOF
@@ -239,12 +236,15 @@ if command -v apt &> /dev/null; then
 /usr/lib/python$PYTHON_VERSION/dist-packages
 EOF
     
+    echo -e "${YELLOW}Installing pycairo via pip (using system cairo libraries)...${NC}"
+    pip install --no-cache-dir pycairo || echo -e "${YELLOW}⚠️  pycairo installation failed, but gi.repository.cairo should work${NC}"
+    
     # Verify GTK is accessible
     if python3 -c "import gi; gi.require_version('Gtk', '3.0'); from gi.repository import Gtk; print('✅ GTK accessible')" 2>/dev/null; then
         echo -e "${GREEN}✅ GTK packages configured successfully${NC}"
     else
-        echo -e "${YELLOW}⚠️  GTK test failed, trying pip fallback...${NC}"
-        pip install --no-cache-dir PyGObject pycairo || echo -e "${RED}❌ PyGObject installation failed${NC}"
+        echo -e "${YELLOW}⚠️  GTK test failed, trying PyGObject via pip...${NC}"
+        pip install --no-cache-dir PyGObject || echo -e "${RED}❌ PyGObject installation failed${NC}"
     fi
     
 else
