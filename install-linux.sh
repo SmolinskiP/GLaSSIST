@@ -265,7 +265,20 @@ fi
 
 # Install optional packages
 echo -e "${BLUE}🎤 Installing optional enhancements...${NC}"
-pip install speexdsp-python || echo -e "${YELLOW}⚠️  speexdsp-python failed to install (optional)${NC}"
+
+# Try to install speexdsp with different names
+echo -e "${YELLOW}Attempting to install noise suppression support...${NC}"
+if pip install speexdsp 2>/dev/null; then
+    echo -e "${GREEN}✅ speexdsp installed${NC}"
+elif pip install speexdsp-python 2>/dev/null; then
+    echo -e "${GREEN}✅ speexdsp-python installed${NC}"
+else
+    echo -e "${YELLOW}⚠️  Noise suppression not available (speexdsp packages not found)${NC}"
+    echo -e "${YELLOW}    This is optional - wake word detection will work without it${NC}"
+fi
+
+# Install additional audio processing libraries
+pip install librosa 2>/dev/null || echo -e "${YELLOW}⚠️  librosa not installed (optional)${NC}"
 
 # Set up configuration
 echo -e "${BLUE}⚙️  Setting up configuration...${NC}"
