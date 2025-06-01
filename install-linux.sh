@@ -341,7 +341,7 @@ if [ "$SKIP_CONFIG" != "true" ]; then
     # Validate token
     while [[ -z "$HA_TOKEN" ]]; do
         echo -e "${RED}❌ Token cannot be empty!${NC}"
-        read -s -p "Access Token: " HA_TOKEN
+        read -p "Access Token: " HA_TOKEN
         echo ""
     done
     
