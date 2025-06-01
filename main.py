@@ -15,7 +15,7 @@ from audio import AudioManager
 from animation_server import AnimationServer
 from wake_word_detector import WakeWordDetector, validate_wake_word_config
 import platform
-from platform_utils import check_linux_dependencies, hide_window_from_taskbar, get_icon_path
+from platform_utils import check_linux_dependencies, hide_window_from_taskbar, get_icon_path, LinuxTrayManager, LinuxWindowManager
 
 logger = utils.setup_logger()
 
