@@ -255,6 +255,7 @@ class LinuxTrayManager:
         self.app = app_instance
         self.desktop_env, self.session_type = detect_linux_desktop_environment()
         self.tray = None
+        self.indicator = None  # Dla AppIndicator
         
         logger.info(f"Detected: {self.desktop_env} on {self.session_type}")
     
@@ -274,51 +275,86 @@ class LinuxTrayManager:
             return self._create_generic_tray()
     
     def _create_gnome_tray(self):
-        """GNOME-specific tray (AppIndicator)"""
         try:
-            # Spróbuj różne wersje AppIndicator
-            indicator = None
+            import gi
             
-            # Najpierw Ayatana (nowszy)
             try:
-                import gi
                 gi.require_version('AyatanaAppIndicator3', '0.1')
                 from gi.repository import AyatanaAppIndicator3 as AppIndicator3
-                from gi.repository import Gtk
+                from gi.repository import Gtk, GLib
                 
-                indicator = AppIndicator3.Indicator.new(
-                    "glassist-desktop",
-                    "audio-input-microphone",
-                    AppIndicator3.IndicatorCategory.APPLICATION_STATUS
-                )
                 logger.info("Using AyatanaAppIndicator3")
                 
             except (ImportError, ValueError):
-                # Fallback do starego AppIndicator
                 try:
-                    import gi
                     gi.require_version('AppIndicator3', '0.1')
                     from gi.repository import AppIndicator3
-                    from gi.repository import Gtk
+                    from gi.repository import Gtk, GLib
                     
-                    indicator = AppIndicator3.Indicator.new(
-                        "glassist-desktop",
-                        "audio-input-microphone",
-                        AppIndicator3.IndicatorCategory.APPLICATION_STATUS
-                    )
                     logger.info("Using legacy AppIndicator3")
                     
                 except (ImportError, ValueError):
                     logger.warning("No AppIndicator available for GNOME")
                     return None
             
-            if indicator:
-                return self._setup_appindicator_menu(indicator, Gtk)
+            self.indicator = AppIndicator3.Indicator.new(
+                "glassist-desktop",
+                "audio-input-microphone",
+                AppIndicator3.IndicatorCategory.APPLICATION_STATUS
+            )
+            
+            # Set icon
+            icon_path = get_icon_path()
+            if icon_path and os.path.exists(icon_path):
+                self.indicator.set_icon(icon_path)
+            
+            self.indicator.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
+            self.indicator.set_label("GLaSSIST", "GLaSSIST")
+            
+            def create_menu():
+                menu = Gtk.Menu()
                 
+                # Items
+                activate_item = Gtk.MenuItem(label="🎤 Activate Voice (Ctrl+Shift+H)")
+                activate_item.connect("activate", self._on_activate_clicked)
+                menu.append(activate_item)
+                
+                separator = Gtk.SeparatorMenuItem()
+                menu.append(separator)
+                
+                wake_status_item = Gtk.MenuItem(label="🎯 Wake Word Status")
+                wake_status_item.connect("activate", self._on_wake_status_clicked)
+                menu.append(wake_status_item)
+                
+                test_item = Gtk.MenuItem(label="🔄 Test Connection")
+                test_item.connect("activate", self._on_test_clicked)
+                menu.append(test_item)
+                
+                settings_item = Gtk.MenuItem(label="⚙️ Settings")
+                settings_item.connect("activate", self._on_settings_clicked)
+                menu.append(settings_item)
+                
+                separator2 = Gtk.SeparatorMenuItem()
+                menu.append(separator2)
+                
+                quit_item = Gtk.MenuItem(label="❌ Quit GLaSSIST")
+                quit_item.connect("activate", self._on_quit_clicked)
+                menu.append(quit_item)
+                
+                menu.show_all()
+                self.indicator.set_menu(menu)
+                return False  # Remove from idle
+            
+            # Użyj GLib.idle_add żeby dodać to do głównej pętli GTK
+            GLib.idle_add(create_menu)
+            
+            logger.info("✅ AppIndicator created successfully")
+            return self.indicator
+            
         except Exception as e:
             logger.error(f"Failed to create GNOME tray: {e}")
             return None
-    
+
     def _create_xfce_tray(self):
         """XFCE-specific tray (pystray works better here)"""
         try:
@@ -469,7 +505,6 @@ class LinuxTrayManager:
         self.app.quit_application()
     
     def start_tray(self):
-        """Start the appropriate tray implementation"""
         if not self.tray:
             self.tray = self.create_tray_icon()
         
@@ -477,22 +512,16 @@ class LinuxTrayManager:
             logger.warning("⚠️ System tray not available - using hotkey only")
             return False
         
-        # Start tray in thread
-        def tray_thread():
-            try:
-                if hasattr(self.tray, 'run'):
-                    # pystray
-                    self.tray.run()
-                else:
-                    # AppIndicator - już działa po utworzeniu
-                    pass
-            except Exception as e:
-                logger.error(f"Tray thread error: {e}")
-        
         if hasattr(self.tray, 'run'):
+            def tray_thread():
+                try:
+                    self.tray.run()
+                except Exception as e:
+                    logger.error(f"Pystray thread error: {e}")
+            
             threading.Thread(target=tray_thread, daemon=True).start()
         
-        logger.info("✅ System tray started")
+        logger.info("✅ System tray integrated with main GTK loop")
         return True
     
 class LinuxWindowManager:
