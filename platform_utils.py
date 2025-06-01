@@ -215,13 +215,21 @@ def detect_linux_desktop_environment():
     if 'xfce' in desktop:
         return 'xfce', session
     
-    # KDE jako bonus (bo czemu nie)
+    # KDE detection
     if 'kde' in desktop or 'plasma' in desktop:
         return 'kde', session
     
+    # Cinnamon
+    if 'cinnamon' in desktop:
+        return 'cinnamon', session
+    
+    # MATE
+    if 'mate' in desktop:
+        return 'mate', session
+    
     # Fallback detection przez procesy
     try:
-        ps_output = subprocess.run(['ps', 'aux'], capture_output=True, text=True)
+        ps_output = subprocess.run(['ps', 'aux'], capture_output=True, text=True, timeout=5)
         processes = ps_output.stdout.lower()
         
         if 'gnome-shell' in processes:
@@ -230,6 +238,10 @@ def detect_linux_desktop_environment():
             return 'xfce', session
         elif 'plasmashell' in processes:
             return 'kde', session
+        elif 'cinnamon' in processes:
+            return 'cinnamon', session
+        elif 'mate-panel' in processes:
+            return 'mate', session
             
     except Exception:
         pass
@@ -249,15 +261,64 @@ def check_linux_capabilities():
     return capabilities
 
 class LinuxTrayManager:
-    """Zarządza system tray na różnych środowiskach Linux"""
+    """FIXED: Zarządza system tray na różnych środowiskach Linux bez konfliktów GTK"""
     
     def __init__(self, app_instance):
         self.app = app_instance
         self.desktop_env, self.session_type = detect_linux_desktop_environment()
         self.tray = None
-        self.indicator = None  # Dla AppIndicator
+        self.indicator = None
+        self._gtk_initialized = False
+        self._setup_complete = False
+        self._main_context_owned = False
         
-        logger.info(f"Detected: {self.desktop_env} on {self.session_type}")
+        logger.info(f"LinuxTrayManager: {self.desktop_env} on {self.session_type}")
+    
+    def _check_gtk_main_context(self):
+        """Check if GTK main context is already owned"""
+        try:
+            import gi
+            gi.require_version('GLib', '2.0')
+            from gi.repository import GLib
+            
+            main_context = GLib.MainContext.default()
+            is_owned = main_context.is_owner()
+            
+            logger.debug(f"GTK main context owned: {is_owned}")
+            return is_owned
+            
+        except Exception as e:
+            logger.debug(f"GTK context check failed: {e}")
+            return False
+    
+    def _can_use_appindicator(self):
+        """Check if AppIndicator is available"""
+        try:
+            import gi
+            
+            # Try AyatanaAppIndicator first (newer)
+            try:
+                gi.require_version('AyatanaAppIndicator3', '0.1')
+                from gi.repository import AyatanaAppIndicator3
+                logger.debug("AyatanaAppIndicator3 available")
+                return 'ayatana'
+            except (ImportError, ValueError):
+                pass
+            
+            # Try legacy AppIndicator
+            try:
+                gi.require_version('AppIndicator3', '0.1') 
+                from gi.repository import AppIndicator3
+                logger.debug("AppIndicator3 available")
+                return 'legacy'
+            except (ImportError, ValueError):
+                pass
+                
+            return None
+            
+        except Exception as e:
+            logger.debug(f"AppIndicator check failed: {e}")
+            return None
     
     def create_tray_icon(self):
         """Create appropriate tray icon for detected environment"""
@@ -271,197 +332,179 @@ class LinuxTrayManager:
             return self._create_gnome_tray()
         elif self.desktop_env == 'xfce':
             return self._create_xfce_tray()
+        elif self.desktop_env == 'kde':
+            return self._create_kde_tray()
         else:
             return self._create_generic_tray()
     
     def _create_gnome_tray(self):
+        """FIXED: GNOME tray without GTK main loop conflicts"""
+        appindicator_type = self._can_use_appindicator()
+        
+        if not appindicator_type:
+            logger.warning("No AppIndicator available for GNOME")
+            return self._create_pystray_fallback()
+        
         try:
             import gi
+            from gi.repository import Gtk, GLib
             
-            try:
+            # Import appropriate AppIndicator
+            if appindicator_type == 'ayatana':
                 gi.require_version('AyatanaAppIndicator3', '0.1')
                 from gi.repository import AyatanaAppIndicator3 as AppIndicator3
-                from gi.repository import Gtk, GLib
-                
                 logger.info("Using AyatanaAppIndicator3")
-                
-            except (ImportError, ValueError):
-                try:
-                    gi.require_version('AppIndicator3', '0.1')
-                    from gi.repository import AppIndicator3
-                    from gi.repository import Gtk, GLib
-                    
-                    logger.info("Using legacy AppIndicator3")
-                    
-                except (ImportError, ValueError):
-                    logger.warning("No AppIndicator available for GNOME")
-                    return None
+            else:
+                gi.require_version('AppIndicator3', '0.1')
+                from gi.repository import AppIndicator3
+                logger.info("Using legacy AppIndicator3")
             
+            # Check if we can safely create indicator
+            if self._check_gtk_main_context():
+                logger.info("GTK main context already owned - creating deferred tray")
+                return self._create_deferred_appindicator(AppIndicator3, Gtk)
+            
+            # Create indicator immediately
             self.indicator = AppIndicator3.Indicator.new(
                 "glassist-desktop",
-                "audio-input-microphone",
+                "audio-input-microphone-symbolic",
                 AppIndicator3.IndicatorCategory.APPLICATION_STATUS
             )
             
             # Set icon
             icon_path = get_icon_path()
             if icon_path and os.path.exists(icon_path):
-                self.indicator.set_icon(icon_path)
+                self.indicator.set_icon_full(icon_path, "GLaSSIST")
+            else:
+                # Use system icon as fallback
+                self.indicator.set_icon_theme_path("/usr/share/icons/")
+                self.indicator.set_icon_full("audio-input-microphone-symbolic", "GLaSSIST")
             
             self.indicator.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
-            self.indicator.set_label("GLaSSIST", "GLaSSIST")
+            self.indicator.set_label("GLaSSIST", "GLaSSIST Desktop Voice Assistant")
             
-            def create_menu():
-                menu = Gtk.Menu()
-                
-                # Items
-                activate_item = Gtk.MenuItem(label="🎤 Activate Voice (Ctrl+Shift+H)")
-                activate_item.connect("activate", self._on_activate_clicked)
-                menu.append(activate_item)
-                
-                separator = Gtk.SeparatorMenuItem()
-                menu.append(separator)
-                
-                wake_status_item = Gtk.MenuItem(label="🎯 Wake Word Status")
-                wake_status_item.connect("activate", self._on_wake_status_clicked)
-                menu.append(wake_status_item)
-                
-                test_item = Gtk.MenuItem(label="🔄 Test Connection")
-                test_item.connect("activate", self._on_test_clicked)
-                menu.append(test_item)
-                
-                settings_item = Gtk.MenuItem(label="⚙️ Settings")
-                settings_item.connect("activate", self._on_settings_clicked)
-                menu.append(settings_item)
-                
-                separator2 = Gtk.SeparatorMenuItem()
-                menu.append(separator2)
-                
-                quit_item = Gtk.MenuItem(label="❌ Quit GLaSSIST")
-                quit_item.connect("activate", self._on_quit_clicked)
-                menu.append(quit_item)
-                
-                menu.show_all()
-                self.indicator.set_menu(menu)
-                return False  # Remove from idle
-            
-            # Użyj GLib.idle_add żeby dodać to do głównej pętli GTK
-            GLib.idle_add(create_menu)
+            # Create menu without GLib.idle_add
+            menu = self._create_gtk_menu(Gtk)
+            self.indicator.set_menu(menu)
             
             logger.info("✅ AppIndicator created successfully")
             return self.indicator
             
         except Exception as e:
             logger.error(f"Failed to create GNOME tray: {e}")
-            return None
-
-    def _create_xfce_tray(self):
-        """XFCE-specific tray (pystray works better here)"""
-        try:
-            # XFCE ma lepsze wsparcie dla standardowego system tray
-            return self._create_pystray_icon()
+            return self._create_pystray_fallback()
+    
+    def _create_deferred_appindicator(self, AppIndicator3, Gtk):
+        """Create AppIndicator after webview starts GTK main loop"""
+        logger.info("Creating deferred AppIndicator")
+        
+        def setup_deferred():
+            """Setup indicator after GTK is ready"""
+            retries = 10
             
-        except Exception as e:
-            logger.error(f"Failed to create XFCE tray: {e}")
-            return None
+            for attempt in range(retries):
+                try:
+                    time.sleep(0.5)  # Wait for GTK to stabilize
+                    
+                    # Create indicator
+                    self.indicator = AppIndicator3.Indicator.new(
+                        "glassist-desktop",
+                        "audio-input-microphone-symbolic",
+                        AppIndicator3.IndicatorCategory.APPLICATION_STATUS
+                    )
+                    
+                    # Set properties
+                    icon_path = get_icon_path()
+                    if icon_path and os.path.exists(icon_path):
+                        self.indicator.set_icon_full(icon_path, "GLaSSIST")
+                    
+                    self.indicator.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
+                    self.indicator.set_label("GLaSSIST", "GLaSSIST")
+                    
+                    # Create menu
+                    menu = self._create_gtk_menu(Gtk)
+                    self.indicator.set_menu(menu)
+                    
+                    self._setup_complete = True
+                    logger.info("✅ Deferred AppIndicator created successfully")
+                    break
+                    
+                except Exception as e:
+                    logger.debug(f"Deferred setup attempt {attempt + 1} failed: {e}")
+                    if attempt == retries - 1:
+                        logger.error("Failed to create deferred AppIndicator")
+        
+        # Start setup in thread
+        threading.Thread(target=setup_deferred, daemon=True).start()
+        return "deferred"
+    
+    def _create_xfce_tray(self):
+        """XFCE-specific tray - usually better with pystray"""
+        logger.info("XFCE detected - using pystray for better compatibility")
+        return self._create_pystray_fallback()
+    
+    def _create_kde_tray(self):
+        """KDE-specific tray"""
+        logger.info("KDE detected - trying AppIndicator first")
+        
+        appindicator_type = self._can_use_appindicator()
+        if appindicator_type:
+            return self._create_gnome_tray()  # Same logic works for KDE
+        else:
+            return self._create_pystray_fallback()
     
     def _create_generic_tray(self):
         """Generic fallback tray"""
-        return self._create_pystray_icon()
+        logger.info("Generic Linux environment - using pystray")
+        return self._create_pystray_fallback()
     
     def _try_wayland_tray(self):
-        """Try to create tray on Wayland (limited support)"""
+        """Try to create tray on Wayland (very limited support)"""
         logger.warning("Wayland tray support is experimental")
         
-        # Na Waylandzie próbuj tylko AppIndicator
+        # Only try AppIndicator on Wayland
         if self.desktop_env == 'gnome':
-            return self._create_gnome_tray()
-        else:
-            logger.info("No Wayland tray support for this environment")
-            return None
+            appindicator_type = self._can_use_appindicator()
+            if appindicator_type:
+                logger.info("Trying AppIndicator on Wayland")
+                return self._create_gnome_tray()
+        
+        logger.info("No Wayland tray support available")
+        return None
     
-    def _setup_appindicator_menu(self, indicator, Gtk):
-        """Setup menu for AppIndicator"""
-        try:
-            # Set icon
-            icon_path = get_icon_path()
-            if icon_path and os.path.exists(icon_path):
-                indicator.set_icon(icon_path)
-            
-            indicator.set_status(indicator.IndicatorStatus.ACTIVE)
-            indicator.set_label("GLaSSIST", "GLaSSIST")
-            
-            # Create menu
-            menu = Gtk.Menu()
-            
-            # Activate item
-            activate_item = Gtk.MenuItem(label="🎤 Activate Voice (Ctrl+Shift+H)")
-            activate_item.connect("activate", self._on_activate_clicked)
-            menu.append(activate_item)
-            
-            # Separator
-            separator = Gtk.SeparatorMenuItem()
-            menu.append(separator)
-            
-            # Wake word status
-            wake_status_item = Gtk.MenuItem(label="🎯 Wake Word Status")
-            wake_status_item.connect("activate", self._on_wake_status_clicked)
-            menu.append(wake_status_item)
-            
-            # Test connection
-            test_item = Gtk.MenuItem(label="🔄 Test Connection")
-            test_item.connect("activate", self._on_test_clicked)
-            menu.append(test_item)
-            
-            # Settings
-            settings_item = Gtk.MenuItem(label="⚙️ Settings")
-            settings_item.connect("activate", self._on_settings_clicked)
-            menu.append(settings_item)
-            
-            # Separator
-            separator2 = Gtk.SeparatorMenuItem()
-            menu.append(separator2)
-            
-            # Quit
-            quit_item = Gtk.MenuItem(label="❌ Quit GLaSSIST")
-            quit_item.connect("activate", self._on_quit_clicked)
-            menu.append(quit_item)
-            
-            menu.show_all()
-            indicator.set_menu(menu)
-            
-            logger.info("✅ AppIndicator menu created successfully")
-            return indicator
-            
-        except Exception as e:
-            logger.error(f"Failed to setup AppIndicator menu: {e}")
-            return None
-    
-    def _create_pystray_icon(self):
-        """Create standard pystray icon"""
+    def _create_pystray_fallback(self):
+        """Create standard pystray icon as fallback"""
         try:
             import pystray
             from PIL import Image
+            
+            logger.info("Creating pystray fallback icon")
             
             # Load icon
             icon_path = get_icon_path()
             if icon_path and os.path.exists(icon_path):
                 try:
                     image = Image.open(icon_path)
-                except Exception:
+                    # Resize if needed
+                    if image.size != (64, 64):
+                        image = image.resize((64, 64), Image.Resampling.LANCZOS)
+                except Exception as e:
+                    logger.warning(f"Icon load failed: {e}")
                     image = self._create_fallback_icon()
             else:
                 image = self._create_fallback_icon()
             
             # Create menu
             menu = pystray.Menu(
-                pystray.MenuItem('🎤 Activate Voice', self._on_activate_clicked),
+                pystray.MenuItem('🎤 Activate Voice (Ctrl+Shift+H)', self._on_activate_clicked),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem('🎯 Wake Word Status', self._on_wake_status_clicked),
-                pystray.MenuItem('🔄 Test Connection', self._on_test_clicked),
+                pystray.MenuItem('🔄 Restart Wake Word', self._on_restart_wake_word_clicked),
                 pystray.Menu.SEPARATOR,
+                pystray.MenuItem('🔄 Test Connection', self._on_test_clicked),
                 pystray.MenuItem('⚙️ Settings', self._on_settings_clicked),
-                pystray.MenuItem('❌ Quit', self._on_quit_clicked)
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem('❌ Quit GLaSSIST', self._on_quit_clicked)
             )
             
             tray = pystray.Icon(
@@ -471,40 +514,128 @@ class LinuxTrayManager:
                 menu
             )
             
-            logger.info("✅ Pystray icon created successfully")
+            logger.info("✅ Pystray fallback icon created")
             return tray
             
+        except ImportError:
+            logger.error("pystray not available - no system tray")
+            return None
         except Exception as e:
             logger.error(f"Failed to create pystray icon: {e}")
             return None
+    
+    def _create_gtk_menu(self, Gtk):
+        """Create GTK menu for AppIndicator"""
+        menu = Gtk.Menu()
+        
+        # Activate voice
+        activate_item = Gtk.MenuItem(label="🎤 Activate Voice (Ctrl+Shift+H)")
+        activate_item.connect("activate", self._on_activate_clicked)
+        menu.append(activate_item)
+        
+        # Separator
+        separator1 = Gtk.SeparatorMenuItem()
+        menu.append(separator1)
+        
+        # Wake word status
+        wake_status_item = Gtk.MenuItem(label="🎯 Wake Word Status")
+        wake_status_item.connect("activate", self._on_wake_status_clicked)
+        menu.append(wake_status_item)
+        
+        # Restart wake word
+        restart_wake_item = Gtk.MenuItem(label="🔄 Restart Wake Word")
+        restart_wake_item.connect("activate", self._on_restart_wake_word_clicked)
+        menu.append(restart_wake_item)
+        
+        # Separator
+        separator2 = Gtk.SeparatorMenuItem()
+        menu.append(separator2)
+        
+        # Test connection
+        test_item = Gtk.MenuItem(label="🔄 Test Connection")
+        test_item.connect("activate", self._on_test_clicked)
+        menu.append(test_item)
+        
+        # Settings
+        settings_item = Gtk.MenuItem(label="⚙️ Settings")
+        settings_item.connect("activate", self._on_settings_clicked)
+        menu.append(settings_item)
+        
+        # Separator
+        separator3 = Gtk.SeparatorMenuItem()
+        menu.append(separator3)
+        
+        # Quit
+        quit_item = Gtk.MenuItem(label="❌ Quit GLaSSIST")
+        quit_item.connect("activate", self._on_quit_clicked)
+        menu.append(quit_item)
+        
+        menu.show_all()
+        return menu
     
     def _create_fallback_icon(self):
         """Create simple fallback icon"""
         from PIL import Image, ImageDraw
         
-        image = Image.new('RGB', (64, 64), color='black')
+        image = Image.new('RGBA', (64, 64), color=(0, 0, 0, 0))
         draw = ImageDraw.Draw(image)
-        draw.ellipse([8, 8, 56, 56], fill='#4fc3f7', outline='white', width=2)
-        draw.ellipse([24, 24, 40, 40], fill='white')
+        
+        # Draw microphone-like icon
+        draw.ellipse([16, 12, 48, 40], fill='#4fc3f7', outline='white', width=2)
+        draw.rectangle([28, 40, 36, 52], fill='#4fc3f7')
+        draw.rectangle([20, 52, 44, 56], fill='white', outline='#4fc3f7', width=1)
+        
         return image
     
-    # Event handlers
+    # Event handlers - work with both GTK and pystray
     def _on_activate_clicked(self, *args):
-        self.app.trigger_voice_command()
+        """Handle activate voice command"""
+        try:
+            self.app.trigger_voice_command()
+        except Exception as e:
+            logger.error(f"Activate voice failed: {e}")
     
     def _on_wake_status_clicked(self, *args):
-        self.app._show_wake_word_status()
+        """Handle wake word status request"""
+        try:
+            self.app._show_wake_word_status()
+        except Exception as e:
+            logger.error(f"Wake word status failed: {e}")
+    
+    def _on_restart_wake_word_clicked(self, *args):
+        """Handle wake word restart"""
+        try:
+            self.app._restart_wake_word()
+        except Exception as e:
+            logger.error(f"Wake word restart failed: {e}")
     
     def _on_test_clicked(self, *args):
-        self.app._quick_connection_test()
+        """Handle connection test"""
+        try:
+            self.app._quick_connection_test()
+        except Exception as e:
+            logger.error(f"Connection test failed: {e}")
     
     def _on_settings_clicked(self, *args):
-        self.app.open_settings()
+        """Handle settings dialog"""
+        try:
+            self.app.open_settings()
+        except Exception as e:
+            logger.error(f"Settings dialog failed: {e}")
     
     def _on_quit_clicked(self, *args):
-        self.app.quit_application()
+        """Handle quit application"""
+        try:
+            self.app.quit_application()
+        except Exception as e:
+            logger.error(f"Quit application failed: {e}")
     
     def start_tray(self):
+        """FIXED: Start tray without interfering with GTK main loop"""
+        if self._setup_complete:
+            logger.info("Tray already set up")
+            return True
+            
         if not self.tray:
             self.tray = self.create_tray_icon()
         
@@ -512,18 +643,44 @@ class LinuxTrayManager:
             logger.warning("⚠️ System tray not available - using hotkey only")
             return False
         
-        if hasattr(self.tray, 'run'):
+        # Handle different tray types
+        if self.tray == "deferred":
+            logger.info("✅ Deferred tray setup initiated")
+            return True
+        elif hasattr(self.tray, 'run'):
+            # This is pystray - start in thread
             def tray_thread():
                 try:
+                    logger.info("Starting pystray in thread")
                     self.tray.run()
                 except Exception as e:
                     logger.error(f"Pystray thread error: {e}")
             
             threading.Thread(target=tray_thread, daemon=True).start()
-        
-        logger.info("✅ System tray integrated with main GTK loop")
-        return True
+            logger.info("✅ Pystray started in background thread")
+            return True
+        else:
+            # This is AppIndicator - already integrated with GTK
+            logger.info("✅ AppIndicator integrated with GTK main loop")
+            return True
     
+    def stop_tray(self):
+        """Stop tray icon"""
+        try:
+            if hasattr(self.tray, 'stop'):
+                self.tray.stop()
+            elif self.indicator:
+                self.indicator.set_status(self.indicator.IndicatorStatus.PASSIVE)
+            
+            logger.info("Tray icon stopped")
+            
+        except Exception as e:
+            logger.error(f"Error stopping tray: {e}")
+    
+    def is_available(self):
+        """Check if tray is available and working"""
+        return self.tray is not None or self._setup_complete
+
 class LinuxWindowManager:
     """Manages window behavior on Linux"""
     
