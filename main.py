@@ -1,6 +1,10 @@
 """
 Enhanced main.py - preserves original code with improvements
 """
+import platform
+if platform.system() == "Linux":
+    os.environ['PYWEBVIEW_GUI'] = 'qt'
+    os.environ['GDK_BACKEND'] = 'x11'
 import asyncio
 import threading
 import webview
@@ -14,7 +18,6 @@ from client import HomeAssistantClient
 from audio import AudioManager
 from animation_server import AnimationServer
 from wake_word_detector import WakeWordDetector, validate_wake_word_config
-import platform
 from platform_utils import check_linux_dependencies, hide_window_from_taskbar, get_icon_path, LinuxTrayManager, LinuxWindowManager
 
 logger = utils.setup_logger()
