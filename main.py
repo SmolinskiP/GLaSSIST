@@ -1,15 +1,11 @@
 """
 Enhanced main.py - preserves original code with improvements
 """
-import platform
-import os
-if platform.system() == "Linux":
-    os.environ['PYWEBVIEW_GUI'] = 'qt'
-    os.environ['GDK_BACKEND'] = 'x11'
 import asyncio
 import threading
 import webview
 import sys
+import os
 import pystray
 from PIL import Image, ImageDraw
 from pystray import MenuItem as item
@@ -18,7 +14,8 @@ from client import HomeAssistantClient
 from audio import AudioManager
 from animation_server import AnimationServer
 from wake_word_detector import WakeWordDetector, validate_wake_word_config
-from platform_utils import check_linux_dependencies, hide_window_from_taskbar, get_icon_path, LinuxTrayManager, LinuxWindowManager
+import platform
+from platform_utils import check_linux_dependencies, hide_window_from_taskbar, get_icon_path
 
 logger = utils.setup_logger()
 
@@ -97,14 +94,9 @@ class HAAssistApp:
 
     def create_tray_icon(self):
         if platform.system() == "Linux":
-            # Use Linux-specific tray manager
-            self.linux_tray_manager = LinuxTrayManager(self)
-            success = self.linux_tray_manager.start_tray()
-            
-            if not success:
-                logger.info("💡 System tray not available - use hotkey: Ctrl+Shift+H")
-            
-            return success
+            logger.info("System tray disabled on Linux - use hotkey ctrl+shift+h")
+            return
+        """Create system tray icon with cross-platform support."""
         icon_path = get_icon_path()
         
         if icon_path and os.path.exists(icon_path):
@@ -597,18 +589,11 @@ class HAAssistApp:
     def hide_from_taskbar(self):
         """Hide window from taskbar using cross-platform implementation."""
         try:
-            if platform.system() == "Linux":
-                # Use Linux window manager
-                self.linux_window_manager = LinuxWindowManager()
-                success = self.linux_window_manager.setup_window_behavior("GLaSSIST")
-                
-                if success:
-                    logger.info("✅ Linux window setup completed")
-                else:
-                    logger.warning("⚠️ Partial Linux window setup")
+            success = hide_window_from_taskbar("GLaSSIST")
+            if success:
+                logger.info("Window successfully hidden from taskbar")
             else:
-                # Existing Windows code
-                success = hide_window_from_taskbar("GLaSSIST")
+                logger.warning("Failed to hide window from taskbar")
         except Exception as e:
             logger.exception(f"Error hiding window from taskbar: {e}")
 
@@ -682,19 +667,6 @@ class HAAssistApp:
     
     def run_tray(self):
         """Run tray icon in separate thread."""
-
-        if self.is_linux:
-            if hasattr(self, 'linux_tray_manager') and self.linux_tray_manager:
-                logger.info("Linux tray already managed by LinuxTrayManager")
-                return
-            else:
-                logger.info("No Linux tray manager available")
-                return
-
-        if not self.tray_icon:
-            logger.info("No tray icon available")
-            return
-            
         def tray_thread():
             try:
                 self.tray_icon.run()
