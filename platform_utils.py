@@ -6,6 +6,7 @@ import sys
 import platform
 import subprocess
 import logging
+import threading
 from pathlib import Path
 
 logger = logging.getLogger('haassist')
