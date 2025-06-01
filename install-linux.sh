@@ -335,7 +335,7 @@ if [ "$SKIP_CONFIG" != "true" ]; then
     echo -e "  4. Give it a name (e.g., 'GLaSSIST')"
     echo -e "  5. Copy the generated token"
     echo ""
-    read -s -p "Access Token: " HA_TOKEN
+    read -p "Access Token: " HA_TOKEN
     echo ""
     
     # Validate token
