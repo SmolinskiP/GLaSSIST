@@ -523,6 +523,42 @@ pip install "numpy<2.0" --force-reinstall || echo -e "${YELLOW}⚠️  NumPy dow
 echo -e "${YELLOW}Installing TensorFlow Lite runtime for wake word models...${NC}"
 pip install tflite-runtime || echo -e "${YELLOW}⚠️  TFLite runtime installation failed (ONNX models will be used)${NC}"
 
+# === WINDOW MANAGEMENT TOOLS ===
+echo -e "${BLUE}🪟 Installing window management tools...${NC}"
+case $PKG_MANAGER in
+    "apt") 
+        sudo apt install -y wmctrl xdotool xprop xwininfo xdpyinfo x11-utils
+
+        echo -e "${YELLOW}Installing system tray support...${NC}"
+        sudo apt install -y gir1.2-ayatanaappindicator3-0.1 2>/dev/null || \
+        sudo apt install -y gir1.2-appindicator3-0.1 2>/dev/null || \
+        echo -e "${YELLOW}⚠️  System tray packages not found${NC}"
+        ;;
+    "dnf") 
+        sudo dnf install -y wmctrl xdotool xprop xwininfo xdpyinfo
+        sudo dnf install -y libappindicator-gtk3 2>/dev/null || true
+        ;;
+    "pacman") 
+        sudo pacman -S --noconfirm wmctrl xdotool xorg-xprop xorg-xwininfo xorg-xdpyinfo
+        sudo pacman -S --noconfirm libappindicator-gtk3 2>/dev/null || true
+        ;;
+    "zypper") 
+        sudo zypper install -y wmctrl xdotool xprop xwininfo xdpyinfo
+        sudo zypper install -y libappindicator3-1 2>/dev/null || true
+        ;;
+esac
+
+echo -e "${GREEN}✅ Window management tools installed${NC}"
+
+echo -e "${BLUE}🖥️  Testing desktop environment...${NC}"
+echo -e "Desktop: ${YELLOW}${XDG_CURRENT_DESKTOP:-Unknown}${NC}"
+echo -e "Session: ${YELLOW}${XDG_SESSION_TYPE:-Unknown}${NC}"
+
+if [ "$XDG_SESSION_TYPE" = "wayland" ]; then
+    echo -e "${YELLOW}⚠️  Wayland detected - some features may be limited${NC}"
+    echo -e "${BLUE}💡 Consider using X11 session for full functionality${NC}"
+fi
+
 # Optional: System service setup
 echo ""
 echo -e "${BLUE}🔧 System Integration Options${NC}"

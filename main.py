@@ -94,9 +94,14 @@ class HAAssistApp:
 
     def create_tray_icon(self):
         if platform.system() == "Linux":
-            logger.info("System tray disabled on Linux - use hotkey ctrl+shift+h")
-            return
-        """Create system tray icon with cross-platform support."""
+            # Use Linux-specific tray manager
+            self.linux_tray_manager = LinuxTrayManager(self)
+            success = self.linux_tray_manager.start_tray()
+            
+            if not success:
+                logger.info("💡 System tray not available - use hotkey: Ctrl+Shift+H")
+            
+            return success
         icon_path = get_icon_path()
         
         if icon_path and os.path.exists(icon_path):
@@ -589,11 +594,18 @@ class HAAssistApp:
     def hide_from_taskbar(self):
         """Hide window from taskbar using cross-platform implementation."""
         try:
-            success = hide_window_from_taskbar("GLaSSIST")
-            if success:
-                logger.info("Window successfully hidden from taskbar")
+            if platform.system() == "Linux":
+                # Use Linux window manager
+                self.linux_window_manager = LinuxWindowManager()
+                success = self.linux_window_manager.setup_window_behavior("GLaSSIST")
+                
+                if success:
+                    logger.info("✅ Linux window setup completed")
+                else:
+                    logger.warning("⚠️ Partial Linux window setup")
             else:
-                logger.warning("Failed to hide window from taskbar")
+                # Existing Windows code
+                success = hide_window_from_taskbar("GLaSSIST")
         except Exception as e:
             logger.exception(f"Error hiding window from taskbar: {e}")
 
