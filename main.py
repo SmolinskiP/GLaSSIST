@@ -2,6 +2,7 @@
 Enhanced main.py - preserves original code with improvements
 """
 import platform
+import os
 if platform.system() == "Linux":
     os.environ['PYWEBVIEW_GUI'] = 'qt'
     os.environ['GDK_BACKEND'] = 'x11'
@@ -9,7 +10,6 @@ import asyncio
 import threading
 import webview
 import sys
-import os
 import pystray
 from PIL import Image, ImageDraw
 from pystray import MenuItem as item
