@@ -679,6 +679,19 @@ class HAAssistApp:
     
     def run_tray(self):
         """Run tray icon in separate thread."""
+
+        if self.is_linux:
+            if hasattr(self, 'linux_tray_manager') and self.linux_tray_manager:
+                logger.info("Linux tray already managed by LinuxTrayManager")
+                return
+            else:
+                logger.info("No Linux tray manager available")
+                return
+
+        if not self.tray_icon:
+            logger.info("No tray icon available")
+            return
+            
         def tray_thread():
             try:
                 self.tray_icon.run()
