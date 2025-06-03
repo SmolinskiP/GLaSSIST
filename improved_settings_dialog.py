@@ -11,6 +11,7 @@ import utils
 import subprocess
 import platform
 from client import HomeAssistantClient
+from audio import AudioManager
 
 logger = utils.setup_logger()
 
@@ -23,6 +24,49 @@ class ImprovedSettingsDialog:
         self.test_client = None
         self.animation_server = animation_server
         
+    def _refresh_microphones(self):
+        """Załaduj dostępne mikrofony do listy."""
+        try:
+            # Tymczasowy AudioManager tylko do pobrania listy mikrofonów
+            temp_audio = AudioManager()
+            temp_audio.init_audio()
+            
+            microphones = temp_audio.get_available_microphones()
+            temp_audio.close_audio()
+            
+            # Przygotuj opcje dla combobox
+            mic_options = ["(automatic)"]  # Opcja domyślna
+            mic_mapping = {"(automatic)": -1}
+            
+            for mic in microphones:
+                display_name = f"{mic['name']} (ID: {mic['index']})"
+                mic_options.append(display_name)
+                mic_mapping[display_name] = mic['index']
+            
+            self.mic_combo['values'] = mic_options
+            self.mic_mapping = mic_mapping
+            
+            # Ustaw aktualny wybór
+            current_mic_index = utils.get_env("HA_MICROPHONE_INDEX", -1, int)
+            if current_mic_index == -1:
+                self.mic_var.set("(automatic)")
+            else:
+                # Znajdź odpowiadającą opcję
+                for option, index in mic_mapping.items():
+                    if index == current_mic_index:
+                        self.mic_var.set(option)
+                        break
+                else:
+                    self.mic_var.set(f"⚠️ Unknown: {current_mic_index}")
+            
+            logger.info(f"Loaded {len(microphones)} microphones")
+            
+        except Exception as e:
+            logger.error(f"Failed to load microphones: {e}")
+            self.mic_combo['values'] = ["(automatic)", "Error loading microphones"]
+            self.mic_var.set("(automatic)")
+            self.mic_mapping = {"(automatic)": -1}
+
     def show_settings(self):
         """Display settings dialog with proper cleanup."""
         current_settings = {
@@ -810,6 +854,7 @@ class ImprovedSettingsDialog:
         refresh_button.pack(side=tk.RIGHT, padx=(5, 0))
     
     def _create_audio_tab(self, parent, current_settings):
+        
         """Create audio and VAD tab."""
         hotkey_frame = ttk.LabelFrame(parent, text="Activation", padding="10")
         hotkey_frame.pack(fill=tk.X, pady=(0, 10))
@@ -845,6 +890,24 @@ class ImprovedSettingsDialog:
         
         self.vad_mode_value = ttk.Label(vad_control_frame, text=str(current_settings['HA_VAD_MODE']), width=3)
         self.vad_mode_value.pack(side=tk.LEFT, padx=5)
+
+        mic_frame = ttk.LabelFrame(parent, text="Microphone Selection", padding="10")
+        mic_frame.pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Label(mic_frame, text="Microphone:").grid(row=0, column=0, sticky=tk.W, pady=5)         
+
+        self.mic_var = tk.StringVar()
+        self.mic_combo = ttk.Combobox(mic_frame, textvariable=self.mic_var, 
+                                    state="readonly", width=40)
+        self.mic_combo.grid(row=0, column=1, sticky=tk.W+tk.E, pady=5, padx=5)
+
+
+        # Załadować listę mikrofonów
+        self._refresh_microphones()
+
+        refresh_mic_button = ttk.Button(mic_frame, text="Refresh", 
+                                    command=self._refresh_microphones)
+        refresh_mic_button.grid(row=0, column=2, padx=(5, 0))
         
         def update_vad_mode(event=None):
             self.vad_mode_value.config(text=str(int(self.vad_mode_scale.get())))
@@ -1189,6 +1252,15 @@ class ImprovedSettingsDialog:
             selected_pipeline_id = ""
             selected_models = list(self.selected_models_listbox.get(0, tk.END))
             models_string = ','.join(selected_models) if selected_models else 'alexa'
+            selected_mic_display = self.mic_var.get()
+            selected_mic_index = -1
+            if hasattr(self, 'mic_mapping') and selected_mic_display in self.mic_mapping:
+                selected_mic_index = self.mic_mapping[selected_mic_display]
+            elif selected_mic_display.startswith("⚠️ Unknown:"):
+                try:
+                    selected_mic_index = int(selected_mic_display.split(": ", 1)[1])
+                except:
+                    selected_mic_index = -1
             
             if hasattr(self, 'pipeline_mapping') and selected_pipeline_display in self.pipeline_mapping:
                 selected_pipeline_id = self.pipeline_mapping[selected_pipeline_display]
@@ -1208,6 +1280,7 @@ class ImprovedSettingsDialog:
                 'HA_FRAME_DURATION_MS': self.frame_duration_var.get(),
                 'ANIMATION_PORT': self.animation_port_var.get(),
                 'HA_SOUND_FEEDBACK': 'true' if self.sound_feedback_var.get() else 'false',
+                'HA_MICROPHONE_INDEX': str(selected_mic_index),
                 
                 'HA_CHANNELS': utils.get_env('HA_CHANNELS', '1'),
                 'HA_PADDING_MS': utils.get_env('HA_PADDING_MS', '300'),
@@ -1298,6 +1371,7 @@ class ImprovedSettingsDialog:
             env_content += f"HA_CHANNELS={settings['HA_CHANNELS']}\n"
             env_content += f"HA_FRAME_DURATION_MS={settings['HA_FRAME_DURATION_MS']}\n"
             env_content += f"HA_PADDING_MS={settings['HA_PADDING_MS']}\n"
+            env_content += f"HA_MICROPHONE_INDEX={settings['HA_MICROPHONE_INDEX']}\n"
             
             env_content += "\n# === VOICE DETECTION (VAD) ===\n"
             env_content += f"HA_VAD_MODE={settings['HA_VAD_MODE']}\n"

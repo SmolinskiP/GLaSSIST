@@ -291,15 +291,31 @@ class WakeWordDetector:
             raise
     
     def _find_microphone(self):
-        """Find best available microphone."""
+        """Find microphone based on configuration or auto-detect."""
         if not self.audio:
             return None
         
+        # Sprawdź czy użytkownik wybrał konkretny mikrofon
+        mic_index = utils.get_env("HA_MICROPHONE_INDEX", -1, int)
+        
+        if mic_index >= 0:
+            try:
+                device_info = self.audio.get_device_info_by_index(mic_index)
+                if device_info.get('maxInputChannels', 0) > 0:
+                    logger.info(f"Wake word using selected microphone: {device_info['name']}")
+                    return mic_index
+                else:
+                    logger.warning(f"Selected microphone {mic_index} has no input channels for wake word")
+            except Exception as e:
+                logger.warning(f"Selected microphone {mic_index} not available for wake word: {e}")
+        
+        # Fallback do automatycznego wyboru (oryginalny kod)
         default_device = None
         
         try:
             default_info = self.audio.get_default_input_device_info()
             default_device = default_info['index']
+            logger.info(f"Wake word using default microphone: {default_info['name']}")
         except:
             pass
         
@@ -310,6 +326,7 @@ class WakeWordDetector:
                 if device_info.get('maxInputChannels', 0) > 0:
                     if default_device is None:
                         default_device = i
+                        logger.info(f"Wake word found microphone: {device_info['name']}")
                     break
             except:
                 continue

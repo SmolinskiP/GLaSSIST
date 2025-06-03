@@ -30,6 +30,29 @@ class AudioManager:
         
         logger.info(f"AudioManager initialized: {self.sample_rate}Hz, {self.channels} channel(s), chunk {self.chunk_size}")
     
+    def get_available_microphones(self):
+        """Zwraca listę dostępnych mikrofonów."""
+        microphones = []
+        
+        if not self.audio:
+            return microphones
+        
+        for i in range(self.audio.get_device_count()):
+            try:
+                device_info = self.audio.get_device_info_by_index(i)
+                if device_info.get('maxInputChannels', 0) > 0:
+                    microphones.append({
+                        'index': i,
+                        'name': device_info['name'],
+                        'channels': device_info['maxInputChannels'],
+                        'sample_rate': device_info.get('defaultSampleRate', 'unknown')
+                    })
+            except Exception as e:
+                logger.debug(f"Error checking device {i}: {e}")
+                continue
+        
+        return microphones
+
     def init_audio(self):
         """Initialize PyAudio and microphone stream."""
         try:
@@ -58,7 +81,27 @@ class AudioManager:
             return False
     
     def _find_best_microphone(self):
-        """Find best available microphone."""
+        """Find microphone based on configuration or auto-detect."""
+        # Sprawdź czy użytkownik wybrał konkretny mikrofon
+        mic_index = utils.get_env("HA_MICROPHONE_INDEX", -1, int)
+        
+        if mic_index >= 0:
+            # Użyj konkretnego mikrofonu
+            try:
+                device_info = self.audio.get_device_info_by_index(mic_index)
+                if device_info.get('maxInputChannels', 0) > 0:
+                    logger.info(f"Using selected microphone: {device_info['name']}")
+                    return mic_index
+                else:
+                    logger.warning(f"Selected microphone {mic_index} has no input channels")
+            except Exception as e:
+                logger.warning(f"Selected microphone {mic_index} not available: {e}")
+        
+        # Fallback do automatycznego wyboru (oryginalny kod)
+        return self._auto_find_microphone()
+
+    def _auto_find_microphone(self):
+        """Original automatic microphone detection."""
         default_device = None
         best_device = None
         
@@ -198,3 +241,4 @@ class AudioManager:
         except Exception as e:
             logger.error(f"Error getting device info: {e}")
             return None
+        
