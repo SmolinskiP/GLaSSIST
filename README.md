@@ -11,6 +11,7 @@ Desktop voice application for Home Assistant with visual animations and VAD (Voi
 - **WebRTC VAD** - Smart speech detection (doesn't react to every fridge beep)
 - **Visual animations** - Three.js with shaders and FFT audio analysis (because a simple circle is not enough)
 - **Tray integration** - Lives in system tray like a proper application
+- **Pause wake word** - Quickly pause or resume detection from tray
 - **Pipeline selection** - Choose your preferred assistant pipeline
 - **Transparent window** - Doesn't block your desktop (finally, someone thought about it)
 

@@ -111,18 +111,7 @@ class HAAssistApp:
             logger.warning(f"Icon file not found, using fallback")
             image = self._create_fallback_icon()
         
-        menu = pystray.Menu(
-            item('🎤 Activate voice (%s)' % utils.get_env("HA_HOTKEY", "ctrl+shift+h"), 
-                self.trigger_voice_command),
-            pystray.Menu.SEPARATOR,
-            item('🎯 Wake word status', self._show_wake_word_status),
-            item('🔄 Restart wake word', self._restart_wake_word),
-            pystray.Menu.SEPARATOR,
-            item('⚙️ Settings', self.open_settings),
-            item('🔄 Test connection', self._quick_connection_test),
-            pystray.Menu.SEPARATOR,
-            item('❌ Close', self.quit_application)
-        )
+        menu = self._build_tray_menu()
         
         self.tray_icon = pystray.Icon(
             "GLaSSIST",
@@ -197,14 +186,67 @@ class HAAssistApp:
         
         if success:
             print(" Wake word detection restarted successfully")
-            
+
             if self.animation_server:
                 self.animation_server.show_success("Wake word restarted", duration=3.0)
         else:
             print(" Failed to restart wake word detection")
-            
+
             if self.animation_server:
                 self.animation_server.show_error("Wake word restart failed", duration=5.0)
+
+        self._refresh_tray_menu()
+
+    def _get_toggle_label(self):
+        """Return label for pause/resume menu item."""
+        if self.wake_word_detector and self.wake_word_detector.is_running:
+            return '⏸ Pause wake word'
+        return '▶️ Resume wake word'
+
+    def _build_tray_menu(self):
+        """Construct tray menu reflecting current state."""
+        return pystray.Menu(
+            item('🎤 Activate voice (%s)' % utils.get_env("HA_HOTKEY", "ctrl+shift+h"),
+                 self.trigger_voice_command),
+            pystray.Menu.SEPARATOR,
+            item(self._get_toggle_label(), self._toggle_wake_word_detection),
+            item('🎯 Wake word status', self._show_wake_word_status),
+            item('🔄 Restart wake word', self._restart_wake_word),
+            pystray.Menu.SEPARATOR,
+            item('⚙️ Settings', self.open_settings),
+            item('🔄 Test connection', self._quick_connection_test),
+            pystray.Menu.SEPARATOR,
+            item('❌ Close', self.quit_application)
+        )
+
+    def _refresh_tray_menu(self):
+        """Update tray menu to reflect current wake word state."""
+        if not self.tray_icon:
+            return
+        self.tray_icon.menu = self._build_tray_menu()
+        try:
+            self.tray_icon.update_menu()
+        except Exception:
+            pass
+
+    def _toggle_wake_word_detection(self, icon=None, item=None):
+        """Pause or resume wake word detection from tray."""
+        if not self.wake_word_detector or not self.wake_word_detector.enabled:
+            print(" Wake word detection not available")
+            return
+
+        if self.wake_word_detector.is_running:
+            self.stop_wake_word_detection()
+            print(" Wake word detection paused")
+            if self.animation_server:
+                self.animation_server.show_error("Wake word paused", duration=3.0)
+        else:
+            started = self.start_wake_word_detection()
+            if started:
+                print(" Wake word detection resumed")
+                if self.animation_server:
+                    self.animation_server.show_success("Wake word resumed", duration=3.0)
+        self._refresh_tray_menu()
 
     def _create_fallback_icon(self):
         """Create fallback icon."""
