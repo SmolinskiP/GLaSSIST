@@ -198,5 +198,5 @@ def check_wake_word_noise_suppression():
         import speexdsp_ns
         return True
     except ImportError:
-        logger.info("Noise suppression not available (install: pip install speexdsp-python)")
+        logger.info("Noise suppression not available (install: pip install speexdsp-ns)")
         return False
