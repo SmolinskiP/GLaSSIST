@@ -233,6 +233,8 @@ class HAAssistApp:
         """Pause or resume wake word detection from tray."""
         if not self.wake_word_detector or not self.wake_word_detector.enabled:
             print(" Wake word detection not available")
+            if self.animation_server:
+                self.animation_server.show_error("Wake word disabled in settings", duration=3.0)
             return
 
         if self.wake_word_detector.is_running:
@@ -733,6 +735,7 @@ class HAAssistApp:
             self.create_tray_icon()
             self.run_tray()
             self.start_wake_word_detection()
+            self._refresh_tray_menu()
 
             logger.info("Starting interface...")
             
