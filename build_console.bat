@@ -104,25 +104,25 @@ if not exist %INNO_PATH% (
     goto :skip_installer
 )
 
-if not exist "setup.iss" (
+if not exist "setup_debug.iss" (
     echo   installer.iss not found!
     echo   Please create the Inno Setup script first
     goto :skip_installer
 )
 
 echo   Building installer...
-%INNO_PATH% /cc "setup.iss"
+%INNO_PATH% /cc "setup_debug.iss"
 if %ERRORLEVEL% neq 0 (
     echo   Installer build failed!
     pause
     exit /b 1
 )
 
-if exist "inno\GLaSSIST-Setup.exe" (
+if exist "inno\GLaSSIST-Debug.exe" (
     echo   Installer created successfully!
     echo   Location: inno\GLaSSIST-Setup.exe
     echo   Size: 
-    for %%I in ("inno\GLaSSIST-Setup.exe") do echo     %%~zI bytes
+    for %%I in ("inno\GLaSSIST-Debug.exe") do echo     %%~zI bytes
 ) else (
     echo   Installer not found!
 )
@@ -135,8 +135,8 @@ echo ========================================
 echo.
 echo Files created:
 echo   dist\GLaSSIST\GLaSSIST.exe - Standalone application
-if exist "inno\GLaSSIST-Setup.exe" (
-    echo   inno\GLaSSIST-Setup.exe - Windows installer
+if exist "inno\GLaSSIST-Debug.exe" (
+    echo   inno\GLaSSIST-Debug.exe - Windows installer
 )
 echo.
 echo Ready for distribution!

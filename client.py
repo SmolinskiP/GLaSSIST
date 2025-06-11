@@ -40,13 +40,13 @@ class HomeAssistantClient:
         try:
             self.websocket = await asyncio.wait_for(
                 websockets.connect(uri), 
-                timeout=10.0
+                timeout=15.0
             )
             logger.info("Connection established")
             
             auth_message = await asyncio.wait_for(
                 self.websocket.recv(), 
-                timeout=5.0
+                timeout=15.0
             )
             auth_message = json.loads(auth_message)
             
@@ -62,7 +62,7 @@ class HomeAssistantClient:
             
             auth_result = await asyncio.wait_for(
                 self.websocket.recv(), 
-                timeout=5.0
+                timeout=15.0
             )
             auth_result = json.loads(auth_result)
             
@@ -102,7 +102,7 @@ class HomeAssistantClient:
             while True:
                 response = await asyncio.wait_for(
                     self.websocket.recv(), 
-                    timeout=5.0
+                    timeout=15.0
                 )
                 response_json = json.loads(response)
                 
@@ -227,7 +227,7 @@ class HomeAssistantClient:
             try:
                 response = await asyncio.wait_for(
                     self.websocket.recv(), 
-                    timeout=10.0
+                    timeout=15.0
                 )
                 response_json = json.loads(response)
                 logger.info(f"Received: {response_json}")
@@ -320,7 +320,7 @@ class HomeAssistantClient:
                 remaining_time = timeout_seconds - elapsed
                 response = await asyncio.wait_for(
                     self.websocket.recv(), 
-                    timeout=min(remaining_time, 5.0)
+                    timeout=min(remaining_time, 15.0)
                 )
                 
                 try:

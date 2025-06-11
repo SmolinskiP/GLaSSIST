@@ -27,7 +27,9 @@ inno/
 post-install-info.txt
 pre-install-info.txt
 setup.iss
+setup_debug.iss
 build.bat
+build_console.bat
 LICENSE.txt
 *.manifest
 *.spec
