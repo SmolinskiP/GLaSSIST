@@ -16,6 +16,7 @@ from animation_server import AnimationServer
 from wake_word_detector import WakeWordDetector, validate_wake_word_config
 import platform
 from platform_utils import check_linux_dependencies, hide_window_from_taskbar, get_icon_path
+from dummy_animation_server import DummyAnimationServer
 
 logger = utils.setup_logger()
 
@@ -33,7 +34,8 @@ class HAAssistApp:
         self.tray_icon = None
         self.window_visible = True
         self.wake_word_detector = None
-        
+        self.animations_enabled = utils.get_env_bool("HA_ANIMATIONS_ENABLED", True)
+
         # Platform detection
         self.is_linux = platform.system() == "Linux"
         self.is_windows = platform.system() == "Windows"
@@ -367,11 +369,17 @@ class HAAssistApp:
         threading.Thread(target=pipelines_thread, daemon=True).start()
 
     def setup_animation_server(self):
-        """Setup animation server."""
-        self.animation_server = AnimationServer()
+        """Setup animation server or dummy server based on configuration."""
+        if self.animations_enabled:
+            from animation_server import AnimationServer
+            self.animation_server = AnimationServer()
+            logger.info("Real animation server created")
+        else:
+            self.animation_server = DummyAnimationServer()
+            logger.info("Dummy animation server created (animations disabled)")
+        
         self.animation_server.set_voice_command_callback(self.on_voice_command_trigger)
         self.animation_server.start()
-        logger.info("Animation server started")
     
     def setup_webview(self):
         """Setup webview window."""
@@ -752,7 +760,16 @@ class HAAssistApp:
             
             threading.Thread(target=on_window_loaded, daemon=True).start()
             
-            webview.start(debug=utils.get_env("DEBUG", False, bool))
+            if self.animations_enabled:
+                webview.start(debug=utils.get_env("DEBUG", False, bool))
+            else:
+                logger.info("Running in headless mode (animations disabled)")
+                try:
+                    import time
+                    while True:
+                        time.sleep(1)  # Keep main thread alive
+                except KeyboardInterrupt:
+                    logger.info("Application interrupted by user")
             
         except KeyboardInterrupt:
             logger.info("Application interrupted by user")

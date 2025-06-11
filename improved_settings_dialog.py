@@ -78,6 +78,7 @@ class ImprovedSettingsDialog:
             'HA_SILENCE_THRESHOLD_SEC': utils.get_env('HA_SILENCE_THRESHOLD_SEC', 0.8, float),
             'HA_SOUND_FEEDBACK': utils.get_env('HA_SOUND_FEEDBACK', 'true'),
             'DEBUG': utils.get_env('DEBUG', 'false'),
+            'HA_SILENCE_THRESHOLD_SEC': utils.get_env('HA_SILENCE_THRESHOLD_SEC', 0.8, float),
             'HA_WAKE_WORD_ENABLED': utils.get_env('HA_WAKE_WORD_ENABLED', 'false'),
             'HA_WAKE_WORD_MODELS': utils.get_env('HA_WAKE_WORD_MODELS', 'alexa'),
             'HA_WAKE_WORD_THRESHOLD': utils.get_env('HA_WAKE_WORD_THRESHOLD', 0.5, float),
@@ -944,6 +945,25 @@ class ImprovedSettingsDialog:
         debug_frame = ttk.LabelFrame(parent, text="Debugging", padding="10")
         debug_frame.pack(fill=tk.X, pady=(0, 10))
         
+        interface_frame = ttk.LabelFrame(parent, text="Interface & Performance", padding="10")
+        interface_frame.pack(fill=tk.X, pady=(0, 10))
+
+        self.animations_var = tk.BooleanVar(value=utils.get_env_bool('HA_ANIMATIONS_ENABLED', True))
+        animations_check = ttk.Checkbutton(
+            interface_frame, 
+            text="Enable visual animations", 
+            variable=self.animations_var
+        )
+        animations_check.pack(anchor=tk.W)
+
+        animations_desc = ttk.Label(
+            interface_frame, 
+            text="Three.js animations with audio visualization. Disable to save CPU/memory.",
+            font=("Segoe UI", 9), 
+            foreground="gray"
+        )
+        animations_desc.pack(anchor=tk.W, pady=(5, 0))
+ 
         self.debug_var = tk.BooleanVar(value=current_settings['DEBUG'])
         debug_check = ttk.Checkbutton(debug_frame, text="Debug mode (detailed logs)", variable=self.debug_var)
         debug_check.pack(anchor=tk.W)
@@ -1275,7 +1295,7 @@ class ImprovedSettingsDialog:
                 'HA_SILENCE_THRESHOLD_SEC': str(round(self.silence_scale.get(), 1)),
                 'HA_VAD_MODE': str(int(self.vad_mode_scale.get())),
                 'DEBUG': 'true' if self.debug_var.get() else 'false',
-                
+                'HA_ANIMATIONS_ENABLED': 'true' if self.animations_var.get() else 'false',
                 'HA_SAMPLE_RATE': self.sample_rate_var.get(),
                 'HA_FRAME_DURATION_MS': self.frame_duration_var.get(),
                 'ANIMATION_PORT': self.animation_port_var.get(),
@@ -1377,6 +1397,9 @@ class ImprovedSettingsDialog:
             env_content += f"HA_VAD_MODE={settings['HA_VAD_MODE']}\n"
             env_content += f"HA_SILENCE_THRESHOLD_SEC={settings['HA_SILENCE_THRESHOLD_SEC']}\n"
             
+            env_content += "\n# === INTERFACE & PERFORMANCE ===\n"
+            env_content += f"HA_ANIMATIONS_ENABLED={settings.get('HA_ANIMATIONS_ENABLED', 'true')}\n"
+
             env_content += "\n# === NETWORK ===\n"
             env_content += f"ANIMATION_PORT={settings['ANIMATION_PORT']}\n"
             

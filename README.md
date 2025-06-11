@@ -14,6 +14,7 @@ Desktop voice application for Home Assistant with visual animations and VAD (Voi
 - **Pause wake word** - Quickly pause or resume detection from tray
 - **Pipeline selection** - Choose your preferred assistant pipeline
 - **Transparent window** - Doesn't block your desktop (finally, someone thought about it)
+- **Animation toggle** - Disable visual effects to save CPU/memory resources
 
 ## 📋 Requirements
 
@@ -201,6 +202,9 @@ The app plays sounds from `sound/` directory:
 - `ANIMATION_PORT` - Animation server port (8765)
 - `DEBUG` - Debug mode (true/false)
 
+### Interface & Performance
+- `HA_ANIMATIONS_ENABLED` - Enable visual animations (true/false)
+
 ## 🐛 Troubleshooting
 
 ### "Cannot connect to Home Assistant"
@@ -233,8 +237,8 @@ A: Yes, edit `frontend/index.html`. Shaders are in GLSL, so you need to know wha
 **Q: Why WebRTC VAD?**  
 A: Because it works better than homemade algorithms. Tested by Google, so probably good.
 
-**Q: App uses too much CPU?**  
-A: Disable debug mode and lower `HA_SAMPLE_RATE` to 8000. Or buy a better computer.
+**Q: App uses too much CPU/memory?**  
+A: Disable animations in Settings > Advanced > Interface & Performance. This removes Three.js rendering and WebSocket server while keeping full voice functionality.
 
 ## 📄 License
 
