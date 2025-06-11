@@ -1,4 +1,6 @@
 import utils
+import threading
+import time
 
 logger = utils.setup_logger()
 
@@ -34,14 +36,30 @@ class DummyAnimationServer:
                 logger.info(f"Success: {success_message}")
     
     def show_success(self, message="Success", duration=3.0):
-        """Log success message instead of showing animation."""
+        """Log success message and auto-hide after duration."""
         logger.info(f"{message}")
         self.change_state("success")
+        
+        # Auto-hide after duration (same as real AnimationServer)
+        def hide_after_delay():
+            time.sleep(duration)
+            if self.current_state == "success":
+                self.change_state("hidden")
+        
+        threading.Thread(target=hide_after_delay, daemon=True).start()
     
     def show_error(self, message="Error", duration=5.0):
-        """Log error message instead of showing animation."""
+        """Log error message and auto-hide after duration."""
         logger.error(f"{message}")
         self.change_state("error")
+        
+        # Auto-hide after duration (same as real AnimationServer)
+        def hide_after_delay():
+            time.sleep(duration)
+            if self.current_state == "error":
+                self.change_state("hidden")
+        
+        threading.Thread(target=hide_after_delay, daemon=True).start()
     
     def send_audio_data(self, audio_chunk, sample_rate=16000):
         """Do nothing - no animation to update."""

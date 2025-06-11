@@ -22,9 +22,9 @@ if exist "build" (
     echo   Removing build folder...
     rmdir /s /q "build"
 )
-if exist "inno\GLaSSIST-Setup.exe" (
+if exist "inno\GLaSSIST-Debug.exe" (
     echo   Removing old installer...
-    del /q "inno\GLaSSIST-Setup.exe"
+    del /q "inno\GLaSSIST-Debug.exe"
 )
 if exist "*.spec" (
     echo   Removing old spec files...
