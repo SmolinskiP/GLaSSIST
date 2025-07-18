@@ -16,7 +16,7 @@ import io
 load_dotenv()
 
 def setup_logger():
-    """Configure and return logger."""
+    """Configure and return logger with optional file logging when DEBUG=true."""
     import sys
     
     class FlushHandler(logging.StreamHandler):
@@ -24,10 +24,32 @@ def setup_logger():
             super().emit(record)
             self.flush()
     
+    handlers = [FlushHandler(sys.stdout)]
+    
+    # Add file handler if DEBUG mode is enabled
+    debug_enabled = get_env_bool('DEBUG', False)
+    if debug_enabled:
+        try:
+            log_dir = os.path.join(os.path.dirname(__file__), 'logs')
+            os.makedirs(log_dir, exist_ok=True)
+            
+            log_file = os.path.join(log_dir, f'glasssist_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
+            file_handler = logging.FileHandler(log_file, encoding='utf-8')
+            file_handler.setFormatter(logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            ))
+            handlers.append(file_handler)
+            
+            print(f"Debug logging enabled - logs saved to: {log_file}")
+            
+        except Exception as e:
+            print(f"Warning: Could not setup file logging: {e}")
+    
     logging.basicConfig(
         level=logging.DEBUG,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[FlushHandler(sys.stdout)]
+        handlers=handlers,
+        force=True  # Override any existing configuration
     )
     
     return logging.getLogger('haassist')
