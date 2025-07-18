@@ -35,6 +35,7 @@ class HAAssistApp:
         self.window_visible = True
         self.wake_word_detector = None
         self.animations_enabled = utils.get_env_bool("HA_ANIMATIONS_ENABLED", True)
+        self.response_text_enabled = utils.get_env_bool("HA_RESPONSE_TEXT_ENABLED", True)
 
         # Platform detection
         self.is_linux = platform.system() == "Linux"
@@ -560,7 +561,10 @@ class HAAssistApp:
                         print("===========================\n")
                         
                         self.animation_server.change_state("responding")
-                        self.animation_server.send_response_text(response)
+                        
+                        # Send response text if enabled
+                        if self.response_text_enabled:
+                            self.animation_server.send_response_text(response)
                         
                         audio_url = temp_ha_client.extract_audio_url(results)
                         if audio_url:

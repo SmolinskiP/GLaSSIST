@@ -100,7 +100,7 @@ class ImprovedSettingsDialog:
         try:
             self.root = tk.Tk()
             self.root.title("GLaSSIST - Settings")
-            self.root.geometry("750x650")
+            self.root.geometry("750x700")
             self.root.resizable(True, True)
             
             # Add proper cleanup on window close
@@ -963,6 +963,22 @@ class ImprovedSettingsDialog:
             foreground="gray"
         )
         animations_desc.pack(anchor=tk.W, pady=(5, 0))
+
+        self.response_text_var = tk.BooleanVar(value=utils.get_env_bool('HA_RESPONSE_TEXT_ENABLED', True))
+        response_text_check = ttk.Checkbutton(
+            interface_frame, 
+            text="Show response text on screen", 
+            variable=self.response_text_var
+        )
+        response_text_check.pack(anchor=tk.W, pady=(10, 0))
+
+        response_text_desc = ttk.Label(
+            interface_frame, 
+            text="Display assistant responses as animated text overlay.",
+            font=("Segoe UI", 9), 
+            foreground="gray"
+        )
+        response_text_desc.pack(anchor=tk.W, pady=(5, 0))
  
         self.debug_var = tk.BooleanVar(value=current_settings['DEBUG'])
         debug_check = ttk.Checkbutton(debug_frame, text="Debug mode (detailed logs)", variable=self.debug_var)
@@ -1296,6 +1312,7 @@ class ImprovedSettingsDialog:
                 'HA_VAD_MODE': str(int(self.vad_mode_scale.get())),
                 'DEBUG': 'true' if self.debug_var.get() else 'false',
                 'HA_ANIMATIONS_ENABLED': 'true' if self.animations_var.get() else 'false',
+                'HA_RESPONSE_TEXT_ENABLED': 'true' if self.response_text_var.get() else 'false',
                 'HA_SAMPLE_RATE': self.sample_rate_var.get(),
                 'HA_FRAME_DURATION_MS': self.frame_duration_var.get(),
                 'ANIMATION_PORT': self.animation_port_var.get(),
@@ -1399,6 +1416,7 @@ class ImprovedSettingsDialog:
             
             env_content += "\n# === INTERFACE & PERFORMANCE ===\n"
             env_content += f"HA_ANIMATIONS_ENABLED={settings.get('HA_ANIMATIONS_ENABLED', 'true')}\n"
+            env_content += f"HA_RESPONSE_TEXT_ENABLED={settings.get('HA_RESPONSE_TEXT_ENABLED', 'true')}\n"
 
             env_content += "\n# === NETWORK ===\n"
             env_content += f"ANIMATION_PORT={settings['ANIMATION_PORT']}\n"

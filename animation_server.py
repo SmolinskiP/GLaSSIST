@@ -212,6 +212,9 @@ class AnimationServer:
             logger.error(f"Error processing audio FFT: {e}")
     
     def send_response_text(self, text: str):
+        """Send response text to frontend for display."""
+        logger.info(f"Sending response text: {text}")
+        
         message = {
             "type": "response_text",
             "text": text,
