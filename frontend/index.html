@@ -418,10 +418,8 @@
                 
                 console.log('Showed response text:', text);
                 
-                // Auto-hide after 8 seconds
-                responseTextTimeout = setTimeout(() => {
-                    hideResponseText();
-                }, 8000);
+                // Text will stay visible until animation ends (state changes to 'hidden')
+                // No automatic timeout
             }
         }
         
@@ -582,7 +580,11 @@
             if (ring) ring.visible = false;
             hideErrorText();
             hideSuccessText();
-            hideResponseText();
+            
+            // Only hide response text when going to 'hidden' state
+            if (newState === 'hidden') {
+                hideResponseText();
+            }
             
             // Reset audio buffers on state change
             audioBuffer = [];

@@ -10,11 +10,13 @@ Desktop voice application for Home Assistant with visual animations and VAD (Voi
 - **Wake word detection** - Over 100 pre-trained models (alexa, jarvis, glados etc.)
 - **WebRTC VAD** - Smart speech detection (doesn't react to every fridge beep)
 - **Visual animations** - Three.js with shaders and FFT audio analysis (because a simple circle is not enough)
+- **Response text display** - Visually show assistant responses on screen
 - **Tray integration** - Lives in system tray like a proper application
 - **Pause wake word** - Quickly pause or resume detection from tray
 - **Pipeline selection** - Choose your preferred assistant pipeline
 - **Transparent window** - Doesn't block your desktop (finally, someone thought about it)
 - **Animation toggle** - Disable visual effects to save CPU/memory resources
+- **Debug logging** - File logging when debug mode is enabled
 
 ## 📋 Requirements
 
@@ -78,6 +80,9 @@ HA_HOTKEY=ctrl+shift+h
 HA_VAD_MODE=3
 HA_SILENCE_THRESHOLD_SEC=0.8
 HA_SOUND_FEEDBACK=true
+
+# === VISUAL ===
+HA_RESPONSE_TEXT_ENABLED=true
 
 # === OPTIONAL ===
 HA_PIPELINE_ID=your_pipeline_id
@@ -199,8 +204,9 @@ The app plays sounds from `sound/` directory:
 ### Interface
 - `HA_HOTKEY` - Activation hotkey
 - `HA_SOUND_FEEDBACK` - Activation sounds (true/false)
+- `HA_RESPONSE_TEXT_ENABLED` - Show assistant responses as text (true/false)
 - `ANIMATION_PORT` - Animation server port (8765)
-- `DEBUG` - Debug mode (true/false)
+- `DEBUG` - Debug mode with file logging (true/false)
 
 ### Interface & Performance
 - `HA_ANIMATIONS_ENABLED` - Enable visual animations (true/false)
@@ -222,8 +228,8 @@ The app plays sounds from `sound/` directory:
 - Check available pipelines in settings
 
 ### Application hangs
-- Enable `DEBUG=true`
-- Check console logs
+- Enable `DEBUG=true` in settings
+- Check console logs or log files in `logs/` directory
 - Restart application (classic IT solution)
 
 ## 📚 FAQ
