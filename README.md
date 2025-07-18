@@ -36,7 +36,7 @@ Desktop voice application for Home Assistant with visual animations and VAD (Voi
 ## 🛠️ Installation
 
 ### Option 1: Windows Installer (Easy)
-1. **Download** [GLaSSIST-Setup.exe](https://github.com/SmolinskiP/GLaSSIST/releases/download/1.1.3/GLaSSIST-Setup.exe) from releases
+1. **Download** [GLaSSIST-Setup.exe]([https://github.com/SmolinskiP/GLaSSIST/releases/download/1.1.3/GLaSSIST-Setup.exe]) from releases
 2. **Run installer** and follow setup wizard
 3. **Enter your HA details** during installation
 4. **Launch** and start talking to your smart home
