@@ -1,7 +1,8 @@
 # 🎤 GLaSSIST
 
+<div align="center">
 ![gla](https://github.com/user-attachments/assets/23c012ed-11c0-4f3b-9eef-b9fa16071e13)
-
+</div>
 Desktop voice application for Home Assistant with visual animations and VAD (Voice Activity Detection). Because who has time to click through interfaces when you can just talk to your computer like it's a broken microphone?
 
 ## 🚀 Key Features
