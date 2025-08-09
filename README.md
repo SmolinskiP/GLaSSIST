@@ -1,6 +1,8 @@
 # 🎤 GLaSSIST
 
-![gla](https://github.com/user-attachments/assets/23c012ed-11c0-4f3b-9eef-b9fa16071e13)
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/23c012ed-11c0-4f3b-9eef-b9fa16071e13" alt="Alt text" width="300">
+</div>
 
 Desktop voice application for Home Assistant with visual animations and VAD (Voice Activity Detection). Because who has time to click through interfaces when you can just talk to your computer like it's a broken microphone?
 
@@ -41,7 +43,7 @@ Desktop voice application for Home Assistant with visual animations and VAD (Voi
 ## 🛠️ Installation
 
 ### Option 1: Windows Installer (Easy)
-1. **Download** [GLaSSIST-Setup.exe](https://github.com/SmolinskiP/GLaSSIST/releases/download/1.1.3/GLaSSIST-Setup.exe) from releases
+1. **Download** [GLaSSIST-Setup.exe](https://github.com/SmolinskiP/GLaSSIST/releases/download/1.2.0/GLaSSIST-Setup.exe) from releases
 2. **Run installer** and follow setup wizard
 3. **Enter your HA details** during installation
 4. **Launch** and start talking to your smart home
