@@ -11,11 +11,15 @@ Desktop voice application for Home Assistant with visual animations and VAD (Voi
 - **WebRTC VAD** - Smart speech detection (doesn't react to every fridge beep)
 - **Visual animations** - Three.js with shaders and FFT audio analysis (because a simple circle is not enough)
 - **Response text display** - Visually show assistant responses on screen
+- **Modern Flet UI** - Beautiful, responsive settings interface (no more Tkinter!)
 - **Tray integration** - Lives in system tray like a proper application
 - **Pause wake word** - Quickly pause or resume detection from tray
 - **Pipeline selection** - Choose your preferred assistant pipeline
+- **Microphone selection** - Pick specific microphone or use automatic detection
 - **Transparent window** - Doesn't block your desktop (finally, someone thought about it)
 - **Animation toggle** - Disable visual effects to save CPU/memory resources
+- **Cross-platform** - Windows and Linux support with native feel
+- **Thread-safe** - No more hanging settings dialogs or crashes
 - **Debug logging** - File logging when debug mode is enabled
 
 ## 📋 Requirements
@@ -32,6 +36,7 @@ Desktop voice application for Home Assistant with visual animations and VAD (Voi
 - **Windows 10/11** or **Linux** (Ubuntu, Debian, Fedora, Arch)
 - **Microphone**
 - **Long-lived access token** for HA
+- **Flet 0.21+** (for modern settings UI)
 
 ## 🛠️ Installation
 
@@ -59,6 +64,9 @@ cd GLaSSIST
 ### 2. Install dependencies
 ```bash
 pip install -r requirements.txt
+
+# For modern settings UI (Flet-based)
+pip install flet>=0.21.0
 ```
 
 ### 3. Configuration
@@ -89,7 +97,7 @@ HA_PIPELINE_ID=your_pipeline_id
 DEBUG=false
 ```
 
-**Pro tip:** Use the "Settings" button in the app instead of manually creating the file. This isn't 1995, we have GUIs.
+**Pro tip:** Use the modern "Settings" interface in the app instead of manually creating the file. Features beautiful Flet-based UI with real-time validation and auto-complete. This isn't 1995, we have proper GUIs now.
 
 ### 4. Run
 ```bash
@@ -164,24 +172,6 @@ The app plays sounds from `sound/` directory:
 - `activation.wav` - Recording start
 - `deactivation.wav` - Session end
 
-## 🔧 Project Structure
-
-```
-├── main.py                      # Main application file
-├── client.py                    # WebSocket client for HA
-├── audio.py                     # Audio management and VAD
-├── vad.py                       # Voice Activity Detection
-├── animation_server.py          # WebSocket server for animations
-├── improved_settings_dialog.py  # Settings GUI
-├── utils.py                     # Utility functions
-├── frontend/
-│   └── index.html              # Three.js interface
-├── sound/                      # Sound files
-├── models/                     # OpenWakeWord model files
-├── img/                        # Icons
-└── requirements.txt            # Python dependencies
-```
-
 ## 🎛️ Configuration Parameters
 
 ### Connection
@@ -201,15 +191,18 @@ The app plays sounds from `sound/` directory:
 - `HA_WAKE_WORD_THRESHOLD` - Detection sensitivity (0.0-1.0)
 - `HA_WAKE_WORD_VAD_THRESHOLD` - Voice activity threshold (0.0-1.0)
 
-### Interface
-- `HA_HOTKEY` - Activation hotkey
+### Interface & Controls
+- `HA_HOTKEY` - Activation hotkey (ctrl+shift+h, ctrl+alt+h, alt+space, etc.)
 - `HA_SOUND_FEEDBACK` - Activation sounds (true/false)
-- `HA_RESPONSE_TEXT_ENABLED` - Show assistant responses as text (true/false)
-- `ANIMATION_PORT` - Animation server port (8765)
-- `DEBUG` - Debug mode with file logging (true/false)
+- `HA_RESPONSE_TEXT_ENABLED` - Show assistant responses as text overlay (true/false)
+- `HA_ANIMATIONS_ENABLED` - Enable visual animations with Three.js (true/false)
+- `ANIMATION_PORT` - Animation server port (default: 8765)
 
-### Interface & Performance
-- `HA_ANIMATIONS_ENABLED` - Enable visual animations (true/false)
+### Device Selection
+- `HA_MICROPHONE_INDEX` - Specific microphone ID (-1 for automatic)
+
+### Debug & Logging
+- `DEBUG` - Debug mode with detailed file logging (true/false)
 
 ## 🐛 Troubleshooting
 
@@ -227,10 +220,19 @@ The app plays sounds from `sound/` directory:
 - Remove `HA_PIPELINE_ID` from `.env` (will use default)
 - Check available pipelines in settings
 
+### Settings UI issues
+- If settings don't open: Install Flet with `pip install flet>=0.21.0`
+- If settings hang: Close main application first, then settings will close automatically (daemon threads)
+- Polish/special characters in microphone names: Fixed in Flet version - use "Refresh" button
+
 ### Application hangs
 - Enable `DEBUG=true` in settings
 - Check console logs or log files in `logs/` directory
-- Restart application (classic IT solution)
+- Close and restart application (classic IT solution that actually works)
+
+### Thread-related crashes (legacy)
+- **Fixed in v2.0+** - Replaced problematic Tkinter with modern Flet UI
+- All threading issues resolved with proper async/await patterns
 
 ## 📚 FAQ
 
@@ -240,8 +242,17 @@ A: Linux support added in v1.1.0 (beta). Use the install script. Mac support not
 **Q: Can I change the animation?**  
 A: Yes, edit `frontend/index.html`. Shaders are in GLSL, so you need to know what you're doing.
 
+**Q: Why Flet instead of Tkinter?**  
+A: Tkinter had threading issues that caused hangs and crashes. Flet provides modern UI, proper async support, and cross-platform consistency. Plus it looks way better.
+
+**Q: Can I use the old Tkinter settings?**  
+A: Legacy support exists in `improved_settings_dialog.py` but it's not recommended. Flet version is more stable and feature-rich.
+
 **Q: Why WebRTC VAD?**  
 A: Because it works better than homemade algorithms. Tested by Google, so probably good.
+
+**Q: Settings window is too big/small?**  
+A: Flet UI is responsive and auto-maximizes. Use Escape key to close or resize the window.
 
 **Q: App uses too much CPU/memory?**  
 A: Disable animations in Settings > Advanced > Interface & Performance. This removes Three.js rendering and WebSocket server while keeping full voice functionality.

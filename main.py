@@ -418,8 +418,8 @@ class HAAssistApp:
         logger.info("Opening enhanced settings...")
         
         try:
-            from improved_settings_dialog import show_improved_settings
-            show_improved_settings(self.animation_server)
+            from flet_settings import show_flet_settings
+            show_flet_settings(self.animation_server)
             
         except ImportError as e:
             logger.error(f"improved_settings_dialog.py not found: {e}")
