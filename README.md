@@ -233,7 +233,7 @@ The app plays sounds from `sound/` directory:
 - Close and restart application (classic IT solution that actually works)
 
 ### Thread-related crashes (legacy)
-- **Fixed in v2.0+** - Replaced problematic Tkinter with modern Flet UI
+- **Fixed in v1.3+** - Replaced problematic Tkinter with modern Flet UI
 - All threading issues resolved with proper async/await patterns
 
 ## 📚 FAQ
