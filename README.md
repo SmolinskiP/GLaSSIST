@@ -222,11 +222,6 @@ The app plays sounds from `sound/` directory:
 - Remove `HA_PIPELINE_ID` from `.env` (will use default)
 - Check available pipelines in settings
 
-### Settings UI issues
-- If settings don't open: Install Flet with `pip install flet>=0.21.0`
-- If settings hang: Close main application first, then settings will close automatically (daemon threads)
-- Polish/special characters in microphone names: Fixed in Flet version - use "Refresh" button
-
 ### Application hangs
 - Enable `DEBUG=true` in settings
 - Check console logs or log files in `logs/` directory
