@@ -666,6 +666,11 @@ class HAAssistApp:
             hotkey = utils.get_env("HA_HOTKEY", "ctrl+shift+h")
             keyboard.add_hotkey(hotkey, self.on_voice_command_trigger)
             logger.info(f"Keyboard shortcut set: {hotkey}")
+            
+            # Add escape key to hide interface quickly
+            keyboard.add_hotkey("escape", self.hide_interface)
+            logger.info("ESC key set to hide interface")
+            
             return True
             
         except ImportError:
@@ -674,6 +679,12 @@ class HAAssistApp:
         except Exception as e:
             logger.error(f"Error setting up keyboard shortcut: {e}")
             return False
+    
+    def hide_interface(self):
+        """Hide interface immediately via ESC key."""
+        if self.animation_server and self.animation_server.current_state != "hidden":
+            logger.info("Hiding interface via ESC key")
+            self.animation_server.change_state("hidden")
     
     def toggle_window(self, icon=None, item=None):
         """Toggle window visibility."""

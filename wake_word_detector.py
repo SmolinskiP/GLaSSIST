@@ -389,18 +389,23 @@ class WakeWordDetector:
         """Process wake word predictions and trigger callback if detected."""
         for model_name, score in predictions.items():
             if score >= self.detection_threshold:
-                logger.info(f"Wake word detected: '{model_name}' (confidence: {score:.3f})")
-                
-                # Call detection callback
-                if self.detection_callback:
-                    try:
-                        self.detection_callback(model_name, score)
-                    except Exception as e:
-                        logger.error(f"Error in wake word callback: {e}")
-                
-                # Small delay to avoid multiple rapid detections
-                time.sleep(0.5)
-                break
+                # Only trigger on models that were specifically selected by user
+                if model_name in self.selected_models:
+                    logger.info(f"Wake word detected: '{model_name}' (confidence: {score:.3f})")
+                    
+                    # Call detection callback
+                    if self.detection_callback:
+                        try:
+                            self.detection_callback(model_name, score)
+                        except Exception as e:
+                            logger.error(f"Error in wake word callback: {e}")
+                    
+                    # Small delay to avoid multiple rapid detections
+                    time.sleep(0.5)
+                    break
+                else:
+                    # Log detection of unselected models for debugging
+                    logger.debug(f"Ignoring wake word '{model_name}' (confidence: {score:.3f}) - not in selected models: {self.selected_models}")
     
     def get_model_info(self):
         """Get information about loaded models."""
