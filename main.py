@@ -17,6 +17,8 @@ from wake_word_detector import WakeWordDetector, validate_wake_word_config
 import platform
 from platform_utils import check_linux_dependencies, hide_window_from_taskbar, get_icon_path
 from dummy_animation_server import DummyAnimationServer
+from conversation_manager import ConversationManager
+from prompt_server import PromptServer
 
 logger = utils.setup_logger()
 
@@ -34,6 +36,8 @@ class HAAssistApp:
         self.tray_icon = None
         self.window_visible = True
         self.wake_word_detector = None
+        self.conversation_manager = None
+        self.prompt_server = None
         self.animations_enabled = utils.get_env_bool("HA_ANIMATIONS_ENABLED", True)
         self.response_text_enabled = utils.get_env_bool("HA_RESPONSE_TEXT_ENABLED", True)
 
@@ -382,6 +386,41 @@ class HAAssistApp:
         self.animation_server.set_voice_command_callback(self.on_voice_command_trigger)
         self.animation_server.start()
     
+    def setup_conversation_manager(self):
+        """Setup conversation manager for interactive prompts."""
+        if not (self.ha_client and self.audio_manager and self.animation_server):
+            logger.error("Cannot setup conversation manager - dependencies not initialized")
+            return False
+        
+        self.conversation_manager = ConversationManager(
+            self.ha_client, 
+            self.audio_manager, 
+            self.animation_server
+        )
+        
+        # Set conversation manager reference in HA client for context cleanup
+        self.ha_client.set_conversation_manager(self.conversation_manager)
+        
+        logger.info("✅ Conversation manager initialized")
+        return True
+    
+    def setup_prompt_server(self):
+        """Setup HTTP server for receiving HA prompts."""
+        if not self.conversation_manager:
+            logger.error("Cannot setup prompt server - conversation manager not initialized")
+            return False
+        
+        port = utils.get_env("HA_PROMPT_SERVER_PORT", 8766, int)
+        self.prompt_server = PromptServer(self.conversation_manager, port)
+        
+        success = self.prompt_server.start()
+        if success:
+            logger.info(f"✅ Prompt server listening on port {port}")
+            return True
+        else:
+            logger.error("❌ Failed to start prompt server")
+            return False
+    
     def setup_webview(self):
         """Setup webview window."""
         frontend_path = os.path.join(os.path.dirname(__file__), 'frontend')
@@ -457,24 +496,24 @@ class HAAssistApp:
     async def process_voice_command(self):
         """Enhanced voice command processing with pipeline validation."""
         # Store references to temporary instances for cleanup
-        temp_ha_client = None
-        temp_audio_manager = None
+        # temp variables removed - using self.ha_client and self.audio_manager
         
         try:
             self.animation_server.change_state("listening")
             utils.play_feedback_sound("activation")
             
-            # Create temporary instances for this session
-            temp_ha_client = HomeAssistantClient()
-            temp_audio_manager = AudioManager()
+            # Use existing instances or create temporary ones
+            ha_client = self.ha_client if self.ha_client else HomeAssistantClient()
+            audio_manager = self.audio_manager if self.audio_manager else AudioManager()
             
             pipeline_id = utils.get_env("HA_PIPELINE_ID")
             if pipeline_id:
                 logger.info(f"Checking pipeline availability: {pipeline_id}")
             
-            temp_audio_manager.init_audio()
+            if not self.audio_manager:  # Only init if not already initialized
+                audio_manager.init_audio()
             
-            if not await temp_ha_client.connect():
+            if not await ha_client.connect():
                 logger.error("Failed to connect to Home Assistant")
                 self.animation_server.change_state("error", "Cannot connect to Home Assistant")
                 await asyncio.sleep(5)
@@ -484,10 +523,10 @@ class HAAssistApp:
             
             logger.info("Connected to Home Assistant")
             
-            if pipeline_id and not temp_ha_client.validate_pipeline_id(pipeline_id):
+            if pipeline_id and not ha_client.validate_pipeline_id(pipeline_id):
                 logger.warning(f"Pipeline '{pipeline_id}' not available - using default")
                 
-            if not await temp_ha_client.start_assist_pipeline(timeout_seconds=30):
+            if not await ha_client.start_assist_pipeline(timeout_seconds=30):
                 logger.error("Failed to start Assist pipeline")
                 self.animation_server.change_state("error", "Cannot start voice assistant")
                 await asyncio.sleep(5)
@@ -502,7 +541,7 @@ class HAAssistApp:
             
             async def on_audio_chunk(audio_chunk):
                 self.animation_server.send_audio_data(audio_chunk)
-                success = await temp_ha_client.send_audio_chunk(audio_chunk)
+                success = await ha_client.send_audio_chunk(audio_chunk)
                 if not success:
                     logger.warning("Error sending audio chunk")
             
@@ -511,15 +550,15 @@ class HAAssistApp:
                 self.animation_server.change_state("processing")
                 await asyncio.sleep(0.8)
                 
-                success = await temp_ha_client.end_audio()
+                success = await ha_client.end_audio()
                 if not success:
                     logger.warning("Error ending audio")
             
-            if await temp_audio_manager.record_audio(on_audio_chunk, on_audio_end):
+            if await audio_manager.record_audio(on_audio_chunk, on_audio_end):
                 logger.info("Audio sent successfully")
                 
                 logger.info("=== RECEIVING RESPONSE ===")
-                results = await temp_ha_client.receive_response(timeout_seconds=45)
+                results = await ha_client.receive_response(timeout_seconds=45)
                 
                 error_found = False
                 for result in results:
@@ -553,7 +592,7 @@ class HAAssistApp:
                             break
                 
                 if not error_found:
-                    response = temp_ha_client.extract_assistant_response(results)
+                    response = ha_client.extract_assistant_response(results)
                     
                     if response and response != "No response from assistant":
                         print("\n=== ASSISTANT RESPONSE ===")
@@ -566,10 +605,10 @@ class HAAssistApp:
                         if self.response_text_enabled:
                             self.animation_server.send_response_text(response)
                         
-                        audio_url = temp_ha_client.extract_audio_url(results)
+                        audio_url = ha_client.extract_audio_url(results)
                         if audio_url:
                             print("Playing voice response with FFT analysis...")
-                            success = utils.play_audio_from_url(audio_url, temp_ha_client.host, self.animation_server)
+                            success = utils.play_audio_from_url(audio_url, ha_client.host, self.animation_server)
                             if not success:
                                 logger.warning("Failed to play response audio")
                         
@@ -611,16 +650,17 @@ class HAAssistApp:
             # Proper cleanup of temporary instances
             logger.info("Cleaning up voice command session...")
             
-            if temp_audio_manager:
+            # Only close temporary instances if we created them (not self instances)
+            if audio_manager != self.audio_manager:
                 try:
-                    temp_audio_manager.close_audio()
+                    audio_manager.close_audio()
                     logger.debug("Temp audio manager closed")
                 except Exception as e:
                     logger.error(f"Error closing temp audio manager: {e}")
                 
-            if temp_ha_client:
+            if ha_client != self.ha_client:
                 try:
-                    await temp_ha_client.close()
+                    await ha_client.close()
                     logger.debug("Temp HA client closed")
                 except Exception as e:
                     logger.error(f"Error closing temp HA client: {e}")
@@ -748,7 +788,30 @@ class HAAssistApp:
         try:
             logger.info("Starting GLaSSIST Desktop...")
             
+            # Initialize HA client and audio manager at startup
+            logger.info("Initializing HA client and audio manager...")
+            try:
+                self.ha_client = HomeAssistantClient()
+                self.audio_manager = AudioManager()
+                self.audio_manager.init_audio()
+                logger.info("✅ HA client and audio manager initialized")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize HA client or audio manager: {e}")
+                self.ha_client = None
+                self.audio_manager = None
+            
             self.setup_animation_server()
+            
+            # Setup conversation system after HA client and audio manager are initialized
+            if self.ha_client and self.audio_manager:
+                if self.setup_conversation_manager():
+                    # Pass app reference to conversation manager
+                    self.conversation_manager._app_instance = self
+                    self.setup_prompt_server()
+                else:
+                    logger.warning("Failed to setup conversation manager")
+            else:
+                logger.warning("HA client or audio manager not initialized - conversation features disabled")
             
             if not self.setup_webview():
                 logger.error("Failed to configure interface")
@@ -805,6 +868,22 @@ class HAAssistApp:
         
         # Stop wake word detection first
         self.stop_wake_word_detection()
+        
+        # Stop prompt server
+        if hasattr(self, 'prompt_server') and self.prompt_server:
+            try:
+                self.prompt_server.stop()
+                logger.info("Prompt server stopped")
+            except Exception as e:
+                logger.error(f"Error stopping prompt server: {e}")
+        
+        # Cancel any active conversations
+        if hasattr(self, 'conversation_manager') and self.conversation_manager:
+            try:
+                self.conversation_manager.cancel_conversation()
+                logger.info("Active conversations cancelled")
+            except Exception as e:
+                logger.error(f"Error cancelling conversations: {e}")
 
         # Close HA client connection if exists
         if hasattr(self, 'ha_client') and self.ha_client:

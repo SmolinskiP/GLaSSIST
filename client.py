@@ -27,6 +27,7 @@ class HomeAssistantClient:
         self.connected = False
         self.audio_url = None
         self.available_pipelines = []
+        self.conversation_manager = None
         
     async def connect(self):
         """Establish WebSocket connection with Home Assistant."""
@@ -84,6 +85,10 @@ class HomeAssistantClient:
         except Exception as e:
             logger.error(f"Connection error: {str(e)}")
             return False
+
+    def set_conversation_manager(self, conversation_manager):
+        """Set conversation manager reference for context cleanup."""
+        self.conversation_manager = conversation_manager
 
     async def fetch_available_pipelines(self):
         """Fetch list of available Assist pipelines."""
@@ -201,13 +206,22 @@ class HomeAssistantClient:
         
         pipeline_params = {
             "type": "assist_pipeline/run",
-            "start_stage": "stt",
+            "start_stage": "stt", 
             "end_stage": "tts",
             "input": {
                 "sample_rate": self.sample_rate
             },
             "timeout": timeout_seconds
         }
+        
+        # Add context to conversation metadata if available
+        if hasattr(self, '_conversation_context') and self._conversation_context:
+            # Try adding context as conversation metadata
+            original_question = getattr(self, '_original_question', 'Unknown question')
+            context_info = f"CONTEXT: {self._conversation_context} QUESTION: {original_question}"
+            
+            pipeline_params["conversation_id"] = context_info[:100]  # Limit length
+            logger.info(f"🔖 Adding context as conversation_id: '{context_info[:100]}'")
         
         if self.pipeline_id:
             pipeline_params["pipeline"] = self.pipeline_id
@@ -325,6 +339,210 @@ class HomeAssistantClient:
                 
                 try:
                     response_json = json.loads(response)
+                    
+                    # Handle conversation context by calling conversation.process directly  
+                    if (hasattr(self, '_conversation_context') and self._conversation_context and
+                        response_json.get('type') == 'event' and
+                        response_json.get('event', {}).get('type') == 'stt-end'):
+                        
+                        logger.info(f"🔖 DEBUG: Entering conversation context path")
+                        
+                        stt_text = response_json.get('event', {}).get('data', {}).get('stt_output', {}).get('text', '')
+                        if stt_text:
+                            logger.info(f"🔖 DETECTED CONTEXT - calling conversation.process")
+                            
+                            # Extract original question and context
+                            original_question = getattr(self, '_original_question', 'Unknown question')
+                            context_instructions = self._conversation_context
+                            
+                            # Build context prompt for direct conversation.process
+                            combined_text = f"{context_instructions} User was asked: '{original_question}' and responded: '{stt_text}'. Execute appropriate action and confirm what was done."
+                            
+                            # Call conversation.process service and get the response
+                            try:
+                                service_message = {
+                                    "id": self.message_id,
+                                    "type": "call_service",
+                                    "domain": "conversation",
+                                    "service": "process",
+                                    "service_data": {
+                                        "text": combined_text,
+                                        "agent_id": "conversation.claude_short_2"
+                                    },
+                                    "return_response": True
+                                }
+                                
+                                await self.websocket.send(json.dumps(service_message))
+                                current_msg_id = self.message_id
+                                self.message_id += 1
+                                
+                                logger.info(f"🔖 CALLED conversation.process with return_response: '{combined_text}'")
+                                
+                                # Wait for the service response
+                                response_text = None
+                                timeout_start = asyncio.get_event_loop().time()
+                                
+                                while asyncio.get_event_loop().time() - timeout_start < 10.0:
+                                    try:
+                                        service_response = await asyncio.wait_for(
+                                            self.websocket.recv(), 
+                                            timeout=2.0
+                                        )
+                                        service_response_json = json.loads(service_response)
+                                        
+                                        if (service_response_json.get("id") == current_msg_id and 
+                                            service_response_json.get("type") == "result"):
+                                            
+                                            if service_response_json.get("success"):
+                                                result = service_response_json.get("result", {})
+                                                logger.info(f"🔖 DEBUG conversation.process result: {result}")
+                                                
+                                                # Try different response paths
+                                                response_text = ""
+                                                if "speech" in result:
+                                                    response_text = result.get("speech", "")
+                                                elif "response" in result:
+                                                    resp = result.get("response", {})
+                                                    if isinstance(resp, dict):
+                                                        # Navigate through the nested structure
+                                                        inner_resp = resp.get("response", {})
+                                                        if isinstance(inner_resp, dict):
+                                                            speech_data = inner_resp.get("speech", {})
+                                                            if isinstance(speech_data, dict):
+                                                                plain_data = speech_data.get("plain", {})
+                                                                if isinstance(plain_data, dict):
+                                                                    response_text = plain_data.get("speech", "")
+                                                        
+                                                        if not response_text:
+                                                            response_text = str(resp)
+                                                    else:
+                                                        response_text = str(resp)
+                                                else:
+                                                    response_text = str(result)
+                                                
+                                                logger.info(f"🔖 GOT conversation.process response: '{response_text}'")
+                                                if response_text:
+                                                    break
+                                            else:
+                                                logger.error(f"conversation.process failed: {service_response_json}")
+                                                break
+                                                
+                                    except asyncio.TimeoutError:
+                                        continue
+                                    except Exception as e:
+                                        logger.error(f"Error waiting for conversation.process response: {e}")
+                                        break
+                                
+                                if response_text:
+                                    # Generate TTS for the correct response
+                                    tts_pipeline = {
+                                        "type": "assist_pipeline/run",
+                                        "start_stage": "tts",
+                                        "end_stage": "tts", 
+                                        "input": {
+                                            "text": response_text
+                                        }
+                                    }
+                                    
+                                    if hasattr(self, 'pipeline_id') and self.pipeline_id:
+                                        tts_pipeline["pipeline"] = self.pipeline_id
+                                    
+                                    await self.websocket.send(json.dumps({
+                                        "id": self.message_id,
+                                        **tts_pipeline
+                                    }))
+                                    self.message_id += 1
+                                    
+                                    logger.info(f"🔖 GENERATED TTS for correct response: '{response_text}'")
+                                    
+                                    # Wait for TTS pipeline results and get audio URL
+                                    tts_url = None
+                                    tts_timeout = asyncio.get_event_loop().time() + 10.0
+                                    
+                                    while asyncio.get_event_loop().time() < tts_timeout:
+                                        try:
+                                            tts_response = await asyncio.wait_for(
+                                                self.websocket.recv(), 
+                                                timeout=2.0
+                                            )
+                                            tts_response_json = json.loads(tts_response)
+                                            
+                                            if (tts_response_json.get("type") == "event" and 
+                                                tts_response_json.get("event", {}).get("type") == "tts-end"):
+                                                tts_output = tts_response_json.get("event", {}).get("data", {}).get("tts_output", {})
+                                                tts_url = tts_output.get("url")
+                                                if tts_url:
+                                                    logger.info(f"🔖 GOT TTS URL: {tts_url}")
+                                                    break
+                                                    
+                                        except asyncio.TimeoutError:
+                                            continue
+                                        except Exception as e:
+                                            logger.error(f"Error getting TTS URL: {e}")
+                                            break
+                                    
+                                    # Play TTS through GLaSSIST
+                                    if tts_url:
+                                        # Create fake results that GLaSSIST expects
+                                        fake_results = [
+                                            {
+                                                "type": "event",
+                                                "event": {
+                                                    "type": "run-start",
+                                                    "data": {
+                                                        "tts_output": {
+                                                            "url": tts_url
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            {
+                                                "type": "event",
+                                                "event": {
+                                                    "type": "intent-end",
+                                                    "data": {
+                                                        "intent_output": {
+                                                            "response": {
+                                                                "speech": {
+                                                                    "plain": {
+                                                                        "speech": response_text
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        ]
+                                        
+                                        # Return fake results instead of continuing with original pipeline
+                                        logger.info(f"🔖 RETURNING FAKE RESULTS WITH TTS: {tts_url}")
+                                        logger.info(f"🔖 RESPONSE TEXT: {response_text}")
+                                        
+                                        # Clear context and cancel conversation BEFORE returning
+                                        self._conversation_context = None
+                                        
+                                        # Cancel the conversation in conversation manager
+                                        if self.conversation_manager:
+                                            logger.info("🔖 Cancelling conversation after response processing")
+                                            self.conversation_manager.cancel_conversation()
+                                        else:
+                                            logger.warning("🔖 No conversation manager available to cancel conversation")
+                                        
+                                        return fake_results
+                                
+                            except Exception as e:
+                                logger.error(f"Error calling conversation.process with response: {e}")
+                                
+                                # Clear context even on error
+                                self._conversation_context = None
+                                if self.conversation_manager:
+                                    logger.info("🔖 Cancelling conversation after error")
+                                    self.conversation_manager.cancel_conversation()
+                            
+                            # Skip the original pipeline - we handled it with conversation.process
+                            continue
+                    
                     logger.info(f"Received: {response_json}")
                     results.append(response_json)
                     
@@ -343,16 +561,18 @@ class HomeAssistantClient:
         except Exception as e:
             logger.error(f"Error during response reception: {e}")
         
+        # Clear conversation context after normal pipeline completion
+        if hasattr(self, '_conversation_context') and self._conversation_context:
+            logger.info("🔖 Clearing conversation context after pipeline completion")
+            self._conversation_context = None
+        
         return results
     
     def extract_audio_url(self, results):
         """Extract audio URL from results."""
-        if self.audio_url:
-            logger.info(f"Using audio URL from run-start: {self.audio_url}")
-            return self.audio_url
-        
         logger.info("Searching for audio URL in results...")
         
+        # First check results (including fake results with new TTS URLs)
         for result in results:
             if (result.get("type") == "event" and 
                 result.get("event", {}).get("type") == "run-start"):
@@ -361,6 +581,11 @@ class HomeAssistantClient:
                     url = tts_output["url"]
                     logger.info(f"Found audio URL in results: {url}")
                     return url
+        
+        # Fallback to cached URL if no URL found in results
+        if self.audio_url:
+            logger.info(f"Using audio URL from run-start: {self.audio_url}")
+            return self.audio_url
         
         logger.warning("Audio URL not found")
         return None
@@ -413,3 +638,194 @@ class HomeAssistantClient:
                 logger.info("Connection closed")
             except Exception as e:
                 logger.error(f"Connection closing error: {e}")
+    
+    async def send_tts_message(self, message):
+        """Send TTS message to Home Assistant using service call."""
+        try:
+            logger.info(f"Sending TTS message: {message}")
+            
+            # Use call_service to invoke TTS instead of direct TTS engine
+            tts_message = {
+                "id": self.message_id,
+                "type": "call_service",
+                "domain": "tts",
+                "service": "speak",
+                "service_data": {
+                    "entity_id": "tts.piper",  # Default TTS engine
+                    "message": message
+                }
+            }
+            
+            await self.websocket.send(json.dumps(tts_message))
+            self.message_id += 1
+            
+            # Wait for service response
+            response = await asyncio.wait_for(
+                self.websocket.recv(), 
+                timeout=10.0
+            )
+            
+            result = json.loads(response)
+            if result.get("success", True):  # Service calls usually succeed without explicit success field
+                logger.info("TTS service called successfully")
+                return True
+            else:
+                logger.warning(f"TTS service failed: {result}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error sending TTS message: {e}")
+            return False
+    
+    async def process_voice_command_with_context(self, audio_data, context):
+        """Process voice command with context through HA pipeline."""
+        try:
+            logger.info(f"Processing voice command with context: {context}")
+            
+            # Start pipeline with context as prefix
+            pipeline_params = {
+                "type": "assist_pipeline/run", 
+                "start_stage": "stt",
+                "end_stage": "intent",
+                "input": {
+                    "sample_rate": self.sample_rate
+                },
+                "context": context  # Add context for HA to understand
+            }
+            
+            if self.pipeline_id:
+                pipeline_params["pipeline"] = self.pipeline_id
+            
+            # Send pipeline start message
+            await self.websocket.send(json.dumps({
+                "id": self.message_id,
+                **pipeline_params
+            }))
+            
+            pipeline_id = self.message_id
+            self.message_id += 1
+            
+            # Send audio data
+            await self.websocket.send(audio_data)
+            
+            # End audio stream
+            await self.websocket.send(json.dumps({
+                "id": self.message_id,
+                "type": "assist_pipeline/run",
+                "stage": "stt",
+                "event": "end"
+            }))
+            self.message_id += 1
+            
+            # Wait for pipeline results
+            while True:
+                response = await asyncio.wait_for(
+                    self.websocket.recv(), 
+                    timeout=30.0
+                )
+                
+                result = json.loads(response)
+                
+                # Check if this is our pipeline response
+                if result.get("id") == pipeline_id:
+                    if result.get("type") == "result":
+                        if result.get("success", False):
+                            logger.info(f"Pipeline processed successfully: {result}")
+                            return {"success": True, "result": result}
+                        else:
+                            error = result.get("error", {})
+                            logger.warning(f"Pipeline failed: {error}")
+                            return {"success": False, "error": error}
+                    
+                    # Handle intermediate events
+                    elif result.get("type") == "event":
+                        event_type = result.get("event", {}).get("type")
+                        if event_type == "intent-end":
+                            intent_output = result.get("event", {}).get("data", {})
+                            logger.info(f"Intent recognized: {intent_output}")
+                            
+                            # Check if HA executed an action
+                            if intent_output.get("intent", {}).get("name"):
+                                return {"success": True, "intent": intent_output}
+                        
+                        elif event_type in ["error", "run-end"]:
+                            break
+                
+        except Exception as e:
+            logger.error(f"Error processing voice command with context: {e}")
+            return {"success": False, "error": str(e)}
+    
+    async def call_service(self, service_call):
+        """Call a Home Assistant service."""
+        try:
+            # Parse service call (e.g., "script.make_coffee" or "light.turn_on")
+            if '.' not in service_call:
+                logger.error(f"Invalid service call format: {service_call}")
+                return False
+            
+            domain, service = service_call.split('.', 1)
+            
+            logger.info(f"Calling HA service: {domain}.{service}")
+            
+            service_message = {
+                "id": self.message_id,
+                "type": "call_service",
+                "domain": domain,
+                "service": service,
+                "service_data": {}
+            }
+            
+            await self.websocket.send(json.dumps(service_message))
+            self.message_id += 1
+            
+            # Wait for service response
+            response = await asyncio.wait_for(
+                self.websocket.recv(), 
+                timeout=10.0
+            )
+            
+            result = json.loads(response)
+            if result.get("success", False):
+                logger.info(f"Service {service_call} executed successfully")
+                return True
+            else:
+                logger.warning(f"Service {service_call} failed: {result}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error calling service {service_call}: {e}")
+            return False
+    
+    async def call_service_with_data(self, domain, service, service_data):
+        """Call HA service with custom data."""
+        try:
+            logger.info(f"Calling HA service: {domain}.{service} with data: {service_data}")
+            
+            service_message = {
+                "id": self.message_id,
+                "type": "call_service",
+                "domain": domain,
+                "service": service,
+                "service_data": service_data
+            }
+            
+            await self.websocket.send(json.dumps(service_message))
+            self.message_id += 1
+            
+            # Wait for service response
+            response = await asyncio.wait_for(
+                self.websocket.recv(), 
+                timeout=10.0
+            )
+            
+            result = json.loads(response)
+            if result.get("success", True):  # Most services succeed
+                logger.info(f"Service {domain}.{service} executed successfully")
+                return True
+            else:
+                logger.warning(f"Service {domain}.{service} failed: {result}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error calling service {domain}.{service}: {e}")
+            return False

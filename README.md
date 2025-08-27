@@ -23,6 +23,8 @@ Desktop voice application for Home Assistant with visual animations and VAD (Voi
 - **Cross-platform** - Windows and Linux support with native feel
 - **Thread-safe** - No more hanging settings dialogs or crashes
 - **Debug logging** - File logging when debug mode is enabled
+- **Interactive Prompts API** - Home Assistant can ask questions and get voice responses
+- **HTTP API Server** - External applications can trigger voice prompts via REST API
 
 ## 📋 Requirements
 
@@ -120,6 +122,109 @@ Without this, the app will be as useful as a calculator without batteries.
 ### Pipelines (optional)
 The app automatically fetches available pipelines. If you have more than one, select it in settings.
 
+## 🔄 Interactive Prompts Integration
+
+GLaSSIST v2.0 introduces **Interactive Prompts** - allowing Home Assistant to ask questions and receive voice responses. Perfect for confirmations, choices, and interactive automations.
+
+### HTTP API Server
+
+GLaSSIST runs an HTTP server (default port `8766`) that accepts prompt requests:
+
+**Endpoint**: `POST http://YOUR_GLASSIST_IP:8766/prompt`
+
+**Request format**:
+```json
+{
+  "message": "Question to ask the user",
+  "context": "Context for the assistant to understand the situation",
+  "timeout": 15
+}
+```
+
+**Response**: `{"status": "accepted", "message": "Prompt will be processed"}`
+
+### Home Assistant Integration
+
+Add this to your `configuration.yaml`:
+
+```yaml
+rest_command:
+  glassist_prompt:
+    url: "http://YOUR_GLASSIST_IP:8766/prompt"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    payload: |
+      {
+        "message": "{{ message }}",
+        "context": "{{ context }}",
+        "timeout": {{ timeout | default(15) }}
+      }
+
+automation:
+  - alias: "Ask before turning on lights"
+    trigger:
+      - platform: state
+        entity_id: light.living_room_light
+        to: "on"
+    action:
+      - service: rest_command.glassist_prompt
+        data:
+          message: "Turn on the living room lights?"
+          context: "User wants to control living room lighting"
+          timeout: 15
+```
+
+### Manual Testing
+
+Test the API directly with curl:
+
+```bash
+curl -X POST http://192.168.1.100:8766/prompt \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Turn on the lights in the living room?",
+    "context": "You ask user if they want to turn on lights in living room",
+    "timeout": 15
+  }'
+```
+
+Or via Home Assistant Developer Tools:
+- **Service**: `rest_command.glassist_prompt`
+- **Service Data**:
+```yaml
+message: "Turn on the lights in the living room?"
+context: "You ask user if they want to turn on lights in living room" 
+timeout: 15
+```
+
+### How It Works
+
+1. **HA sends prompt** → GLaSSIST receives HTTP request
+2. **GLaSSIST asks user** → Plays TTS question and shows animation
+3. **User responds via voice** → Wake word activation or hotkey
+4. **GLaSSIST processes response** → Uses context to understand what user is responding to
+5. **Action executed** → Based on user's voice response (yes/no/specific action)
+
+### Use Cases
+
+- **Confirmation dialogs**: "Turn on bedroom lights?" → User: "Yes"
+- **Security prompts**: "Someone at the door. Turn on porch light?" → User: "Yes please"  
+- **Energy management**: "High electricity usage detected. Turn off unnecessary devices?" → User: "Turn off the TV"
+- **Schedule conflicts**: "Meeting in 10 minutes. Should I dim the lights?" → User: "Yes, set to 30%"
+
+
+### 📖 Complete Setup Guide
+
+For detailed configuration with advanced examples, automations, and use cases, see:  
+**[📋 INTERACTIVE_PROMPTS_SETUP.md](INTERACTIVE_PROMPTS_SETUP.md)**
+
+### Security Notes
+
+- **Local network only** - The API server binds to all interfaces for LAN access
+- **No authentication** - Intended for trusted local network use only  
+- **Firewall considerations** - Port 8766 needs to be accessible from HA server
+
 ## 🤖 Wake Word Models
 GLaSSIST includes over **100 pre-trained wake word models** converted to ONNX format for Windows compatibility. Models are sourced from the [Home Assistant Wakewords Collection](https://github.com/fwartner/home-assistant-wakewords-collection/tree/main) and optimized for desktop use.
 
@@ -203,6 +308,7 @@ The app plays sounds from `sound/` directory:
 ### Device Selection
 - `HA_MICROPHONE_INDEX` - Specific microphone ID (-1 for automatic)
 
+
 ### Debug & Logging
 - `DEBUG` - Debug mode with detailed file logging (true/false)
 
@@ -231,6 +337,16 @@ The app plays sounds from `sound/` directory:
 - **Fixed in v1.3+** - Replaced problematic Tkinter with modern Flet UI
 - All threading issues resolved with proper async/await patterns
 
+### Interactive Prompts not working
+- Verify port 8766 is accessible from Home Assistant server
+- Test API directly with curl command
+- Check GLaSSIST logs for HTTP server startup messages
+- Make sure conversation manager is enabled in GLaSSIST
+
+### Context not clearing between conversations
+- **Fixed in v2.0** - Conversation context properly cleaned after each interaction
+- If issues persist, restart GLaSSIST application
+
 ## 📚 FAQ
 
 **Q: Does it work on Linux/Mac?**  
@@ -253,6 +369,15 @@ A: Flet UI is responsive and auto-maximizes. Use Escape key to close or resize t
 
 **Q: App uses too much CPU/memory?**  
 A: Disable animations in Settings > Advanced > Interface & Performance. This removes Three.js rendering and WebSocket server while keeping full voice functionality.
+
+**Q: How do I set up interactive prompts?**  
+A: Add the rest_command to your HA configuration.yaml, restart HA, then test with Developer Tools or curl. Interactive prompts are enabled by default in GLaSSIST v2.0.
+
+**Q: Can external apps use the API?**  
+A: Yes! Any application that can make HTTP POST requests can trigger GLaSSIST prompts. Perfect for integration with other home automation systems, scripts, or custom applications.
+
+**Q: What's the difference between regular wake word and interactive prompts?**  
+A: Regular wake word is user-initiated ("Hey Jarvis, turn on lights"). Interactive prompts are system-initiated (HA asks "Turn on lights?" and waits for voice response).
 
 ## 📄 License
 

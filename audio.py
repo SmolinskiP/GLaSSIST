@@ -241,4 +241,99 @@ class AudioManager:
         except Exception as e:
             logger.error(f"Error getting device info: {e}")
             return None
+    
+    async def record_audio_async(self, timeout=10, silence_threshold=0.3, min_audio_length=1.0):
+        """
+        Record audio for conversation response with timeout.
         
+        Args:
+            timeout: Maximum recording time in seconds
+            silence_threshold: VAD sensitivity (0.0-1.0)
+            min_audio_length: Minimum audio length in seconds
+            
+        Returns:
+            bytes: Recorded audio data or None if failed
+        """
+        if not self.stream:
+            logger.error("Audio stream not initialized for conversation recording")
+            return None
+        
+        logger.info(f"Starting conversation audio recording (timeout: {timeout}s)")
+        
+        # Reset VAD with custom threshold if provided
+        original_threshold = self.vad.silence_threshold_sec
+        if silence_threshold != original_threshold:
+            self.vad.silence_threshold_sec = silence_threshold
+        
+        self.vad.reset()
+        
+        start_time = time.time()
+        audio_chunks = []
+        chunks_processed = 0
+        waiting_for_speech = True
+        speech_active = False
+        
+        try:
+            while True:
+                # Check timeout
+                if time.time() - start_time > timeout:
+                    logger.info(f"Recording timeout after {timeout}s")
+                    break
+                
+                try:
+                    # Read audio chunk
+                    data = self.stream.read(self.chunk_size, exception_on_overflow=False)
+                    chunks_processed += 1
+                    
+                except Exception as e:
+                    logger.error(f"Audio read error during conversation: {e}")
+                    break
+                
+                # Process with VAD
+                process_chunk, is_end = self.vad.process_audio(data)
+                
+                if waiting_for_speech:
+                    if process_chunk:
+                        waiting_for_speech = False
+                        speech_active = True
+                        logger.info("🗣️ Detected speech start in conversation")
+                        audio_chunks.append(data)  # Include the triggering chunk
+                    else:
+                        # Still waiting - show we're listening
+                        if chunks_processed % 50 == 0:  # Every ~1.5 seconds
+                            logger.debug(f"Still waiting for speech... ({chunks_processed} chunks)")
+                
+                elif speech_active:
+                    if process_chunk:
+                        audio_chunks.append(data)
+                        logger.debug(f"Recording speech chunk {len(audio_chunks)}")
+                    
+                    if is_end:
+                        # Check if we have enough audio
+                        total_duration = len(audio_chunks) * self.chunk_size / self.sample_rate
+                        if total_duration >= min_audio_length:
+                            logger.info(f"✅ Speech ended, captured {total_duration:.1f}s of audio")
+                            break
+                        else:
+                            logger.info(f"⚠️ Speech too short ({total_duration:.1f}s < {min_audio_length}s), continuing...")
+                            # Reset to wait for more speech
+                            speech_active = False
+                            waiting_for_speech = True
+                
+        except Exception as e:
+            logger.error(f"Error during conversation recording: {e}")
+            return None
+        
+        finally:
+            # Restore original VAD threshold
+            self.vad.silence_threshold_sec = original_threshold
+        
+        # Combine all audio chunks
+        if audio_chunks:
+            total_audio = b''.join(audio_chunks)
+            duration = len(audio_chunks) * self.chunk_size / self.sample_rate
+            logger.info(f"Conversation recording completed: {len(total_audio)} bytes, {duration:.1f}s")
+            return total_audio
+        else:
+            logger.warning("No audio captured during conversation recording")
+            return None
