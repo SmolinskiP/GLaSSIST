@@ -244,6 +244,3 @@ timeout: 20
 
 
 Ready to make your home truly intelligent and conversational? Your smart home just got a voice and personality! 🎉
-
----
-*For more examples and community configurations, check the [GLaSSIST GitHub repository](https://github.com/SmolinskiP/GLaSSIST) and join our Discord community!*
