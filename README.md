@@ -201,8 +201,8 @@ timeout: 15
 ### How It Works
 
 1. **HA sends prompt** → GLaSSIST receives HTTP request
-2. **GLaSSIST asks user** → Plays TTS question and shows animation
-3. **User responds via voice** → Wake word activation or hotkey
+2. **GLaSSIST asks user** → Plays TTS question
+3. **User responds via voice**
 4. **GLaSSIST processes response** → Uses context to understand what user is responding to
 5. **Action executed** → Based on user's voice response (yes/no/specific action)
 
