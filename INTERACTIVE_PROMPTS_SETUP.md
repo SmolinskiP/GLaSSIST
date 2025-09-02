@@ -32,9 +32,19 @@ rest_command:
       {
         "message": "{{ message }}",
         "context": "{{ context }}",
-        "timeout": {{ timeout | default(15) }}
+        "timeout": {{ timeout | default(15) }},
+        "wait_for_response": {{ wait_for_response | default(true) | lower }}
       }
 ```
+
+### Parameters
+
+- **message**: The text GLaSSIST should speak
+- **context**: Context information for the conversation (optional)  
+- **timeout**: How long to wait for user response in seconds (default: 15)
+- **wait_for_response**: Whether to wait for user input after TTS (default: true)
+  - `true`: Normal interactive mode - plays TTS then waits for voice response
+  - `false`: TTS-only mode - plays TTS then ends (for announcements)
 
 ### Step 2: Epic Automation Examples
 

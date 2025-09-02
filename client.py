@@ -28,6 +28,8 @@ class HomeAssistantClient:
         self.audio_url = None
         self.available_pipelines = []
         self.conversation_manager = None
+        self.volumes_managed = False  # Flag to track if we're managing volumes
+        self.saved_volumes_for_restore = None  # Store volumes for restoration
         
     async def connect(self):
         """Establish WebSocket connection with Home Assistant."""
@@ -829,3 +831,152 @@ class HomeAssistantClient:
         except Exception as e:
             logger.error(f"Error calling service {domain}.{service}: {e}")
             return False
+
+    async def get_media_player_entities(self):
+        """Get list of all media_player entities from Home Assistant."""
+        try:
+            logger.info("Fetching media_player entities from Home Assistant")
+            
+            await self.websocket.send(json.dumps({
+                "id": self.message_id,
+                "type": "get_states"
+            }))
+            current_msg_id = self.message_id
+            self.message_id += 1
+            
+            response = await asyncio.wait_for(
+                self.websocket.recv(), 
+                timeout=15.0
+            )
+            response_json = json.loads(response)
+            
+            if (response_json.get("id") == current_msg_id and 
+                response_json.get("type") == "result" and 
+                response_json.get("success")):
+                
+                entities = response_json.get("result", [])
+                media_players = []
+                
+                for entity in entities:
+                    entity_id = entity.get("entity_id", "")
+                    if entity_id.startswith("media_player."):
+                        attributes = entity.get("attributes", {})
+                        friendly_name = attributes.get("friendly_name", entity_id)
+                        current_volume = attributes.get("volume_level")
+                        
+                        media_players.append({
+                            "entity_id": entity_id,
+                            "friendly_name": friendly_name,
+                            "current_volume": current_volume
+                        })
+                
+                logger.info(f"Found {len(media_players)} media_player entities")
+                return media_players
+            else:
+                logger.error(f"Failed to fetch entities: {response_json}")
+                return []
+                
+        except Exception as e:
+            logger.error(f"Error fetching media_player entities: {e}")
+            return []
+
+    async def get_entity_volume(self, entity_id):
+        """Get current volume level of a media_player entity."""
+        try:
+            await self.websocket.send(json.dumps({
+                "id": self.message_id,
+                "type": "get_states"
+            }))
+            current_msg_id = self.message_id
+            self.message_id += 1
+            
+            response = await asyncio.wait_for(
+                self.websocket.recv(), 
+                timeout=10.0
+            )
+            response_json = json.loads(response)
+            
+            if (response_json.get("id") == current_msg_id and 
+                response_json.get("type") == "result" and 
+                response_json.get("success")):
+                
+                entities = response_json.get("result", [])
+                for entity in entities:
+                    if entity.get("entity_id") == entity_id:
+                        volume_level = entity.get("attributes", {}).get("volume_level")
+                        if volume_level is not None:
+                            logger.info(f"Volume for {entity_id}: {volume_level}")
+                            return float(volume_level)
+                        
+                logger.warning(f"Volume level not found for {entity_id}")
+                return None
+            else:
+                logger.error(f"Failed to get entity state: {response_json}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error getting volume for {entity_id}: {e}")
+            return None
+
+    async def set_entity_volume(self, entity_id, volume_level):
+        """Set volume level for a media_player entity."""
+        try:
+            logger.info(f"Setting volume for {entity_id} to {volume_level}")
+            
+            service_data = {
+                "entity_id": entity_id,
+                "volume_level": float(volume_level)
+            }
+            
+            return await self.call_service_with_data("media_player", "volume_set", service_data)
+                
+        except Exception as e:
+            logger.error(f"Error setting volume for {entity_id}: {e}")
+            return False
+
+    async def get_multiple_volumes(self, entity_ids):
+        """Get current volume levels for multiple media_player entities."""
+        volumes = {}
+        try:
+            await self.websocket.send(json.dumps({
+                "id": self.message_id,
+                "type": "get_states"
+            }))
+            current_msg_id = self.message_id
+            self.message_id += 1
+            
+            response = await asyncio.wait_for(
+                self.websocket.recv(), 
+                timeout=10.0
+            )
+            response_json = json.loads(response)
+            
+            if (response_json.get("id") == current_msg_id and 
+                response_json.get("type") == "result" and 
+                response_json.get("success")):
+                
+                entities = response_json.get("result", [])
+                for entity in entities:
+                    entity_id = entity.get("entity_id")
+                    if entity_id in entity_ids:
+                        volume_level = entity.get("attributes", {}).get("volume_level")
+                        if volume_level is not None:
+                            volumes[entity_id] = float(volume_level)
+                
+                logger.info(f"Retrieved volumes: {volumes}")
+                return volumes
+            else:
+                logger.error(f"Failed to get entity states: {response_json}")
+                return volumes
+                
+        except Exception as e:
+            logger.error(f"Error getting multiple volumes: {e}")
+            return volumes
+
+    async def set_multiple_volumes(self, volume_settings):
+        """Set volume levels for multiple media_player entities."""
+        results = {}
+        for entity_id, volume_level in volume_settings.items():
+            success = await self.set_entity_volume(entity_id, volume_level)
+            results[entity_id] = success
+        return results

@@ -25,6 +25,7 @@ class PromptHandler(BaseHTTPRequestHandler):
             # Parse JSON
             request_data = json.loads(post_data.decode('utf-8'))
             logger.info(f"Received HA prompt request: {request_data}")
+            logger.info(f"📨 Message: '{request_data.get('message', 'N/A')}', wait_for_response: {request_data.get('wait_for_response', True)}")
             
             # Validate required fields
             if 'message' not in request_data:
@@ -34,6 +35,7 @@ class PromptHandler(BaseHTTPRequestHandler):
             # Set defaults
             context = request_data.get('context', 'interactive_prompt')
             timeout = request_data.get('timeout', 10)
+            wait_for_response = request_data.get('wait_for_response', True)  # Default to True
             
             # Send immediate response to HA
             self.send_response(200)

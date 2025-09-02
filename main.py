@@ -498,7 +498,19 @@ class HAAssistApp:
         # Store references to temporary instances for cleanup
         # temp variables removed - using self.ha_client and self.audio_manager
         
+        # Volume management variables
+        saved_volumes = {}
+        media_player_entities = []
+        target_volume = None
+        
         try:
+            # Load media player configuration
+            entities_config = utils.get_env("HA_MEDIA_PLAYER_ENTITIES", "")
+            if entities_config:
+                media_player_entities = [e.strip() for e in entities_config.split(',') if e.strip()]
+                target_volume = utils.get_env("HA_MEDIA_PLAYER_TARGET_VOLUME", 0.3, float)
+                logger.info(f"Media player volume management enabled for {len(media_player_entities)} entities")
+            
             self.animation_server.change_state("listening")
             utils.play_feedback_sound("activation")
             
@@ -522,6 +534,27 @@ class HAAssistApp:
                 return False
             
             logger.info("Connected to Home Assistant")
+            
+            # Save current volumes and set target volume immediately
+            if media_player_entities and not ha_client.volumes_managed:
+                try:
+                    logger.info("Saving current volumes and setting target volume immediately")
+                    saved_volumes = await ha_client.get_multiple_volumes(media_player_entities)
+                    if saved_volumes:
+                        logger.info(f"Saved volumes: {saved_volumes}")
+                        
+                        # Set target volume for all entities immediately
+                        target_settings = {entity_id: target_volume for entity_id in media_player_entities}
+                        results = await ha_client.set_multiple_volumes(target_settings)
+                        logger.info(f"Set target volumes: {results}")
+                        ha_client.volumes_managed = True  # Mark as managed
+                        ha_client.saved_volumes_for_restore = saved_volumes  # Store for restore
+                    else:
+                        logger.warning("Could not retrieve current volumes")
+                except Exception as e:
+                    logger.error(f"Error managing volumes: {e}")
+            elif media_player_entities and ha_client.volumes_managed:
+                logger.info("Volumes already managed by previous call")
             
             if pipeline_id and not ha_client.validate_pipeline_id(pipeline_id):
                 logger.warning(f"Pipeline '{pipeline_id}' not available - using default")
@@ -647,6 +680,20 @@ class HAAssistApp:
             self.animation_server.change_state("hidden")
             utils.play_feedback_sound("deactivation")
         finally:
+            # Restore original volumes (prefer from HA client if available, fallback to local)
+            volumes_to_restore = ha_client.saved_volumes_for_restore if ha_client.saved_volumes_for_restore else saved_volumes
+            if volumes_to_restore and media_player_entities and ha_client.volumes_managed:
+                try:
+                    logger.info("Restoring original volumes")
+                    results = await ha_client.set_multiple_volumes(volumes_to_restore)
+                    logger.info(f"Restored volumes: {results}")
+                    ha_client.volumes_managed = False  # Reset flag
+                    ha_client.saved_volumes_for_restore = None  # Clear stored volumes
+                except Exception as e:
+                    logger.error(f"Error restoring volumes: {e}")
+                    ha_client.volumes_managed = False  # Reset flag even on error
+                    ha_client.saved_volumes_for_restore = None  # Clear stored volumes
+            
             # Proper cleanup of temporary instances
             logger.info("Cleaning up voice command session...")
             

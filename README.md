@@ -25,6 +25,7 @@ Desktop voice application for Home Assistant with visual animations and VAD (Voi
 - **Debug logging** - File logging when debug mode is enabled
 - **Interactive Prompts API** - Home Assistant can ask questions and get voice responses
 - **HTTP API Server** - External applications can trigger voice prompts via REST API
+- **Media Player Volume Management** - Automatic volume control during voice interactions
 
 ## 📋 Requirements
 
@@ -378,6 +379,12 @@ A: Yes! Any application that can make HTTP POST requests can trigger GLaSSIST pr
 
 **Q: What's the difference between regular wake word and interactive prompts?**  
 A: Regular wake word is user-initiated ("Hey Jarvis, turn on lights"). Interactive prompts are system-initiated (HA asks "Turn on lights?" and waits for voice response).
+
+**Q: How does media player volume management work?**  
+A: GLaSSIST automatically saves current volume levels, reduces them to a target level during voice interactions, then restores the original levels afterward. This ensures GLaSSIST is clearly audible without permanently changing your media volumes.
+
+**Q: Can I use wait_for_response: false for announcements?**  
+A: Yes! Set wait_for_response to false for TTS-only announcements that don't need user input. Perfect for notifications, status updates, and confirmations.
 
 ## 📄 License
 

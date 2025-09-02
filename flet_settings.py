@@ -110,6 +110,8 @@ class FletSettingsApp:
             'HA_WAKE_WORD_THRESHOLD': utils.get_env('HA_WAKE_WORD_THRESHOLD', 0.5, float),
             'HA_WAKE_WORD_VAD_THRESHOLD': utils.get_env('HA_WAKE_WORD_VAD_THRESHOLD', 0.3, float),
             'HA_WAKE_WORD_NOISE_SUPPRESSION': utils.get_env('HA_WAKE_WORD_NOISE_SUPPRESSION', 'false'),
+            'HA_MEDIA_PLAYER_ENTITIES': utils.get_env('HA_MEDIA_PLAYER_ENTITIES', ''),
+            'HA_MEDIA_PLAYER_TARGET_VOLUME': utils.get_env('HA_MEDIA_PLAYER_TARGET_VOLUME', 0.3, float),
         }
     
     async def _create_ui(self, current_settings):
@@ -157,6 +159,11 @@ class FletSettingsApp:
                     text="Wake Word",
                     icon=ft.Icons.RECORD_VOICE_OVER,
                     content=await self._create_wake_word_tab(current_settings)
+                ),
+                ft.Tab(
+                    text="Media Players",
+                    icon=ft.Icons.VOLUME_UP,
+                    content=await self._create_media_players_tab(current_settings)
                 ),
                 ft.Tab(
                     text="Advanced",
@@ -627,6 +634,115 @@ class FletSettingsApp:
             padding=10
         )
     
+    async def _create_media_players_tab(self, current_settings):
+        """Create media players volume management tab"""
+        # Media player entities selection
+        self.media_player_entities_field = ft.TextField(
+            label="Media Player Entities (comma-separated)",
+            value=current_settings['HA_MEDIA_PLAYER_ENTITIES'],
+            helper_text="e.g., media_player.living_room,media_player.bedroom",
+            prefix_icon=ft.Icons.SPEAKER,
+            expand=True,
+            multiline=True,
+            min_lines=2,
+            max_lines=4
+        )
+        
+        # Available media players list
+        self.available_players_column = ft.Column(spacing=5, scroll=ft.ScrollMode.AUTO, height=350)
+        
+        # Target volume slider
+        self.target_volume_slider = ft.Slider(
+            min=0.0, max=1.0, divisions=100,
+            value=current_settings['HA_MEDIA_PLAYER_TARGET_VOLUME'],
+            label="Volume: {value}%",
+            on_change=self._on_target_volume_change,
+            active_color=ft.Colors.GREEN_600
+        )
+        
+        self.target_volume_text = ft.Text(f"Target: {int(current_settings['HA_MEDIA_PLAYER_TARGET_VOLUME'] * 100)}%", size=14)
+        
+        # Load available media players if we have connection
+        await self._refresh_media_players_async()
+        
+        return ft.Container(
+            content=ft.Column([
+                # Configuration card
+                ft.Card(
+                    content=ft.Container(
+                        content=ft.Column([
+                            ft.Text("🔊 Volume Management Configuration", size=18, weight=ft.FontWeight.BOLD),
+                            ft.Text(
+                                "GLaSSIST can automatically adjust media player volumes during voice interactions. "
+                                "Select media players below or enter entity IDs manually.",
+                                color=ft.Colors.GREY_700,
+                                size=13
+                            ),
+                            ft.Container(height=10),
+                            ft.Text("Target volume during voice interaction:", size=14, weight=ft.FontWeight.W_500),
+                            self.target_volume_slider,
+                            self.target_volume_text,
+                            ft.Text("Volume will be temporarily set to this level, then restored after interaction",
+                                   size=12, color=ft.Colors.GREY_600)
+                        ]),
+                        padding=20
+                    ),
+                    elevation=2
+                ),
+                
+                # Manual entry card
+                ft.Card(
+                    content=ft.Container(
+                        content=ft.Column([
+                            ft.Text("📝 Manual Entity Configuration", size=18, weight=ft.FontWeight.BOLD),
+                            self.media_player_entities_field,
+                            ft.Text("Enter entity IDs separated by commas. Use the list below to find available entities.",
+                                   size=12, color=ft.Colors.GREY_600)
+                        ]),
+                        padding=20
+                    ),
+                    elevation=2
+                ),
+                
+                # Available players card
+                ft.Card(
+                    content=ft.Container(
+                        content=ft.Column([
+                            ft.Text("🎵 Available Media Players", size=18, weight=ft.FontWeight.BOLD),
+                            ft.Row([
+                                ft.ElevatedButton(
+                                    "Refresh List",
+                                    icon=ft.Icons.REFRESH,
+                                    on_click=lambda _: asyncio.create_task(self._refresh_media_players_async())
+                                ),
+                                ft.ElevatedButton(
+                                    "Add All",
+                                    icon=ft.Icons.ADD_CIRCLE,
+                                    on_click=self._add_all_media_players
+                                ),
+                                ft.ElevatedButton(
+                                    "Clear All",
+                                    icon=ft.Icons.CLEAR,
+                                    on_click=self._clear_media_players
+                                )
+                            ], spacing=10),
+                            ft.Container(height=10),
+                            ft.Text("Click entities to add them to your configuration:", size=14, weight=ft.FontWeight.W_500),
+                            ft.Container(
+                                content=self.available_players_column,
+                                border=ft.border.all(1, ft.Colors.GREY_300),
+                                border_radius=8,
+                                padding=10
+                            )
+                        ]),
+                        padding=20
+                    ),
+                    elevation=2
+                )
+            ]),
+            padding=10
+        )
+    
     async def _create_advanced_tab(self, current_settings):
         """Create advanced settings tab"""
         # Interface settings
@@ -824,6 +940,11 @@ class FletSettingsApp:
     
     def _on_wake_vad_change(self, e):
         self.vad_threshold_text.value = f"Current: {e.control.value:.2f}"
+        self.page.update()
+    
+    def _on_target_volume_change(self, e):
+        volume_percent = int(e.control.value * 100)
+        self.target_volume_text.value = f"Target: {volume_percent}%"
         self.page.update()
     
     async def _on_wake_word_toggle(self, e):
@@ -1138,6 +1259,131 @@ class FletSettingsApp:
         
         self.page.update()
         logger.info(f"Removed wake word model: {model_name}")
+    
+    async def _refresh_media_players_async(self):
+        """Refresh available media players list"""
+        try:
+            host = getattr(self, 'host_field', None)
+            token = getattr(self, 'token_field', None)
+            
+            if not host or not token or not host.value.strip() or not token.value.strip():
+                self.available_players_column.controls.clear()
+                self.available_players_column.controls.append(
+                    ft.Text("Enter connection details and test connection first", 
+                           color=ft.Colors.GREY_500, italic=True)
+                )
+                self.page.update()
+                return
+            
+            def get_media_players():
+                test_client = HomeAssistantClient()
+                test_client.host = host.value.strip()
+                test_client.token = token.value.strip()
+                
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                try:
+                    # Connect and get media players
+                    success = loop.run_until_complete(test_client.connect())
+                    if success:
+                        media_players = loop.run_until_complete(test_client.get_media_player_entities())
+                        return True, media_players
+                    return False, []
+                finally:
+                    loop.run_until_complete(test_client.close())
+                    loop.close()
+            
+            # Run in thread
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(get_media_players)
+                success, media_players = future.result(timeout=15)
+            
+            self.available_players_column.controls.clear()
+            
+            if success and media_players:
+                for player in media_players:
+                    entity_id = player['entity_id']
+                    friendly_name = player['friendly_name']
+                    current_volume = player['current_volume']
+                    
+                    volume_text = f"Volume: {int(current_volume * 100)}%" if current_volume is not None else "Volume: N/A"
+                    
+                    player_tile = ft.Container(
+                        content=ft.Row([
+                            ft.Icon(ft.Icons.SPEAKER, size=20, color=ft.Colors.BLUE_600),
+                            ft.Column([
+                                ft.Text(friendly_name, size=14, weight=ft.FontWeight.W_500, color=ft.Colors.BLACK),
+                                ft.Text(entity_id, size=12, weight=ft.FontWeight.W_500, color=ft.Colors.BLUE_800),
+                                ft.Text(volume_text, size=11, color=ft.Colors.GREY_700)
+                            ], spacing=2, expand=True),
+                            ft.IconButton(
+                                ft.Icons.ADD,
+                                icon_color=ft.Colors.GREEN_600,
+                                tooltip="Add to configuration",
+                                on_click=lambda e, eid=entity_id: self._add_media_player_entity(eid)
+                            )
+                        ]),
+                        padding=10,
+                        border_radius=8,
+                        bgcolor=ft.Colors.BLUE_50,
+                        border=ft.border.all(1, ft.Colors.BLUE_200)
+                    )
+                    self.available_players_column.controls.append(player_tile)
+                
+                logger.info(f"Loaded {len(media_players)} media players")
+            else:
+                self.available_players_column.controls.append(
+                    ft.Text("No media players found or connection failed", 
+                           color=ft.Colors.ORANGE_600, italic=True)
+                )
+            
+            self.page.update()
+            
+        except Exception as e:
+            logger.error(f"Failed to refresh media players: {e}")
+            self.available_players_column.controls.clear()
+            self.available_players_column.controls.append(
+                ft.Text(f"Error loading media players: {str(e)}", 
+                       color=ft.Colors.RED_600, italic=True)
+            )
+            self.page.update()
+    
+    def _add_media_player_entity(self, entity_id):
+        """Add media player entity to the configuration field"""
+        current_entities = self.media_player_entities_field.value.strip()
+        entity_list = [e.strip() for e in current_entities.split(',') if e.strip()]
+        
+        if entity_id not in entity_list:
+            entity_list.append(entity_id)
+            self.media_player_entities_field.value = ','.join(entity_list)
+            self.page.update()
+            logger.info(f"Added media player entity: {entity_id}")
+    
+    def _add_all_media_players(self, e):
+        """Add all available media players to configuration"""
+        entity_ids = []
+        for control in self.available_players_column.controls:
+            if hasattr(control, 'content') and hasattr(control.content, 'controls'):
+                row = control.content
+                if len(row.controls) > 1 and hasattr(row.controls[1], 'controls'):
+                    column = row.controls[1]
+                    if len(column.controls) > 1:
+                        entity_text = column.controls[1].value  # entity_id text
+                        if entity_text.startswith('media_player.'):
+                            entity_ids.append(entity_text)
+        
+        if entity_ids:
+            self.media_player_entities_field.value = ','.join(entity_ids)
+            self.page.update()
+            logger.info(f"Added all media players: {len(entity_ids)} entities")
+    
+    def _clear_media_players(self, e):
+        """Clear all media player entities"""
+        self.media_player_entities_field.value = ""
+        self.page.update()
+        logger.info("Cleared all media player entities")
     
     async def _refresh_wake_word_models(self):
         """Refresh available wake word models list"""
@@ -1456,7 +1702,11 @@ class FletSettingsApp:
                 'HA_WAKE_WORD_MODELS': ','.join(selected_models),
                 'HA_WAKE_WORD_THRESHOLD': str(round(self.wake_threshold_slider.value, 2)),
                 'HA_WAKE_WORD_VAD_THRESHOLD': str(round(self.vad_threshold_slider.value, 2)),
-                'HA_WAKE_WORD_NOISE_SUPPRESSION': 'true' if self.noise_suppression_switch.value else 'false'
+                'HA_WAKE_WORD_NOISE_SUPPRESSION': 'true' if self.noise_suppression_switch.value else 'false',
+                
+                # Media player settings
+                'HA_MEDIA_PLAYER_ENTITIES': self.media_player_entities_field.value.strip(),
+                'HA_MEDIA_PLAYER_TARGET_VOLUME': str(round(self.target_volume_slider.value, 2))
             }
             
             # Save to .env file
@@ -1535,6 +1785,10 @@ class FletSettingsApp:
             env_content += f"HA_WAKE_WORD_THRESHOLD={settings['HA_WAKE_WORD_THRESHOLD']}\n"
             env_content += f"HA_WAKE_WORD_VAD_THRESHOLD={settings['HA_WAKE_WORD_VAD_THRESHOLD']}\n"
             env_content += f"HA_WAKE_WORD_NOISE_SUPPRESSION={settings['HA_WAKE_WORD_NOISE_SUPPRESSION']}\n"
+            
+            env_content += "\n# === MEDIA PLAYER VOLUME MANAGEMENT ===\n"
+            env_content += f"HA_MEDIA_PLAYER_ENTITIES={settings['HA_MEDIA_PLAYER_ENTITIES']}\n"
+            env_content += f"HA_MEDIA_PLAYER_TARGET_VOLUME={settings['HA_MEDIA_PLAYER_TARGET_VOLUME']}\n"
             
             env_content += "\n# === DEBUG ===\n"
             env_content += f"DEBUG={settings['DEBUG']}\n"
