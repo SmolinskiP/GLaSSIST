@@ -138,7 +138,8 @@ GLaSSIST runs an HTTP server (default port `8766`) that accepts prompt requests:
 {
   "message": "Question to ask the user",
   "context": "Context for the assistant to understand the situation",
-  "timeout": 15
+  "timeout": 15,
+  "wait_for_response": {{ wait_for_response | default(true) | lower }}
 }
 ```
 
