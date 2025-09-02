@@ -160,7 +160,8 @@ rest_command:
       {
         "message": "{{ message }}",
         "context": "{{ context }}",
-        "timeout": {{ timeout | default(15) }}
+        "timeout": {{ timeout | default(15) }},
+        "wait_for_response": {{ wait_for_response | default(true) | lower }}
       }
 
 automation:
@@ -174,7 +175,8 @@ automation:
         data:
           message: "Turn on the living room lights?"
           context: "User wants to control living room lighting"
-          timeout: 15
+          timeout: 15,
+          wait_for_response: false
 ```
 
 ### Manual Testing
@@ -187,7 +189,8 @@ curl -X POST http://192.168.1.100:8766/prompt \
   -d '{
     "message": "Turn on the lights in the living room?",
     "context": "You ask user if they want to turn on lights in living room",
-    "timeout": 15
+    "timeout": 15,
+    "wait_for_response": true
   }'
 ```
 
@@ -198,6 +201,7 @@ Or via Home Assistant Developer Tools:
 message: "Turn on the lights in the living room?"
 context: "You ask user if they want to turn on lights in living room" 
 timeout: 15
+wait_for_response: true
 ```
 
 ### How It Works
