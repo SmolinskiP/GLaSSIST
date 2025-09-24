@@ -1845,6 +1845,38 @@ def show_flet_settings(animation_server=None):
         
         def run_flet():
             try:
+                # Set UTF-8 encoding for Cyrillic support
+                import sys
+                import os
+                if sys.platform == "win32":
+                    # Set environment variables for UTF-8 support
+                    os.environ["PYTHONIOENCODING"] = "utf-8"
+                    # Ensure working directory is ASCII-safe
+                    original_cwd = None
+                    try:
+                        original_cwd = os.getcwd()
+                        # Try to change to a safe ASCII-only directory
+                        safe_dir = os.path.expanduser("~")
+                        if safe_dir and os.path.exists(safe_dir):
+                            # Test if the path contains non-ASCII characters
+                            try:
+                                safe_dir.encode('ascii')
+                                os.chdir(safe_dir)
+                                logger.debug(f"Changed to safe directory: {safe_dir}")
+                            except UnicodeEncodeError:
+                                # If home contains non-ASCII, try system temp
+                                import tempfile
+                                temp_dir = tempfile.gettempdir()
+                                try:
+                                    temp_dir.encode('ascii')
+                                    os.chdir(temp_dir)
+                                    logger.debug(f"Changed to temp directory: {temp_dir}")
+                                except UnicodeEncodeError:
+                                    # Keep original directory
+                                    logger.debug("Both home and temp contain non-ASCII, keeping original directory")
+                    except Exception as dir_error:
+                        logger.debug(f"Error changing directory: {dir_error}")
+                
                 # Disable signal handling in Flet to avoid threading issues
                 import signal
                 original_signal = signal.signal
@@ -1857,10 +1889,38 @@ def show_flet_settings(animation_server=None):
                 signal.signal = dummy_signal
                 
                 try:
-                    ft.app(target=app.main, view=ft.FLET_APP)
+                    logger.info("Starting Flet app...")
+                    # Try with explicit parameters for better compatibility
+                    ft.app(
+                        target=app.main, 
+                        view=ft.FLET_APP,
+                        assets_dir=None,  # Disable assets to avoid path issues
+                        upload_dir=None   # Disable uploads to avoid path issues  
+                    )
+                    logger.info("Flet app started successfully")
+                except Exception as flet_error:
+                    logger.error(f"Flet app failed to start: {flet_error}")
+                    logger.error(f"Error type: {type(flet_error).__name__}")
+                    import traceback
+                    logger.error(f"Full traceback: {traceback.format_exc()}")
+                    
+                    # Try alternative method - web view
+                    try:
+                        logger.info("Trying web view fallback...")
+                        ft.app(target=app.main, view=ft.WEB_BROWSER)
+                        logger.info("Web view fallback successful")
+                    except Exception as web_error:
+                        logger.error(f"Web view fallback also failed: {web_error}")
+                        raise flet_error  # Re-raise original error
                 finally:
                     # Restore original signal handler
                     signal.signal = original_signal
+                    # Restore original working directory
+                    if sys.platform == "win32":
+                        try:
+                            os.chdir(original_cwd)
+                        except:
+                            pass
                     logger.info("Flet settings app closed")
                     
             except Exception as e:

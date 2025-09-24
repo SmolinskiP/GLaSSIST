@@ -602,7 +602,7 @@ class HAAssistApp:
                             error_message = event.get('data', {}).get('message', 'Unknown error')
                             
                             print(f"\n=== ASSISTANT ERROR ===")
-                            print(f"Error: {error_code} - {error_message}")
+                            utils.safe_print(f"Error: {error_code} - {error_message}")
                             print("===========================\n")
                             
                             full_error_message = f"{error_code}: {error_message}"
@@ -629,7 +629,7 @@ class HAAssistApp:
                     
                     if response and response != "No response from assistant":
                         print("\n=== ASSISTANT RESPONSE ===")
-                        print(response)
+                        utils.safe_print(response)
                         print("===========================\n")
                         
                         self.animation_server.change_state("responding")
@@ -1062,6 +1062,18 @@ def validate_configuration():
 
 def main():
     """Main application function with configuration validation."""
+    # Set UTF-8 encoding for console output on Windows
+    import sys
+    if sys.platform == "win32":
+        try:
+            import locale
+            sys.stdout.reconfigure(encoding='utf-8')
+            sys.stderr.reconfigure(encoding='utf-8')
+        except:
+            # Fallback for older Python versions
+            import os
+            os.environ["PYTHONIOENCODING"] = "utf-8"
+    
     print("=== GLaSSIST DESKTOP ===")
     print("Starting application...")
     print("Pre-initializing audio system...")

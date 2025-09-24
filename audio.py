@@ -41,9 +41,31 @@ class AudioManager:
             try:
                 device_info = self.audio.get_device_info_by_index(i)
                 if device_info.get('maxInputChannels', 0) > 0:
+                    # Safely handle microphone name with Cyrillic/Unicode characters
+                    try:
+                        mic_name = device_info['name']
+                        # Ensure proper Unicode handling
+                        if isinstance(mic_name, bytes):
+                            mic_name = mic_name.decode('utf-8', errors='replace')
+                        elif not isinstance(mic_name, str):
+                            mic_name = str(mic_name)
+                        
+                        # Clean up problematic characters and normalize Unicode
+                        import unicodedata
+                        mic_name = unicodedata.normalize('NFKD', mic_name)
+                        mic_name = mic_name.replace('\x00', '').strip()
+                        
+                        # Validate that name is displayable
+                        if not mic_name or len(mic_name) == 0 or not mic_name.isprintable():
+                            mic_name = f"Microphone {i}"
+                            
+                    except Exception as name_error:
+                        logger.debug(f"Error processing mic name for device {i}: {name_error}")
+                        mic_name = f"Microphone {i}"
+                    
                     microphones.append({
                         'index': i,
-                        'name': device_info['name'],
+                        'name': mic_name,
                         'channels': device_info['maxInputChannels'],
                         'sample_rate': device_info.get('defaultSampleRate', 'unknown')
                     })

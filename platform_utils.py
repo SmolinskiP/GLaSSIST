@@ -177,13 +177,22 @@ def _hide_from_taskbar_linux(window_title):
 def open_file_manager(path):
     """Open file manager at specified path - cross-platform."""
     try:
+        import locale
+        system_encoding = locale.getpreferredencoding()
+        
         if platform.system() == "Windows":
-            subprocess.run(['explorer', str(path)])
+            # On Windows, use CREATE_NO_WINDOW to avoid console pop-ups
+            subprocess.run(['explorer', str(path)], 
+                          creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0,
+                          encoding=system_encoding)
         elif platform.system() == "Darwin":  # macOS
-            subprocess.run(['open', str(path)])
+            subprocess.run(['open', str(path)], encoding=system_encoding)
         else:  # Linux
-            subprocess.run(['xdg-open', str(path)])
+            subprocess.run(['xdg-open', str(path)], encoding=system_encoding)
         return True
+    except UnicodeEncodeError as e:
+        logger.error(f"Unicode error opening path {path}: {e}")
+        return False
     except Exception as e:
         logger.error(f"Failed to open file manager: {e}")
         return False

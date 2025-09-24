@@ -15,6 +15,20 @@ import io
 
 load_dotenv()
 
+def safe_print(text):
+    """
+    Print text safely, handling Unicode encoding issues on Windows.
+    
+    Args:
+        text: The text to print (string)
+    """
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        # Handle encoding issues by encoding to UTF-8 with error replacement
+        safe_text = str(text).encode('utf-8', errors='replace').decode('utf-8')
+        print(safe_text)
+
 def setup_logger():
     """Configure and return logger with optional file logging when DEBUG=true."""
     import sys
