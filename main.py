@@ -1071,7 +1071,6 @@ def main():
             sys.stderr.reconfigure(encoding='utf-8')
         except:
             # Fallback for older Python versions
-            import os
             os.environ["PYTHONIOENCODING"] = "utf-8"
     
     print("=== GLaSSIST DESKTOP ===")

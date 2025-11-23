@@ -106,13 +106,15 @@ def _hide_from_taskbar_windows(window_title):
                 
                 if window_text.value == window_title and "WindowsForms10" in class_name.value:
                     found_windows.append((hwnd, window_text.value, class_name.value))
-                    
+
                     GWL_EXSTYLE = -20
                     WS_EX_TOOLWINDOW = 0x00000080
                     WS_EX_APPWINDOW = 0x00040000
-                    
+                    WS_EX_LAYERED = 0x00080000
+                    WS_EX_TRANSPARENT = 0x00000020
+
                     current_style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-                    new_style = (current_style & ~WS_EX_APPWINDOW) | WS_EX_TOOLWINDOW
+                    new_style = (current_style & ~WS_EX_APPWINDOW) | WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_TRANSPARENT
                     ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, new_style)
                     
                     SWP_FRAMECHANGED = 0x0020

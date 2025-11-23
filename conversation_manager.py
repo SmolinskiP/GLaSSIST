@@ -42,7 +42,8 @@ class ConversationManager:
         message = prompt_data.get('message', 'Hello')
         context = prompt_data.get('context', 'interactive_prompt')
         wait_for_response = prompt_data.get('wait_for_response', True)
-        
+        use_ai_message = prompt_data.get('use_ai_message', False)
+
         # Volume management variables
         saved_volumes = {}
         media_player_entities = []
@@ -54,8 +55,7 @@ class ConversationManager:
             media_player_entities = [e.strip() for e in entities_config.split(',') if e.strip()]
             target_volume = utils.get_env("HA_MEDIA_PLAYER_TARGET_VOLUME", 0.3, float)
         
-        logger.info(f"📢 HA prompt: '{message}' with context '{context}', wait_for_response: {wait_for_response}")
-        print(f"\n>>> HA says: {message}")
+        logger.info(f"📢 HA prompt: '{message}' (use_ai_message: {use_ai_message}, wait_for_response: {wait_for_response})")
         
         # Check if we're already busy
         if self.animation_server.current_state not in ["hidden", "idle"]:
@@ -71,7 +71,17 @@ class ConversationManager:
             if not await temp_ha_client.connect():
                 logger.error("Failed to connect to HA")
                 return
-            
+
+            # If use_ai_message is enabled, let AI rephrase the message first
+            if use_ai_message:
+                logger.info(f"🤖 Generating AI message from: '{message}'")
+                ai_message = await self._generate_ai_message(temp_ha_client, message)
+                if ai_message:
+                    logger.info(f"🤖 AI generated: '{ai_message}'")
+                    message = ai_message
+                else:
+                    logger.warning("🤖 AI generation failed, using original message")
+
             # Save current volumes and set target volume before TTS
             # Always do this for interactive prompts since we have fresh connection
             if media_player_entities:
@@ -292,6 +302,76 @@ class ConversationManager:
             logger.error(f"Error processing response with HA: {e}")
             return False
     
+    async def _generate_ai_message(self, ha_client, prompt: str) -> str:
+        """Generate message using AI via conversation.process service."""
+        try:
+            agent_id = ha_client.get_conversation_agent_id()
+            if not agent_id:
+                logger.warning("No AI agent configured")
+                return None
+
+            # Add instruction prefix to make AI respond naturally
+            full_prompt = (
+                "You are a voice assistant speaking directly to the user. "
+                "Respond in the same language as the instruction below. "
+                "Do NOT add any meta-commentary like 'OK, I'll ask' or 'Sure, here's my response'. "
+                "Just speak directly to the user as if you are the assistant. "
+                f"Instruction: {prompt}"
+            )
+
+            service_data = {"text": full_prompt}
+            service_data["agent_id"] = agent_id
+
+            service_message = {
+                "id": ha_client.message_id,
+                "type": "call_service",
+                "domain": "conversation",
+                "service": "process",
+                "service_data": service_data,
+                "return_response": True
+            }
+
+            await ha_client.websocket.send(json.dumps(service_message))
+            current_msg_id = ha_client.message_id
+            ha_client.message_id += 1
+
+            # Wait for response
+            timeout_start = time.time()
+            while time.time() - timeout_start < 15.0:
+                try:
+                    response = await asyncio.wait_for(ha_client.websocket.recv(), timeout=2.0)
+                    response_json = json.loads(response)
+
+                    if response_json.get("id") == current_msg_id and response_json.get("type") == "result":
+                        if response_json.get("success"):
+                            result = response_json.get("result", {})
+                            # Extract speech: result -> response -> response -> speech -> plain -> speech
+                            resp = result.get("response", {})
+                            if isinstance(resp, dict):
+                                inner_resp = resp.get("response", {})
+                                if isinstance(inner_resp, dict):
+                                    speech = inner_resp.get("speech", {})
+                                    if isinstance(speech, dict):
+                                        plain = speech.get("plain", {})
+                                        if isinstance(plain, dict):
+                                            text = plain.get("speech", "")
+                                            if text:
+                                                return text
+                            logger.warning(f"🤖 Could not extract speech from result: {result}")
+                            return None
+                        else:
+                            logger.error(f"conversation.process failed: {response_json}")
+                            return None
+                except asyncio.TimeoutError:
+                    continue
+
+            logger.warning("AI message generation timed out")
+            return None
+
+        except Exception as e:
+            logger.error(f"Error generating AI message: {e}")
+            return None
+
     def is_in_conversation(self):
         """Check if currently in an interactive conversation."""
         return self.current_conversation is not None

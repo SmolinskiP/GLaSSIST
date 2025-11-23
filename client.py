@@ -16,6 +16,7 @@ class HomeAssistantClient:
         self.host = utils.get_env("HA_HOST", "localhost:8123")
         self.token = utils.get_env("HA_TOKEN")
         self.pipeline_id = utils.get_env("HA_PIPELINE_ID")
+        self.ai_agent_id = utils.get_env("HA_AI_AGENT_ID")
         self.sample_rate = utils.get_env("HA_SAMPLE_RATE", 16000, int)
         
         if not self.token:
@@ -140,14 +141,6 @@ class HomeAssistantClient:
                                     }
                                     
                                     self.available_pipelines.append(pipeline)
-                                    
-                                    preferred_marker = " ⭐ (PREFERRED)" if pipeline["is_preferred"] else ""
-                                    logger.info(f"  📋 {pipeline['name']}{preferred_marker}")
-                                    logger.info(f"      ID: {pipeline['id']}")
-                                    logger.info(f"      Language: {pipeline['language']}")
-                                    logger.info(f"      Conversation: {pipeline['conversation_engine']}")
-                                    logger.info(f"      STT: {pipeline['stt_engine']}")
-                                    logger.info(f"      TTS: {pipeline['tts_engine']} ({pipeline['tts_voice']})")
                             
                             self.preferred_pipeline_id = preferred_id
                             
@@ -192,11 +185,26 @@ class HomeAssistantClient:
         """Check if given pipeline ID is available."""
         if not pipeline_id:
             return True  # No ID means use default
-            
+
         for pipeline in self.available_pipelines:
             if pipeline.get("id") == pipeline_id:
                 return True
         return False
+
+    def get_conversation_agent_id(self):
+        """Get conversation agent ID from current pipeline or env config."""
+        # First check env config
+        if self.ai_agent_id:
+            return self.ai_agent_id
+
+        # Otherwise get from current pipeline
+        current_pipeline_id = self.pipeline_id or self.preferred_pipeline_id
+        if current_pipeline_id:
+            for pipeline in self.available_pipelines:
+                if pipeline.get("id") == current_pipeline_id:
+                    return pipeline.get("conversation_engine")
+
+        return None
 
     async def start_assist_pipeline(self, timeout_seconds=300):
         """Start Assist pipeline from STT to TTS stage with timeout."""
@@ -362,15 +370,18 @@ class HomeAssistantClient:
                             
                             # Call conversation.process service and get the response
                             try:
+                                service_data = {"text": combined_text}
+                                agent_id = self.get_conversation_agent_id()
+                                if agent_id:
+                                    service_data["agent_id"] = agent_id
+                                    logger.info(f"🔖 Using conversation agent: {agent_id}")
+
                                 service_message = {
                                     "id": self.message_id,
                                     "type": "call_service",
                                     "domain": "conversation",
                                     "service": "process",
-                                    "service_data": {
-                                        "text": combined_text,
-                                        "agent_id": "conversation.claude_short_2"
-                                    },
+                                    "service_data": service_data,
                                     "return_response": True
                                 }
                                 

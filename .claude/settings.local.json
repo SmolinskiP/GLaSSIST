@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(rg:*)",
-      "WebFetch(domain:developers.home-assistant.io)"
+      "WebFetch(domain:developers.home-assistant.io)",
+      "Bash(python:*)"
     ],
     "deny": []
   }

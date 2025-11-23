@@ -36,6 +36,7 @@ class PromptHandler(BaseHTTPRequestHandler):
             context = request_data.get('context', 'interactive_prompt')
             timeout = request_data.get('timeout', 10)
             wait_for_response = request_data.get('wait_for_response', True)  # Default to True
+            use_ai_message = request_data.get('use_ai_message', False)  # Generate message via AI
             
             # Send immediate response to HA
             self.send_response(200)
