@@ -161,7 +161,8 @@ rest_command:
         "message": "{{ message }}",
         "context": "{{ context }}",
         "timeout": {{ timeout | default(15) }},
-        "wait_for_response": {{ wait_for_response | default(true) | lower }}
+        "wait_for_response": {{ wait_for_response | default(true) | lower }},
+        "use_ai_message": {{ use_ai_message | default(false) | lower }}
       }
 
 automation:
