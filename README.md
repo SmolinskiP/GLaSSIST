@@ -58,6 +58,20 @@ No Python knowledge required. Everything is bundled and configured automatically
 wget https://raw.githubusercontent.com/SmolinskiP/GLaSSIST/main/install-linux.sh && chmod +x install-linux.sh && ./install-linux.sh
 ```
 
+## 🧹 Uninstall (Linux)
+1. Download the uninstall script:
+   ```bash
+   wget https://raw.githubusercontent.com/SmolinskiP/GLaSSIST/main/uninstall-linux.sh
+   chmod +x uninstall-linux.sh
+   ```
+2. Run it as a regular user in the terminal:
+   ```bash
+   ./uninstall-linux.sh
+   ```
+3. The script stops the systemd user service (if enabled), removes the desktop entry, and
+   asks whether to delete the `~/GLaSSIST` directory. System packages installed by the
+   installer remain; remove them with your package manager if you don't need them.
+
 ### Option 3: From Source (For developers)
 
 ### 1. Clone repository
