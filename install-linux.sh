@@ -164,6 +164,7 @@ if [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 13 ]; then
                                 libffi-dev libsqlite3-dev wget libbz2-dev
 
                             # Download and compile Python 3.11
+                            CURRENT_DIR=$(pwd)
                             cd /tmp
                             wget https://www.python.org/ftp/python/3.11.11/Python-3.11.11.tgz
                             tar -xf Python-3.11.11.tgz
@@ -171,7 +172,7 @@ if [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 13 ]; then
                             ./configure --enable-optimizations --prefix=/usr/local
                             make -j$(nproc)
                             sudo make altinstall
-                            cd "$INSTALL_DIR"
+                            cd "$CURRENT_DIR"
 
                             # Create symlink
                             sudo ln -sf /usr/local/bin/python3.11 /usr/bin/python3.11
@@ -260,6 +261,7 @@ elif [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -eq 12 ]; then
                                 libffi-dev libsqlite3-dev wget libbz2-dev
 
                             # Download and compile Python 3.11
+                            CURRENT_DIR=$(pwd)
                             cd /tmp
                             wget https://www.python.org/ftp/python/3.11.11/Python-3.11.11.tgz
                             tar -xf Python-3.11.11.tgz
@@ -267,7 +269,7 @@ elif [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -eq 12 ]; then
                             ./configure --enable-optimizations --prefix=/usr/local
                             make -j$(nproc)
                             sudo make altinstall
-                            cd "$INSTALL_DIR"
+                            cd "$CURRENT_DIR"
 
                             # Create symlink
                             sudo ln -sf /usr/local/bin/python3.11 /usr/bin/python3.11
@@ -360,9 +362,15 @@ case $PKG_MANAGER in
             libglib2.0-dev libglib2.0-dev-bin \
             libcairo2-dev libxt-dev libffi-dev \
             python3-gi python3-gi-cairo \
-            gir1.2-gtk-3.0 gir1.2-webkit2-4.0 \
+            gir1.2-gtk-3.0 \
             gir1.2-glib-2.0
-        
+
+        # Try to install WebKit2 (different versions on different distributions)
+        echo -e "${YELLOW}Installing WebKit2 support...${NC}"
+        sudo apt install -y gir1.2-webkit2-4.0 2>/dev/null || \
+        sudo apt install -y gir1.2-webkit2-4.1 2>/dev/null || \
+        echo -e "${YELLOW}⚠️  WebKit2 package not found (pywebview may have limited functionality)${NC}"
+
         # Try to install AppIndicator (different names on different Ubuntu versions)
         echo -e "${YELLOW}Installing system tray support...${NC}"
         sudo apt install -y gir1.2-ayatanaappindicator3-0.1 2>/dev/null || \
