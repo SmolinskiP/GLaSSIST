@@ -103,28 +103,123 @@ PYTHON_MINOR=$(python3 -c 'import sys; print(sys.version_info.minor)')
 
 echo -e "Detected Python version: ${GREEN}$PYTHON_VERSION${NC}"
 
+# Default Python command
+PYTHON_CMD="python3"
+
 # Check if Python version is 3.11 or compatible
 if [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 13 ]; then
     echo -e "${YELLOW}⚠️  WARNING: Python $PYTHON_VERSION detected${NC}"
-    echo -e "${YELLOW}⚠️  GLaSSIST requires Python 3.11 or 3.12 for full functionality${NC}"
+    echo -e "${YELLOW}⚠️  GLaSSIST requires Python 3.11 for full functionality${NC}"
     echo -e "${YELLOW}⚠️  tflite-runtime is not available for Python 3.13+${NC}"
     echo ""
-    echo -e "${YELLOW}Recommended solutions:${NC}"
-    echo -e "  1. Install Python 3.11: ${BLUE}sudo apt install python3.11 python3.11-venv${NC}"
-    echo -e "  2. Run installer with Python 3.11: ${BLUE}python3.11 -m venv ...${NC}"
-    echo -e "  3. Continue anyway (ONNX models only, may have issues)"
-    echo ""
-    read -p "Continue with Python $PYTHON_VERSION anyway? (y/N): " -n 1 -r
-    echo ""
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo -e "${RED}Installation cancelled. Please install Python 3.11 or 3.12.${NC}"
-        exit 1
+
+    # Check if Python 3.11 is already installed
+    if command -v python3.11 &> /dev/null; then
+        echo -e "${GREEN}✅ Python 3.11 is already installed!${NC}"
+        read -p "Do you want to use Python 3.11 for this installation? (Y/n): " -n 1 -r
+        echo ""
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            PYTHON_CMD="python3.11"
+            PYTHON_VERSION="3.11"
+            echo -e "${GREEN}✅ Using Python 3.11${NC}"
+        else
+            echo -e "${YELLOW}Continuing with Python $PYTHON_VERSION (ONNX-only mode)${NC}"
+            SKIP_TFLITE=true
+        fi
+    else
+        # Offer to install Python 3.11
+        echo -e "${YELLOW}Python 3.11 is not installed on your system.${NC}"
+        read -p "Do you want to install Python 3.11 now? (Y/n): " -n 1 -r
+        echo ""
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            echo -e "${BLUE}📥 Installing Python 3.11...${NC}"
+            case $PKG_MANAGER in
+                "apt")
+                    sudo apt update
+                    sudo apt install -y python3.11 python3.11-venv python3.11-dev
+                    ;;
+                "dnf")
+                    sudo dnf install -y python3.11 python3.11-devel
+                    ;;
+                "pacman")
+                    sudo pacman -S --noconfirm python311
+                    ;;
+                "zypper")
+                    sudo zypper install -y python311 python311-devel
+                    ;;
+            esac
+
+            if command -v python3.11 &> /dev/null; then
+                echo -e "${GREEN}✅ Python 3.11 installed successfully!${NC}"
+                PYTHON_CMD="python3.11"
+                PYTHON_VERSION="3.11"
+            else
+                echo -e "${RED}❌ Failed to install Python 3.11${NC}"
+                echo -e "${YELLOW}Continuing with Python $PYTHON_VERSION (ONNX-only mode)${NC}"
+                SKIP_TFLITE=true
+            fi
+        else
+            echo -e "${YELLOW}Continuing with Python $PYTHON_VERSION (ONNX-only mode)${NC}"
+            SKIP_TFLITE=true
+        fi
     fi
-    SKIP_TFLITE=true
+
 elif [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -eq 12 ]; then
-    echo -e "${YELLOW}⚠️  Python 3.12 detected - tflite-runtime may not be available${NC}"
-    echo -e "${YELLOW}    ONNX models will be used instead${NC}"
-    SKIP_TFLITE=true
+    echo -e "${YELLOW}⚠️  Python 3.12 detected${NC}"
+    echo -e "${YELLOW}⚠️  tflite-runtime is not available for Python 3.12${NC}"
+    echo ""
+
+    # Check if Python 3.11 is already installed
+    if command -v python3.11 &> /dev/null; then
+        echo -e "${GREEN}✅ Python 3.11 is already installed!${NC}"
+        read -p "Do you want to use Python 3.11 for better compatibility? (Y/n): " -n 1 -r
+        echo ""
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            PYTHON_CMD="python3.11"
+            PYTHON_VERSION="3.11"
+            echo -e "${GREEN}✅ Using Python 3.11${NC}"
+        else
+            echo -e "${YELLOW}Continuing with Python 3.12 (ONNX-only mode)${NC}"
+            SKIP_TFLITE=true
+        fi
+    else
+        # Offer to install Python 3.11
+        echo -e "${YELLOW}For full compatibility, Python 3.11 is recommended.${NC}"
+        read -p "Do you want to install Python 3.11 now? (Y/n): " -n 1 -r
+        echo ""
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            echo -e "${BLUE}📥 Installing Python 3.11...${NC}"
+            case $PKG_MANAGER in
+                "apt")
+                    sudo apt update
+                    sudo apt install -y python3.11 python3.11-venv python3.11-dev
+                    ;;
+                "dnf")
+                    sudo dnf install -y python3.11 python3.11-devel
+                    ;;
+                "pacman")
+                    sudo pacman -S --noconfirm python311
+                    ;;
+                "zypper")
+                    sudo zypper install -y python311 python311-devel
+                    ;;
+            esac
+
+            if command -v python3.11 &> /dev/null; then
+                echo -e "${GREEN}✅ Python 3.11 installed successfully!${NC}"
+                PYTHON_CMD="python3.11"
+                PYTHON_VERSION="3.11"
+            else
+                echo -e "${RED}❌ Failed to install Python 3.11${NC}"
+                echo -e "${YELLOW}Continuing with Python 3.12 (ONNX-only mode)${NC}"
+                SKIP_TFLITE=true
+            fi
+        else
+            echo -e "${YELLOW}Continuing with Python 3.12 (ONNX-only mode)${NC}"
+            SKIP_TFLITE=true
+        fi
+    fi
+
 elif [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -eq 11 ]; then
     echo -e "${GREEN}✅ Python 3.11 detected - full compatibility${NC}"
 elif [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 8 ] && [ "$PYTHON_MINOR" -le 10 ]; then
@@ -135,6 +230,8 @@ else
     echo -e "Please install a compatible Python version and try again."
     exit 1
 fi
+
+echo -e "${BLUE}Using Python command: ${GREEN}$PYTHON_CMD${NC}"
 
 # Clone or update GLaSSIST repository
 echo -e "${BLUE}📂 Setting up GLaSSIST repository...${NC}"
@@ -241,18 +338,19 @@ echo -e "${GREEN}✅ System dependencies installed${NC}"
 
 # Create virtual environment
 echo -e "${BLUE}🐍 Setting up Python virtual environment...${NC}"
+echo -e "Using Python: ${GREEN}$($PYTHON_CMD --version)${NC}"
 if [ -d "venv" ]; then
     echo -e "${YELLOW}Virtual environment already exists${NC}"
     read -p "Do you want to recreate it? (y/N): " -n 1 -r
     echo ""
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         rm -rf venv
-        python3 -m venv venv
-        echo -e "${GREEN}✅ Virtual environment recreated${NC}"
+        $PYTHON_CMD -m venv venv
+        echo -e "${GREEN}✅ Virtual environment recreated with $PYTHON_CMD${NC}"
     fi
 else
-    python3 -m venv venv
-    echo -e "${GREEN}✅ Virtual environment created${NC}"
+    $PYTHON_CMD -m venv venv
+    echo -e "${GREEN}✅ Virtual environment created with $PYTHON_CMD${NC}"
 fi
 
 # Activate virtual environment
