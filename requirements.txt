@@ -4,7 +4,7 @@ cffi==1.17.1
 charset-normalizer==3.4.2
 clr_loader==0.2.7.post0
 colorama==0.4.6
-flet>=0.21.0
+flet==0.28.3
 coloredlogs==15.0.1
 flatbuffers==25.2.10
 humanfriendly==10.0
@@ -43,3 +43,4 @@ PyGObject==3.50.0; sys_platform == "linux"
 pycairo==1.20.0; sys_platform == "linux"
 
 #speexdsp==0.1.1; sys_platform == "linux"
+
