@@ -37,7 +37,9 @@ Desktop voice application for Home Assistant with visual animations and VAD (Voi
 
 ### For Python Installation (Advanced users)
 - **Home Assistant** with Assist enabled
-- **Python 3.8+**
+- **Python 3.11** (recommended) or **Python 3.12** (Linux: ONNX only)
+  - Python 3.8-3.10 also supported with some limitations
+  - Python 3.13+ not supported due to dependency incompatibilities
 - **Windows 10/11** or **Linux** (Ubuntu, Debian, Fedora, Arch)
 - **Microphone**
 - **Long-lived access token** for HA
@@ -335,6 +337,29 @@ The app plays sounds from `sound/` directory:
 
 ## 🐛 Troubleshooting
 
+### Python version incompatibility (Linux)
+**Error**: `ERROR: Could not find a version that satisfies the requirement tflite-runtime`
+
+**Cause**: You're using Python 3.12 or 3.13, which don't have tflite-runtime packages available.
+
+**Solutions**:
+1. **Install Python 3.11** (recommended):
+   ```bash
+   sudo apt install python3.11 python3.11-venv python3.11-dev
+   # Then use python3.11 instead of python3 when creating venv
+   ```
+
+2. **Use Python 3.12** with ONNX-only mode:
+   - The installer will automatically skip tflite-runtime
+   - Wake word detection will use ONNX models (slightly slower but works)
+
+3. **Check your Python version**:
+   ```bash
+   python3 --version
+   ```
+
+**Note**: Python 3.13+ is not supported due to multiple dependency incompatibilities (tflite-runtime, numpy versions). Use Python 3.11 for best results.
+
 ### "Cannot connect to Home Assistant"
 - Check `HA_HOST` and `HA_TOKEN`
 - Make sure HA is accessible
@@ -370,7 +395,10 @@ The app plays sounds from `sound/` directory:
 
 ## 📚 FAQ
 
-**Q: Does it work on Linux/Mac?**  
+**Q: What Python version should I use?**
+A: Python 3.11 is recommended for full compatibility. Python 3.12 works but uses ONNX-only mode. Python 3.13+ is not supported due to dependency issues (tflite-runtime, numpy). For Linux, install Python 3.11 for best results.
+
+**Q: Does it work on Linux/Mac?**
 A: Linux support added in v1.1.0 (beta). Use the install script. Mac support not planned.
 
 **Q: Can I change the animation?**  

@@ -95,6 +95,47 @@ else
     echo -e "${GREEN}✅ Python 3 already installed: $(python3 --version)${NC}"
 fi
 
+# Check Python version compatibility
+echo -e "${BLUE}🔍 Checking Python version compatibility...${NC}"
+PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+PYTHON_MAJOR=$(python3 -c 'import sys; print(sys.version_info.major)')
+PYTHON_MINOR=$(python3 -c 'import sys; print(sys.version_info.minor)')
+
+echo -e "Detected Python version: ${GREEN}$PYTHON_VERSION${NC}"
+
+# Check if Python version is 3.11 or compatible
+if [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 13 ]; then
+    echo -e "${YELLOW}⚠️  WARNING: Python $PYTHON_VERSION detected${NC}"
+    echo -e "${YELLOW}⚠️  GLaSSIST requires Python 3.11 or 3.12 for full functionality${NC}"
+    echo -e "${YELLOW}⚠️  tflite-runtime is not available for Python 3.13+${NC}"
+    echo ""
+    echo -e "${YELLOW}Recommended solutions:${NC}"
+    echo -e "  1. Install Python 3.11: ${BLUE}sudo apt install python3.11 python3.11-venv${NC}"
+    echo -e "  2. Run installer with Python 3.11: ${BLUE}python3.11 -m venv ...${NC}"
+    echo -e "  3. Continue anyway (ONNX models only, may have issues)"
+    echo ""
+    read -p "Continue with Python $PYTHON_VERSION anyway? (y/N): " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo -e "${RED}Installation cancelled. Please install Python 3.11 or 3.12.${NC}"
+        exit 1
+    fi
+    SKIP_TFLITE=true
+elif [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -eq 12 ]; then
+    echo -e "${YELLOW}⚠️  Python 3.12 detected - tflite-runtime may not be available${NC}"
+    echo -e "${YELLOW}    ONNX models will be used instead${NC}"
+    SKIP_TFLITE=true
+elif [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -eq 11 ]; then
+    echo -e "${GREEN}✅ Python 3.11 detected - full compatibility${NC}"
+elif [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 8 ] && [ "$PYTHON_MINOR" -le 10 ]; then
+    echo -e "${GREEN}✅ Python $PYTHON_VERSION detected - compatible${NC}"
+else
+    echo -e "${RED}❌ Python $PYTHON_VERSION is not supported${NC}"
+    echo -e "${RED}GLaSSIST requires Python 3.8 - 3.12${NC}"
+    echo -e "Please install a compatible Python version and try again."
+    exit 1
+fi
+
 # Clone or update GLaSSIST repository
 echo -e "${BLUE}📂 Setting up GLaSSIST repository...${NC}"
 if [[ -d "$INSTALL_DIR" ]]; then
@@ -520,8 +561,16 @@ echo -e "${YELLOW}Downgrading NumPy for openWakeWord compatibility...${NC}"
 pip install "numpy<2.0" --force-reinstall || echo -e "${YELLOW}⚠️  NumPy downgrade failed (may cause wake word issues)${NC}"
 
 # Install TensorFlow Lite runtime for Linux
-echo -e "${YELLOW}Installing TensorFlow Lite runtime for wake word models...${NC}"
-pip install tflite-runtime || echo -e "${YELLOW}⚠️  TFLite runtime installation failed (ONNX models will be used)${NC}"
+if [ "$SKIP_TFLITE" = "true" ]; then
+    echo -e "${YELLOW}⚠️  Skipping tflite-runtime (not compatible with Python $PYTHON_VERSION)${NC}"
+    echo -e "${YELLOW}    ONNX models will be used for wake word detection${NC}"
+else
+    echo -e "${YELLOW}Installing TensorFlow Lite runtime for wake word models...${NC}"
+    pip install tflite-runtime || {
+        echo -e "${YELLOW}⚠️  TFLite runtime installation failed (ONNX models will be used)${NC}"
+        echo -e "${YELLOW}    This is normal for Python 3.12+ systems${NC}"
+    }
+fi
 
 # Optional: System service setup
 echo ""
