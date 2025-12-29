@@ -1063,6 +1063,8 @@ def validate_configuration():
 
 def main():
     """Main application function with configuration validation."""
+    import sys
+
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='GLaSSIST - Voice Assistant for Home Assistant')
     parser.add_argument('--settings', action='store_true',
@@ -1084,7 +1086,6 @@ def main():
             sys.exit(1)
 
     # Set UTF-8 encoding for console output on Windows
-    import sys
     if sys.platform == "win32":
         try:
             import locale
