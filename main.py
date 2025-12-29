@@ -25,8 +25,8 @@ logger = utils.setup_logger()
 
 class HAAssistApp:
     """Main application class with enhanced features."""
-    
-    def __init__(self):
+
+    def __init__(self, open_settings_on_start=False):
         """Initialize application."""
         self.ha_client = None
         self.audio_manager = None
@@ -41,6 +41,7 @@ class HAAssistApp:
         self.prompt_server = None
         self.animations_enabled = utils.get_env_bool("HA_ANIMATIONS_ENABLED", True)
         self.response_text_enabled = utils.get_env_bool("HA_RESPONSE_TEXT_ENABLED", True)
+        self.open_settings_on_start = open_settings_on_start
 
         # Platform detection
         self.is_linux = platform.system() == "Linux"
@@ -872,18 +873,24 @@ class HAAssistApp:
             self._refresh_tray_menu()
 
             logger.info("Starting interface...")
-            
+
             def on_window_loaded():
                 import time
                 time.sleep(2)
                 logger.info("Attempting to hide window from taskbar...")
-                
+
                 old_level = logger.level
                 logger.setLevel(10)
-                
+
                 self.hide_from_taskbar()
                 logger.setLevel(old_level)
-            
+
+                # Open settings automatically if --settings flag was passed
+                if self.open_settings_on_start:
+                    logger.info("Opening settings window (--settings flag)")
+                    time.sleep(1)  # Give the app a moment to fully initialize
+                    self.open_settings()
+
             threading.Thread(target=on_window_loaded, daemon=True).start()
             
             if self.animations_enabled:
@@ -1068,22 +1075,8 @@ def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='GLaSSIST - Voice Assistant for Home Assistant')
     parser.add_argument('--settings', action='store_true',
-                        help='Open settings window directly without starting the application')
+                        help='Open settings window automatically after starting the application')
     args = parser.parse_args()
-
-    # If --settings flag is present, open settings and exit
-    if args.settings:
-        print("=== GLaSSIST SETTINGS ===")
-        print("Opening settings window...")
-        try:
-            from flet_settings import show_flet_settings
-            show_flet_settings(animation_server=None)
-            return
-        except Exception as e:
-            print(f"Error opening settings: {e}")
-            import traceback
-            traceback.print_exc()
-            sys.exit(1)
 
     # Set UTF-8 encoding for console output on Windows
     if sys.platform == "win32":
@@ -1185,8 +1178,8 @@ def main():
         print(f"   HA_TOKEN = MISSING")
     
     print("=" * 50)
-    
-    app = HAAssistApp()
+
+    app = HAAssistApp(open_settings_on_start=args.settings)
     app.run()
 
 
