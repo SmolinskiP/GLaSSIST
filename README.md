@@ -122,8 +122,16 @@ DEBUG=false
 
 ### 4. Run
 ```bash
+# Run application normally
 python main.py
+
+# Or open settings directly
+python main.py --settings
 ```
+
+**Command line options:**
+- `--settings` - Opens settings window without starting the full application (useful for quick configuration)
+- `--help` - Shows all available command line options
 
 **Pro tip:** Use the installer unless you want to modify the code. It's way fucking easier.
 
@@ -285,10 +293,18 @@ Once converted, place your `your_model.onnx` file in the `models/` directory and
 
 ## 🎯 Usage
 
+### Command Line Options
+```bash
+python main.py              # Run application normally
+python main.py --settings   # Open settings only (quick configuration)
+python main.py --help       # Show all command line options
+```
+
 ### Voice activation
 - **Hotkey**: `Ctrl+Shift+H` (default)
 - **Wake word**: Say "Alexa" or other configured wake words
 - **Tray menu**: Right click on tray icon
+- **Settings shortcut**: Run with `--settings` flag
 
 ### Application states
 - **🔵 Listening** - Listening to your speech

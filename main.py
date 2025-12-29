@@ -6,6 +6,7 @@ import threading
 import webview
 import sys
 import os
+import argparse
 import pystray
 from PIL import Image, ImageDraw
 from pystray import MenuItem as item
@@ -1062,6 +1063,26 @@ def validate_configuration():
 
 def main():
     """Main application function with configuration validation."""
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='GLaSSIST - Voice Assistant for Home Assistant')
+    parser.add_argument('--settings', action='store_true',
+                        help='Open settings window directly without starting the application')
+    args = parser.parse_args()
+
+    # If --settings flag is present, open settings and exit
+    if args.settings:
+        print("=== GLaSSIST SETTINGS ===")
+        print("Opening settings window...")
+        try:
+            from flet_settings import show_flet_settings
+            show_flet_settings(animation_server=None)
+            return
+        except Exception as e:
+            print(f"Error opening settings: {e}")
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
+
     # Set UTF-8 encoding for console output on Windows
     import sys
     if sys.platform == "win32":
@@ -1072,7 +1093,7 @@ def main():
         except:
             # Fallback for older Python versions
             os.environ["PYTHONIOENCODING"] = "utf-8"
-    
+
     print("=== GLaSSIST DESKTOP ===")
     print("Starting application...")
     print("Pre-initializing audio system...")
