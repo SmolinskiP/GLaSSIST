@@ -353,7 +353,13 @@ The app plays sounds from `sound/` directory:
    sudo apt update
    sudo apt install python3.11 python3.11-venv python3.11-dev
 
-   # The installer will do this automatically if you choose to install Python 3.11
+   # For Debian 13 (Trixie) - compiled from source:
+   # The installer will do this automatically (takes 5-10 minutes)
+
+   # For Fedora/RHEL:
+   sudo dnf install python3.11 python3.11-devel
+
+   # The installer will do all of this automatically
    ```
 
 2. **Use Python 3.12** with ONNX-only mode:

@@ -140,18 +140,42 @@ if [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 13 ]; then
                         sudo apt update
                         sudo apt install -y python3.11 python3.11-venv python3.11-dev
                     else
-                        # Python 3.11 not in repos, try deadsnakes PPA
+                        # Python 3.11 not in repos
                         echo -e "${YELLOW}Python 3.11 not found in default repositories${NC}"
-                        echo -e "${YELLOW}Adding deadsnakes PPA for Python 3.11...${NC}"
 
-                        # Install software-properties-common if not present
-                        sudo apt update
-                        sudo apt install -y software-properties-common
+                        # Check if this is Ubuntu/Mint (can use PPA) or Debian (needs source)
+                        if [ -f /etc/lsb-release ] && grep -qi ubuntu /etc/lsb-release; then
+                            # Ubuntu or Ubuntu-based (like Mint) - use deadsnakes PPA
+                            echo -e "${YELLOW}Adding deadsnakes PPA for Python 3.11...${NC}"
+                            sudo apt update
+                            sudo apt install -y software-properties-common
+                            sudo add-apt-repository ppa:deadsnakes/ppa -y
+                            sudo apt update
+                            sudo apt install -y python3.11 python3.11-venv python3.11-dev
+                        else
+                            # Debian or other - compile from source
+                            echo -e "${YELLOW}Debian detected - Python 3.11 will be compiled from source${NC}"
+                            echo -e "${YELLOW}This may take 5-10 minutes...${NC}"
 
-                        # Add deadsnakes PPA
-                        sudo add-apt-repository ppa:deadsnakes/ppa -y
-                        sudo apt update
-                        sudo apt install -y python3.11 python3.11-venv python3.11-dev
+                            # Install build dependencies
+                            sudo apt update
+                            sudo apt install -y build-essential zlib1g-dev libncurses5-dev \
+                                libgdbm-dev libnss3-dev libssl-dev libreadline-dev \
+                                libffi-dev libsqlite3-dev wget libbz2-dev
+
+                            # Download and compile Python 3.11
+                            cd /tmp
+                            wget https://www.python.org/ftp/python/3.11.11/Python-3.11.11.tgz
+                            tar -xf Python-3.11.11.tgz
+                            cd Python-3.11.11
+                            ./configure --enable-optimizations --prefix=/usr/local
+                            make -j$(nproc)
+                            sudo make altinstall
+                            cd "$INSTALL_DIR"
+
+                            # Create symlink
+                            sudo ln -sf /usr/local/bin/python3.11 /usr/bin/python3.11
+                        fi
                     fi
                     ;;
                 "dnf")
@@ -212,18 +236,42 @@ elif [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -eq 12 ]; then
                         sudo apt update
                         sudo apt install -y python3.11 python3.11-venv python3.11-dev
                     else
-                        # Python 3.11 not in repos, try deadsnakes PPA
+                        # Python 3.11 not in repos
                         echo -e "${YELLOW}Python 3.11 not found in default repositories${NC}"
-                        echo -e "${YELLOW}Adding deadsnakes PPA for Python 3.11...${NC}"
 
-                        # Install software-properties-common if not present
-                        sudo apt update
-                        sudo apt install -y software-properties-common
+                        # Check if this is Ubuntu/Mint (can use PPA) or Debian (needs source)
+                        if [ -f /etc/lsb-release ] && grep -qi ubuntu /etc/lsb-release; then
+                            # Ubuntu or Ubuntu-based (like Mint) - use deadsnakes PPA
+                            echo -e "${YELLOW}Adding deadsnakes PPA for Python 3.11...${NC}"
+                            sudo apt update
+                            sudo apt install -y software-properties-common
+                            sudo add-apt-repository ppa:deadsnakes/ppa -y
+                            sudo apt update
+                            sudo apt install -y python3.11 python3.11-venv python3.11-dev
+                        else
+                            # Debian or other - compile from source
+                            echo -e "${YELLOW}Debian detected - Python 3.11 will be compiled from source${NC}"
+                            echo -e "${YELLOW}This may take 5-10 minutes...${NC}"
 
-                        # Add deadsnakes PPA
-                        sudo add-apt-repository ppa:deadsnakes/ppa -y
-                        sudo apt update
-                        sudo apt install -y python3.11 python3.11-venv python3.11-dev
+                            # Install build dependencies
+                            sudo apt update
+                            sudo apt install -y build-essential zlib1g-dev libncurses5-dev \
+                                libgdbm-dev libnss3-dev libssl-dev libreadline-dev \
+                                libffi-dev libsqlite3-dev wget libbz2-dev
+
+                            # Download and compile Python 3.11
+                            cd /tmp
+                            wget https://www.python.org/ftp/python/3.11.11/Python-3.11.11.tgz
+                            tar -xf Python-3.11.11.tgz
+                            cd Python-3.11.11
+                            ./configure --enable-optimizations --prefix=/usr/local
+                            make -j$(nproc)
+                            sudo make altinstall
+                            cd "$INSTALL_DIR"
+
+                            # Create symlink
+                            sudo ln -sf /usr/local/bin/python3.11 /usr/bin/python3.11
+                        fi
                     fi
                     ;;
                 "dnf")
