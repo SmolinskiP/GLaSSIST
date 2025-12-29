@@ -14,19 +14,29 @@ def check_linux_dependencies():
     """Check if all required Linux dependencies are available."""
     if platform.system() != "Linux":
         return True
-    
+
     missing = []
-    
+
     # Check GTK/WebKit for webview
     try:
         import gi
         gi.require_version('Gtk', '3.0')
-        gi.require_version('WebKit2', '4.0')
+
+        # Try WebKit2 4.1 first (newer), then fall back to 4.0
+        try:
+            gi.require_version('WebKit2', '4.1')
+        except ValueError:
+            try:
+                gi.require_version('WebKit2', '4.0')
+            except ValueError:
+                missing.append("gir1.2-webkit2-4.0 or gir1.2-webkit2-4.1")
+
         from gi.repository import Gtk, WebKit2
     except ImportError:
-        missing.append("python3-gi, gir1.2-gtk-3.0, gir1.2-webkit2-4.0")
-    except ValueError:
-        missing.append("gtk3-devel, webkit2gtk3-devel")
+        missing.append("python3-gi, gir1.2-gtk-3.0, gir1.2-webkit2-4.0/4.1")
+    except ValueError as e:
+        logger.warning(f"GTK/WebKit version error: {e}")
+        missing.append("gir1.2-gtk-3.0, gir1.2-webkit2-4.0 or gir1.2-webkit2-4.1")
     
     # Check audio
     try:
@@ -44,8 +54,11 @@ def check_linux_dependencies():
         for dep in missing:
             print(f"   • {dep}")
         print("\nInstall with:")
+        print("# For Ubuntu 22.04 and older:")
         print("sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-webkit2-4.0 python3-pyaudio portaudio19-dev")
-        print("or run: ./install-linux.sh")
+        print("\n# For Ubuntu 24.04+ / Debian 13+:")
+        print("sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-webkit2-4.1 python3-pyaudio portaudio19-dev")
+        print("\nor run: ./install-linux.sh")
         return False
     
     return True
