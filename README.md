@@ -345,8 +345,15 @@ The app plays sounds from `sound/` directory:
 **Solutions**:
 1. **Install Python 3.11** (recommended):
    ```bash
+   # For Ubuntu 22.04 and older (has Python 3.11 in repos):
    sudo apt install python3.11 python3.11-venv python3.11-dev
-   # Then use python3.11 instead of python3 when creating venv
+
+   # For Ubuntu 24.04+, Linux Mint 22+ (needs deadsnakes PPA):
+   sudo add-apt-repository ppa:deadsnakes/ppa -y
+   sudo apt update
+   sudo apt install python3.11 python3.11-venv python3.11-dev
+
+   # The installer will do this automatically if you choose to install Python 3.11
    ```
 
 2. **Use Python 3.12** with ONNX-only mode:

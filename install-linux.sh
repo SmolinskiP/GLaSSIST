@@ -135,8 +135,24 @@ if [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 13 ]; then
             echo -e "${BLUE}📥 Installing Python 3.11...${NC}"
             case $PKG_MANAGER in
                 "apt")
-                    sudo apt update
-                    sudo apt install -y python3.11 python3.11-venv python3.11-dev
+                    # Check if python3.11 is available in repos
+                    if apt-cache search --names-only '^python3\.11$' | grep -q python3.11; then
+                        sudo apt update
+                        sudo apt install -y python3.11 python3.11-venv python3.11-dev
+                    else
+                        # Python 3.11 not in repos, try deadsnakes PPA
+                        echo -e "${YELLOW}Python 3.11 not found in default repositories${NC}"
+                        echo -e "${YELLOW}Adding deadsnakes PPA for Python 3.11...${NC}"
+
+                        # Install software-properties-common if not present
+                        sudo apt update
+                        sudo apt install -y software-properties-common
+
+                        # Add deadsnakes PPA
+                        sudo add-apt-repository ppa:deadsnakes/ppa -y
+                        sudo apt update
+                        sudo apt install -y python3.11 python3.11-venv python3.11-dev
+                    fi
                     ;;
                 "dnf")
                     sudo dnf install -y python3.11 python3.11-devel
@@ -191,8 +207,24 @@ elif [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -eq 12 ]; then
             echo -e "${BLUE}📥 Installing Python 3.11...${NC}"
             case $PKG_MANAGER in
                 "apt")
-                    sudo apt update
-                    sudo apt install -y python3.11 python3.11-venv python3.11-dev
+                    # Check if python3.11 is available in repos
+                    if apt-cache search --names-only '^python3\.11$' | grep -q python3.11; then
+                        sudo apt update
+                        sudo apt install -y python3.11 python3.11-venv python3.11-dev
+                    else
+                        # Python 3.11 not in repos, try deadsnakes PPA
+                        echo -e "${YELLOW}Python 3.11 not found in default repositories${NC}"
+                        echo -e "${YELLOW}Adding deadsnakes PPA for Python 3.11...${NC}"
+
+                        # Install software-properties-common if not present
+                        sudo apt update
+                        sudo apt install -y software-properties-common
+
+                        # Add deadsnakes PPA
+                        sudo add-apt-repository ppa:deadsnakes/ppa -y
+                        sudo apt update
+                        sudo apt install -y python3.11 python3.11-venv python3.11-dev
+                    fi
                     ;;
                 "dnf")
                     sudo dnf install -y python3.11 python3.11-devel
