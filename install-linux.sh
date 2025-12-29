@@ -382,6 +382,12 @@ case $PKG_MANAGER in
         
         # Install window management tools
         sudo apt install -y wmctrl xdotool
+
+        # Install MPV for Flet media support
+        echo -e "${YELLOW}Installing MPV for Flet media support...${NC}"
+        sudo apt install -y libmpv-dev libmpv2
+        # Create symlink for compatibility (libmpv.so.2 -> libmpv.so.1)
+        sudo ln -sf /usr/lib/x86_64-linux-gnu/libmpv.so.2 /usr/lib/x86_64-linux-gnu/libmpv.so.1 2>/dev/null || true
         ;;
     "dnf")
         sudo dnf install -y \
@@ -393,6 +399,15 @@ case $PKG_MANAGER in
             wmctrl xdotool \
             pulseaudio-libs-devel speex-devel \
             gcc gcc-c++ pkgconfig
+
+        # Install MPV for Flet media support
+        echo -e "${YELLOW}Installing MPV for Flet media support...${NC}"
+        # Add RPM Fusion repositories if not already added
+        sudo dnf install -y \
+            https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm \
+            https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm 2>/dev/null || true
+        sudo dnf makecache
+        sudo dnf install -y mpv mpv-libs
         ;;
     "pacman")
         sudo pacman -S --noconfirm \
@@ -402,7 +417,8 @@ case $PKG_MANAGER in
             gobject-introspection \
             wmctrl xdotool \
             pulseaudio speex \
-            base-devel pkgconf
+            base-devel pkgconf \
+            mpv
         ;;
     "zypper")
         sudo zypper install -y \
@@ -413,7 +429,8 @@ case $PKG_MANAGER in
             gobject-introspection-devel \
             wmctrl xdotool \
             pulseaudio-devel speex-devel \
-            gcc gcc-c++ pkg-config
+            gcc gcc-c++ pkg-config \
+            mpv libmpv2
         ;;
 esac
 
