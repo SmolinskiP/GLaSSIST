@@ -467,7 +467,7 @@ A: Yes! Set wait_for_response to false for TTS-only announcements that don't nee
 
 MIT License. Do whatever you want, just don't blame me when something doesn't work.
 
-## 🍺 Support
+## ☕ Support
 
 If the app helped you and you want to buy me a coffee:
 [☕ Buy me a coffee](https://buymeacoffee.com/smolinskip)
