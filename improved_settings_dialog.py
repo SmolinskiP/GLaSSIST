@@ -67,6 +67,41 @@ class ImprovedSettingsDialog:
             self.mic_var.set("(automatic)")
             self.mic_mapping = {"(automatic)": -1}
 
+    def _refresh_output_devices(self):
+        """Load available output devices into the list."""
+        try:
+            output_devices = utils.get_available_output_devices()
+            
+            output_options = ["(automatic)"]
+            output_mapping = {"(automatic)": -1}
+            
+            for device in output_devices:
+                display_name = f"{device['name']} (ID: {device['index']})"
+                output_options.append(display_name)
+                output_mapping[display_name] = device['index']
+            
+            self.output_combo['values'] = output_options
+            self.output_mapping = output_mapping
+            
+            current_output_index = utils.get_env("HA_OUTPUT_DEVICE_INDEX", -1, int)
+            if current_output_index == -1:
+                self.output_var.set("(automatic)")
+            else:
+                for option, index in output_mapping.items():
+                    if index == current_output_index:
+                        self.output_var.set(option)
+                        break
+                else:
+                    self.output_var.set(f"⚠️ Unknown: {current_output_index}")
+            
+            logger.info(f"Loaded {len(output_devices)} output devices")
+            
+        except Exception as e:
+            logger.error(f"Failed to load output devices: {e}")
+            self.output_combo['values'] = ["(automatic)", "Error loading output devices"]
+            self.output_var.set("(automatic)")
+            self.output_mapping = {"(automatic)": -1}
+
     def show_settings(self):
         """Display settings dialog with proper cleanup."""
         current_settings = {
@@ -79,6 +114,7 @@ class ImprovedSettingsDialog:
             'HA_SOUND_FEEDBACK': utils.get_env('HA_SOUND_FEEDBACK', 'true'),
             'DEBUG': utils.get_env('DEBUG', 'false'),
             'HA_SILENCE_THRESHOLD_SEC': utils.get_env('HA_SILENCE_THRESHOLD_SEC', 0.8, float),
+            'HA_OUTPUT_DEVICE_INDEX': utils.get_env('HA_OUTPUT_DEVICE_INDEX', -1, int),
             'HA_WAKE_WORD_ENABLED': utils.get_env('HA_WAKE_WORD_ENABLED', 'false'),
             'HA_WAKE_WORD_MODELS': utils.get_env('HA_WAKE_WORD_MODELS', 'alexa'),
             'HA_WAKE_WORD_THRESHOLD': utils.get_env('HA_WAKE_WORD_THRESHOLD', 0.5, float),
@@ -909,6 +945,22 @@ class ImprovedSettingsDialog:
         refresh_mic_button = ttk.Button(mic_frame, text="Refresh", 
                                     command=self._refresh_microphones)
         refresh_mic_button.grid(row=0, column=2, padx=(5, 0))
+
+        output_frame = ttk.LabelFrame(parent, text="Audio Output Selection", padding="10")
+        output_frame.pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Label(output_frame, text="Output device:").grid(row=0, column=0, sticky=tk.W, pady=5)
+
+        self.output_var = tk.StringVar()
+        self.output_combo = ttk.Combobox(output_frame, textvariable=self.output_var,
+                                       state="readonly", width=40)
+        self.output_combo.grid(row=0, column=1, sticky=tk.W+tk.E, pady=5, padx=5)
+
+        self._refresh_output_devices()
+
+        refresh_output_button = ttk.Button(output_frame, text="Refresh",
+                                         command=self._refresh_output_devices)
+        refresh_output_button.grid(row=0, column=2, padx=(5, 0))
         
         def update_vad_mode(event=None):
             self.vad_mode_value.config(text=str(int(self.vad_mode_scale.get())))
@@ -1297,6 +1349,16 @@ class ImprovedSettingsDialog:
                     selected_mic_index = int(selected_mic_display.split(": ", 1)[1])
                 except:
                     selected_mic_index = -1
+
+            selected_output_display = self.output_var.get()
+            selected_output_index = -1
+            if hasattr(self, 'output_mapping') and selected_output_display in self.output_mapping:
+                selected_output_index = self.output_mapping[selected_output_display]
+            elif selected_output_display.startswith("⚠️ Unknown:"):
+                try:
+                    selected_output_index = int(selected_output_display.split(": ", 1)[1])
+                except:
+                    selected_output_index = -1
             
             if hasattr(self, 'pipeline_mapping') and selected_pipeline_display in self.pipeline_mapping:
                 selected_pipeline_id = self.pipeline_mapping[selected_pipeline_display]
@@ -1318,6 +1380,7 @@ class ImprovedSettingsDialog:
                 'ANIMATION_PORT': self.animation_port_var.get(),
                 'HA_SOUND_FEEDBACK': 'true' if self.sound_feedback_var.get() else 'false',
                 'HA_MICROPHONE_INDEX': str(selected_mic_index),
+                'HA_OUTPUT_DEVICE_INDEX': str(selected_output_index),
                 
                 'HA_CHANNELS': utils.get_env('HA_CHANNELS', '1'),
                 'HA_PADDING_MS': utils.get_env('HA_PADDING_MS', '300'),
@@ -1409,6 +1472,7 @@ class ImprovedSettingsDialog:
             env_content += f"HA_FRAME_DURATION_MS={settings['HA_FRAME_DURATION_MS']}\n"
             env_content += f"HA_PADDING_MS={settings['HA_PADDING_MS']}\n"
             env_content += f"HA_MICROPHONE_INDEX={settings['HA_MICROPHONE_INDEX']}\n"
+            env_content += f"HA_OUTPUT_DEVICE_INDEX={settings['HA_OUTPUT_DEVICE_INDEX']}\n"
             
             env_content += "\n# === VOICE DETECTION (VAD) ===\n"
             env_content += f"HA_VAD_MODE={settings['HA_VAD_MODE']}\n"

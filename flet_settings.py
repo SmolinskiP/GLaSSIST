@@ -21,6 +21,7 @@ class FletSettingsApp:
         self.pipelines_data = []
         self.test_client = None
         self.mic_mapping = {}
+        self.output_device_mapping = {}
         
     async def main(self, page: ft.Page):
         """Main Flet application entry point"""
@@ -99,6 +100,8 @@ class FletSettingsApp:
             'HA_SILENCE_THRESHOLD_SEC': utils.get_env('HA_SILENCE_THRESHOLD_SEC', 0.8, float),
             'HA_SOUND_FEEDBACK': utils.get_env('HA_SOUND_FEEDBACK', 'true'),
             'HA_MICROPHONE_INDEX': utils.get_env('HA_MICROPHONE_INDEX', -1, int),
+            'HA_OUTPUT_DEVICE_INDEX': utils.get_env('HA_OUTPUT_DEVICE_INDEX', -1, int),
+            'HA_OUTPUT_SAMPLE_RATE': utils.get_env('HA_OUTPUT_SAMPLE_RATE', '-1'),
             'DEBUG': utils.get_env('DEBUG', 'false'),
             'HA_ANIMATIONS_ENABLED': utils.get_env('HA_ANIMATIONS_ENABLED', 'true'),
             'HA_RESPONSE_TEXT_ENABLED': utils.get_env('HA_RESPONSE_TEXT_ENABLED', 'true'),
@@ -382,6 +385,18 @@ class FletSettingsApp:
         
         # Load microphones asynchronously
         await self._refresh_microphones_async()
+
+        # Output device dropdown
+        self.output_device_dropdown = ft.Dropdown(
+            label="Output Device",
+            helper_text="Select specific output device or use automatic selection",
+            options=[ft.dropdown.Option("(automatic)", -1)],
+            value=-1,
+            expand=True
+        )
+
+        # Load output devices asynchronously
+        await self._refresh_output_devices_async()
         
         
         # Auto-refresh pipelines if we have connection details
@@ -452,6 +467,29 @@ class FletSettingsApp:
                             ], spacing=10),
                             ft.Text(
                                 "Select 'automatic' to use system default microphone",
+                                size=12, color=ft.Colors.GREY_600
+                            )
+                        ]),
+                        padding=20
+                    ),
+                    elevation=2
+                ),
+
+                # Output device card
+                ft.Card(
+                    content=ft.Container(
+                        content=ft.Column([
+                            ft.Text("Audio Output Selection", size=18, weight=ft.FontWeight.BOLD),
+                            ft.Row([
+                                self.output_device_dropdown,
+                                ft.ElevatedButton(
+                                    "Refresh",
+                                    icon=ft.Icons.REFRESH,
+                                    on_click=lambda _: asyncio.create_task(self._refresh_output_devices_async())
+                                )
+                            ], spacing=10),
+                            ft.Text(
+                                "Select 'automatic' to use system default output device",
                                 size=12, color=ft.Colors.GREY_600
                             )
                         ]),
@@ -778,6 +816,18 @@ class FletSettingsApp:
             ],
             expand=True
         )
+
+        self.output_sample_rate_dropdown = ft.Dropdown(
+            label="Output Sample Rate (Hz)",
+            value=current_settings['HA_OUTPUT_SAMPLE_RATE'],
+            options=[
+                ft.dropdown.Option(text="(automatic)", key="-1"),
+                ft.dropdown.Option("24000"),
+                ft.dropdown.Option("44100"),
+                ft.dropdown.Option("48000"),
+            ],
+            expand=True
+        )
         
         self.frame_duration_dropdown = ft.Dropdown(
             label="VAD Frame Duration (ms)",
@@ -841,8 +891,11 @@ class FletSettingsApp:
                                    color=ft.Colors.ORANGE_600, size=14, weight=ft.FontWeight.BOLD),
                             ft.Row([
                                 self.sample_rate_dropdown,
+                                self.output_sample_rate_dropdown,
                                 self.frame_duration_dropdown
                             ], spacing=20),
+                            ft.Text("Output sample rate affects playback only (TTS and feedback sounds).",
+                                   color=ft.Colors.GREY_600, size=12),
                             ft.Text("Default: 16000 Hz, 30ms frame duration works best for most setups",
                                    color=ft.Colors.GREY_600, size=12)
                         ]),
@@ -1163,6 +1216,67 @@ class FletSettingsApp:
             self.microphone_dropdown.value = -1
             self.page.update()
     
+    async def _refresh_output_devices_async(self):
+        """Refresh output device list"""
+        try:
+            def get_outputs():
+                return utils.get_available_output_devices()
+            
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(get_outputs)
+                output_devices = future.result(timeout=10)
+            
+            options = [ft.dropdown.Option(text="(automatic)", key=-1)]
+            self.output_device_mapping = {"(automatic)": -1}
+            
+            for device in output_devices:
+                try:
+                    device_name = device['name']
+                    if isinstance(device_name, bytes):
+                        device_name = device_name.decode('utf-8', errors='replace')
+                    device_name = str(device_name).replace('\x00', '').strip()
+                    if not device_name:
+                        device_name = f"Output {device['index']}"
+                except Exception as e:
+                    logger.debug(f"Error processing output device name: {e}")
+                    device_name = f"Output {device['index']}"
+                
+                display_name = f"{device_name} (ID: {device['index']})"
+                options.append(ft.dropdown.Option(text=display_name, key=device['index']))
+                self.output_device_mapping[display_name] = device['index']
+            
+            self.output_device_dropdown.options = options
+            
+            current_output_index = utils.get_env("HA_OUTPUT_DEVICE_INDEX", -1, int)
+            if current_output_index == -1:
+                self.output_device_dropdown.value = -1
+            else:
+                found = False
+                for option in options:
+                    if option.key == current_output_index:
+                        self.output_device_dropdown.value = current_output_index
+                        found = True
+                        break
+                
+                if not found:
+                    options.append(
+                        ft.dropdown.Option(f"⚠️ Unknown: {current_output_index}", current_output_index)
+                    )
+                    self.output_device_dropdown.value = current_output_index
+            
+            self.page.update()
+            logger.info(f"Loaded {len(output_devices)} output devices")
+            
+        except Exception as e:
+            logger.error(f"Failed to refresh output devices: {e}")
+            self.output_device_dropdown.options = [
+                ft.dropdown.Option("(automatic)", -1),
+                ft.dropdown.Option("Error loading output devices", -2)
+            ]
+            self.output_device_dropdown.value = -1
+            self.page.update()
+
     async def _populate_wake_word_models(self, models_string):
         """Populate selected wake word models"""
         if isinstance(models_string, str):
@@ -1663,6 +1777,11 @@ class FletSettingsApp:
             selected_mic_index = self.microphone_dropdown.value
             if selected_mic_index is None:
                 selected_mic_index = -1
+
+            # Get selected output device index
+            selected_output_index = self.output_device_dropdown.value
+            if selected_output_index is None:
+                selected_output_index = -1
             
             # Get selected pipeline ID  
             selected_pipeline_id = self.pipeline_dropdown.value
@@ -1674,6 +1793,7 @@ class FletSettingsApp:
             logger.info(f"  Host: {self.host_field.value}")
             logger.info(f"  Pipeline ID: {selected_pipeline_id}")
             logger.info(f"  Microphone: {selected_mic_index}")
+            logger.info(f"  Output device: {selected_output_index}")
             logger.info(f"  Wake word enabled: {self.wake_word_enabled.value}")
             
             # Prepare settings dictionary
@@ -1685,11 +1805,13 @@ class FletSettingsApp:
                 'HA_SILENCE_THRESHOLD_SEC': str(round(self.silence_slider.value, 1)),
                 'HA_VAD_MODE': str(int(self.vad_slider.value)),
                 'HA_MICROPHONE_INDEX': str(selected_mic_index),
+                'HA_OUTPUT_DEVICE_INDEX': str(selected_output_index),
                 'HA_SOUND_FEEDBACK': 'true' if self.sound_feedback_switch.value else 'false',
                 'DEBUG': 'true' if self.debug_switch.value else 'false',
                 'HA_ANIMATIONS_ENABLED': 'true' if self.animations_switch.value else 'false',
                 'HA_RESPONSE_TEXT_ENABLED': 'true' if self.response_text_switch.value else 'false',
                 'HA_SAMPLE_RATE': self.sample_rate_dropdown.value,
+                'HA_OUTPUT_SAMPLE_RATE': self.output_sample_rate_dropdown.value,
                 'HA_FRAME_DURATION_MS': self.frame_duration_dropdown.value,
                 'ANIMATION_PORT': self.animation_port_field.value,
                 
@@ -1764,6 +1886,8 @@ class FletSettingsApp:
             env_content += f"HA_FRAME_DURATION_MS={settings['HA_FRAME_DURATION_MS']}\n"
             env_content += f"HA_PADDING_MS={settings['HA_PADDING_MS']}\n"
             env_content += f"HA_MICROPHONE_INDEX={settings['HA_MICROPHONE_INDEX']}\n"
+            env_content += f"HA_OUTPUT_DEVICE_INDEX={settings['HA_OUTPUT_DEVICE_INDEX']}\n"
+            env_content += f"HA_OUTPUT_SAMPLE_RATE={settings['HA_OUTPUT_SAMPLE_RATE']}\n"
             
             env_content += "\n# === VOICE DETECTION (VAD) ===\n"
             env_content += f"HA_VAD_MODE={settings['HA_VAD_MODE']}\n"

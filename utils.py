@@ -125,6 +125,82 @@ def _read_from_env_file(key):
     
     return None
 
+def get_output_device_index():
+    """Return configured output device index or None for automatic selection."""
+    output_device = get_env("HA_OUTPUT_DEVICE_INDEX", -1, int)
+    if output_device is None or output_device < 0:
+        return None
+    return output_device
+
+def get_output_sample_rate():
+    """Return configured output sample rate or None for automatic selection."""
+    output_rate = get_env("HA_OUTPUT_SAMPLE_RATE", -1, int)
+    if output_rate is None or output_rate <= 0:
+        return None
+    return output_rate
+
+def get_available_output_devices():
+    """Return a list of available output devices."""
+    devices = []
+    try:
+        for index, device_info in enumerate(sd.query_devices()):
+            if device_info.get('max_output_channels', 0) > 0:
+                device_name = device_info.get('name', f"Output {index}")
+                if isinstance(device_name, bytes):
+                    device_name = device_name.decode('utf-8', errors='replace')
+                device_name = str(device_name).replace('\x00', '').strip()
+                if not device_name:
+                    device_name = f"Output {index}"
+                
+                devices.append({
+                    'index': index,
+                    'name': device_name,
+                    'channels': device_info.get('max_output_channels', 0),
+                    'sample_rate': device_info.get(
+                        'default_samplerate',
+                        device_info.get('defaultSampleRate', 'unknown')
+                    )
+                })
+    except Exception as e:
+        logger.error(f"Failed to query output devices: {e}")
+    
+    return devices
+
+def _resample_audio(audio_data, original_rate, target_rate):
+    """Resample audio data to the target rate."""
+    if original_rate == target_rate or target_rate is None:
+        return audio_data
+    
+    try:
+        from scipy.signal import resample_poly
+    except Exception as e:
+        logger.warning(f"Resampling unavailable: {e}")
+        return audio_data
+    
+    try:
+        import math
+        original_rate = int(original_rate)
+        target_rate = int(target_rate)
+        if original_rate <= 0 or target_rate <= 0:
+            return audio_data
+        
+        divisor = math.gcd(original_rate, target_rate)
+        up = target_rate // divisor
+        down = original_rate // divisor
+        
+        data = audio_data
+        if data.dtype == np.int16:
+            data = data.astype(np.float32) / 32768.0
+        elif data.dtype.kind in ("i", "u"):
+            data = data.astype(np.float32)
+        else:
+            data = data.astype(np.float32)
+        
+        return resample_poly(data, up, down, axis=0)
+    except Exception as e:
+        logger.warning(f"Failed to resample audio: {e}")
+        return audio_data
+
 def get_timestamp():
     """Return current timestamp in milliseconds."""
     return int(time.time() * 1000)
@@ -166,12 +242,29 @@ def play_audio_from_url(url, host, animation_server=None):
         logger.info("Reading audio file...")
         data, samplerate = sf.read(audio_buffer)
         
+        output_device_index = get_output_device_index()
+        output_sample_rate = get_output_sample_rate()
+        if output_device_index is not None:
+            logger.debug(f"Using output device index: {output_device_index}")
+        if output_sample_rate is not None and output_sample_rate != samplerate:
+            logger.info(f"Resampling audio from {samplerate}Hz to {output_sample_rate}Hz")
+            data = _resample_audio(data, samplerate, output_sample_rate)
+            samplerate = output_sample_rate
+        
         if animation_server:
             logger.info(f"Playing with FFT analysis (samplerate: {samplerate})...")
-            return _play_with_fft_analysis(data, samplerate, animation_server)
+            return _play_with_fft_analysis(
+                data,
+                samplerate,
+                animation_server,
+                output_device_index
+            )
         else:
             logger.info(f"Standard playback (samplerate: {samplerate})...")
-            sd.play(data, samplerate)
+            if output_device_index is not None:
+                sd.play(data, samplerate, device=output_device_index)
+            else:
+                sd.play(data, samplerate)
             sd.wait()
             logger.info("Audio playback completed")
             return True
@@ -180,7 +273,7 @@ def play_audio_from_url(url, host, animation_server=None):
         logger.exception(f"Audio playback error: {str(e)}")
         return False
 
-def _play_with_fft_analysis(audio_data, samplerate, animation_server):
+def _play_with_fft_analysis(audio_data, samplerate, animation_server, output_device_index=None):
     """
     Play audio and simultaneously send FFT data to animation server.
     """
@@ -237,11 +330,16 @@ def _play_with_fft_analysis(audio_data, samplerate, animation_server):
         
         logger.info("Starting playback with FFT analysis...")
         
+        stream_kwargs = {}
+        if output_device_index is not None:
+            stream_kwargs['device'] = output_device_index
+        
         with sd.OutputStream(
             samplerate=samplerate,
             channels=2,  # Stereo output
             callback=audio_callback,
-            dtype=np.int16
+            dtype=np.int16,
+            **stream_kwargs
         ):
             duration = len(audio_data) / samplerate
             logger.info(f"Audio duration: {duration:.2f}s")
@@ -298,6 +396,8 @@ def play_feedback_sound(sound_name):
         return False
     
     logger = setup_logger()
+    output_device_index = get_output_device_index()
+    output_sample_rate = get_output_sample_rate()
     
     try:
         sound_dir = os.path.join(os.path.dirname(__file__), 'sound')
@@ -310,7 +410,16 @@ def play_feedback_sound(sound_name):
         def play_thread():
             try:
                 data, samplerate = sf.read(sound_file)
-                sd.play(data, samplerate)
+                if output_sample_rate is not None and output_sample_rate != samplerate:
+                    logger.info(
+                        f"Resampling feedback sound from {samplerate}Hz to {output_sample_rate}Hz"
+                    )
+                    data = _resample_audio(data, samplerate, output_sample_rate)
+                    samplerate = output_sample_rate
+                if output_device_index is not None:
+                    sd.play(data, samplerate, device=output_device_index)
+                else:
+                    sd.play(data, samplerate)
                 
             except Exception as e:
                 logger.error(f"Error playing sound {sound_name}: {e}")

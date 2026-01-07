@@ -346,6 +346,8 @@ The app plays sounds from `sound/` directory:
 
 ### Device Selection
 - `HA_MICROPHONE_INDEX` - Specific microphone ID (-1 for automatic)
+- `HA_OUTPUT_DEVICE_INDEX` - Specific output device ID (-1 for automatic)
+- `HA_OUTPUT_SAMPLE_RATE` - Output sample rate for playback (-1 for automatic)
 
 
 ### Debug & Logging
