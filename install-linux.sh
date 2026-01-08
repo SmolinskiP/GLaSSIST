@@ -785,6 +785,12 @@ echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo -e "${BLUE}🚀 Setting up systemd user service...${NC}"
     
+    if [ "$DISTRO" = "fedora" ]; then
+        XDG_RUNTIME_DIR_VALUE="%t"
+    else
+        XDG_RUNTIME_DIR_VALUE="/run/user/%i"
+    fi
+
     mkdir -p "$USER_HOME/.config/systemd/user"
     cat > "$USER_HOME/.config/systemd/user/glassist.service" << EOF
 [Unit]
@@ -798,7 +804,7 @@ ExecStart=$INSTALL_DIR/venv/bin/python $INSTALL_DIR/main.py
 Restart=always
 RestartSec=5
 Environment=DISPLAY=:0
-Environment=XDG_RUNTIME_DIR=/run/user/%i
+Environment=XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR_VALUE
 
 [Install]
 WantedBy=default.target
