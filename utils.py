@@ -278,76 +278,85 @@ def _play_with_fft_analysis(audio_data, samplerate, animation_server, output_dev
     Play audio and simultaneously send FFT data to animation server.
     """
     logger = setup_logger()
-    
+
     try:
         chunk_size = 1024  # FFT chunk size (smaller = faster response)
-        
+
         # Convert stereo to mono if needed
         if len(audio_data.shape) > 1:
             audio_data = np.mean(audio_data, axis=1)
-        
+
         # Convert to int16 for compatibility
         if audio_data.dtype != np.int16:
             audio_data = (audio_data * 32767).astype(np.int16)
-        
+
         total_samples = len(audio_data)
         samples_played = 0
-        
+        playback_finished = threading.Event()
+
         def audio_callback(outdata, frames, time, status):
             nonlocal samples_played
-            
+
             if status:
                 logger.warning(f"Audio callback status: {status}")
-            
+
             if samples_played >= total_samples:
                 outdata.fill(0)
+                # Signal that all samples have been sent to the output buffer
+                playback_finished.set()
                 return
-            
+
             samples_to_play = min(frames, total_samples - samples_played)
-            
+
             if len(audio_data.shape) == 1:
                 if outdata.shape[1] == 2:
                     outdata[:samples_to_play, 0] = audio_data[samples_played:samples_played + samples_to_play]
                     outdata[:samples_to_play, 1] = audio_data[samples_played:samples_played + samples_to_play]
                 else:
                     outdata[:samples_to_play, 0] = audio_data[samples_played:samples_played + samples_to_play]
-            
+
             if samples_to_play < frames:
                 outdata[samples_to_play:].fill(0)
-            
+
             # FFT analysis - use smaller chunk for better responsiveness
             fft_chunk_size = min(chunk_size, samples_to_play)
             if fft_chunk_size > 0:
                 chunk_data = audio_data[samples_played:samples_played + fft_chunk_size]
-                
+
                 threading.Thread(
-                    target=_send_fft_to_animation, 
-                    args=(chunk_data, animation_server), 
+                    target=_send_fft_to_animation,
+                    args=(chunk_data, animation_server),
                     daemon=True
                 ).start()
-            
+
             samples_played += samples_to_play
-        
+
         logger.info("Starting playback with FFT analysis...")
-        
+
         stream_kwargs = {}
         if output_device_index is not None:
             stream_kwargs['device'] = output_device_index
-        
+
         with sd.OutputStream(
             samplerate=samplerate,
             channels=2,  # Stereo output
             callback=audio_callback,
             dtype=np.int16,
             **stream_kwargs
-        ):
+        ) as stream:
             duration = len(audio_data) / samplerate
             logger.info(f"Audio duration: {duration:.2f}s")
-            time.sleep(duration + 0.5)
-        
+
+            # Wait until all samples have been sent to output buffer
+            playback_finished.wait(timeout=duration + 5.0)
+
+            # Give extra time for the audio buffer to drain completely
+            # This ensures the last samples are actually played through the speakers
+            time.sleep(0.5)
+
         logger.info("FFT analysis playback completed")
         return True
-        
+
     except Exception as e:
         logger.exception(f"FFT analysis playback error: {str(e)}")
         return False
