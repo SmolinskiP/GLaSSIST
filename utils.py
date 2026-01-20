@@ -348,7 +348,12 @@ def _play_with_fft_analysis(audio_data, samplerate, animation_server, output_dev
             logger.info(f"Audio duration: {duration:.2f}s")
 
             # Wait until all samples have been sent to output buffer
-            playback_finished.wait(timeout=duration + 5.0)
+            event_set = playback_finished.wait(timeout=duration + 5.0)
+
+            if event_set:
+                logger.debug(f"Playback completed normally ({samples_played}/{total_samples} samples)")
+            else:
+                logger.warning(f"Playback timeout reached ({samples_played}/{total_samples} samples)")
 
             # Give extra time for the audio buffer to drain completely
             # This ensures the last samples are actually played through the speakers
