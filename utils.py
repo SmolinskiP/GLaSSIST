@@ -170,24 +170,24 @@ def _resample_audio(audio_data, original_rate, target_rate):
     """Resample audio data to the target rate."""
     if original_rate == target_rate or target_rate is None:
         return audio_data
-    
+
     try:
         from scipy.signal import resample_poly
     except Exception as e:
         logger.warning(f"Resampling unavailable: {e}")
         return audio_data
-    
+
     try:
         import math
         original_rate = int(original_rate)
         target_rate = int(target_rate)
         if original_rate <= 0 or target_rate <= 0:
             return audio_data
-        
+
         divisor = math.gcd(original_rate, target_rate)
         up = target_rate // divisor
         down = original_rate // divisor
-        
+
         data = audio_data
         if data.dtype == np.int16:
             data = data.astype(np.float32) / 32768.0
@@ -195,7 +195,7 @@ def _resample_audio(audio_data, original_rate, target_rate):
             data = data.astype(np.float32)
         else:
             data = data.astype(np.float32)
-        
+
         return resample_poly(data, up, down, axis=0)
     except Exception as e:
         logger.warning(f"Failed to resample audio: {e}")
@@ -238,10 +238,45 @@ def play_audio_from_url(url, host, animation_server=None):
             return False
         
         audio_buffer = io.BytesIO(response.content)
-        
+
         logger.info("Reading audio file...")
-        data, samplerate = sf.read(audio_buffer)
-        
+        import tempfile
+        data = None
+        samplerate = None
+
+        # Try audioread first (better MP3 support via system codecs)
+        try:
+            import audioread
+            audio_buffer.seek(0)
+
+            # Save to temp file for audioread
+            with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as tmp_file:
+                tmp_path = tmp_file.name
+                tmp_file.write(response.content)
+
+            with audioread.audio_open(tmp_path) as f:
+                samplerate = f.samplerate
+                channels = f.channels
+                # Read all audio data
+                audio_bytes = b''.join(f)
+
+            # Convert bytes to numpy array (16-bit signed integers)
+            data = np.frombuffer(audio_bytes, dtype=np.int16)
+            # Normalize to float32 [-1, 1]
+            data = data.astype(np.float32) / 32768.0
+            if channels == 2:
+                data = data.reshape((-1, 2))
+            logger.info(f"Decoded with audioread: {len(data)} samples, {samplerate}Hz, {channels}ch")
+
+            # Clean up temp file
+            try:
+                os.unlink(tmp_path)
+            except:
+                pass
+        except Exception as e:
+            logger.warning(f"audioread failed, falling back to soundfile: {e}")
+            audio_buffer.seek(0)
+            data, samplerate = sf.read(audio_buffer)
         output_device_index = get_output_device_index()
         output_sample_rate = get_output_sample_rate()
         if output_device_index is not None:
@@ -250,7 +285,6 @@ def play_audio_from_url(url, host, animation_server=None):
             logger.info(f"Resampling audio from {samplerate}Hz to {output_sample_rate}Hz")
             data = _resample_audio(data, samplerate, output_sample_rate)
             samplerate = output_sample_rate
-        
         if animation_server:
             logger.info(f"Playing with FFT analysis (samplerate: {samplerate})...")
             return _play_with_fft_analysis(
@@ -276,88 +310,68 @@ def play_audio_from_url(url, host, animation_server=None):
 def _play_with_fft_analysis(audio_data, samplerate, animation_server, output_device_index=None):
     """
     Play audio and simultaneously send FFT data to animation server.
+    Uses simple sd.play() + sd.wait() for reliable playback.
     """
     logger = setup_logger()
 
     try:
-        chunk_size = 1024  # FFT chunk size (smaller = faster response)
+        chunk_size = 1024  # FFT chunk size
 
-        # Convert stereo to mono if needed
+        # Convert stereo to mono for FFT analysis (keep original for playback)
         if len(audio_data.shape) > 1:
-            audio_data = np.mean(audio_data, axis=1)
+            fft_data = np.mean(audio_data, axis=1)
+        else:
+            fft_data = audio_data
 
-        # Convert to int16 for compatibility
-        if audio_data.dtype != np.int16:
-            audio_data = (audio_data * 32767).astype(np.int16)
-
-        total_samples = len(audio_data)
-        samples_played = 0
-        playback_finished = threading.Event()
-
-        def audio_callback(outdata, frames, time, status):
-            nonlocal samples_played
-
-            if status:
-                logger.warning(f"Audio callback status: {status}")
-
-            if samples_played >= total_samples:
-                outdata.fill(0)
-                # Signal that all samples have been sent to the output buffer
-                playback_finished.set()
-                return
-
-            samples_to_play = min(frames, total_samples - samples_played)
-
-            if len(audio_data.shape) == 1:
-                if outdata.shape[1] == 2:
-                    outdata[:samples_to_play, 0] = audio_data[samples_played:samples_played + samples_to_play]
-                    outdata[:samples_to_play, 1] = audio_data[samples_played:samples_played + samples_to_play]
-                else:
-                    outdata[:samples_to_play, 0] = audio_data[samples_played:samples_played + samples_to_play]
-
-            if samples_to_play < frames:
-                outdata[samples_to_play:].fill(0)
-
-            # FFT analysis - use smaller chunk for better responsiveness
-            fft_chunk_size = min(chunk_size, samples_to_play)
-            if fft_chunk_size > 0:
-                chunk_data = audio_data[samples_played:samples_played + fft_chunk_size]
-
-                threading.Thread(
-                    target=_send_fft_to_animation,
-                    args=(chunk_data, animation_server),
-                    daemon=True
-                ).start()
-
-            samples_played += samples_to_play
-
-        logger.info("Starting playback with FFT analysis...")
-
-        stream_kwargs = {}
-        if output_device_index is not None:
-            stream_kwargs['device'] = output_device_index
-
-        with sd.OutputStream(
-            samplerate=samplerate,
-            channels=2,  # Stereo output
-            callback=audio_callback,
-            dtype=np.int16,
-            **stream_kwargs
-        ) as stream:
-            duration = len(audio_data) / samplerate
-            logger.info(f"Audio duration: {duration:.2f}s")
-
-            # Wait until all samples have been sent to output buffer
-            event_set = playback_finished.wait(timeout=duration + 5.0)
-
-            if event_set:
-                logger.debug(f"Playback completed normally ({samples_played}/{total_samples} samples)")
+        # Convert FFT data to int16 for animation
+        if fft_data.dtype != np.int16:
+            if np.abs(fft_data).max() <= 1.0:
+                fft_data = (fft_data * 32767).astype(np.int16)
             else:
-                logger.warning(f"Playback timeout reached ({samples_played}/{total_samples} samples)")
+                fft_data = fft_data.astype(np.int16)
 
-            # Give extra time for the audio buffer to drain completely
-            # This ensures the last samples are actually played through the speakers
-            time.sleep(0.5)
+        total_samples = len(fft_data)
+        duration = total_samples / samplerate
+        logger.info(f"Starting playback with FFT analysis... Duration: {duration:.2f}s")
+
+        # Start FFT analysis in background thread
+        stop_fft = threading.Event()
+
+        def fft_thread_func():
+            """Send FFT data to animation server during playback."""
+            samples_sent = 0
+            start_time = time.time()
+
+            while not stop_fft.is_set() and samples_sent < total_samples:
+                elapsed = time.time() - start_time
+                target_sample = int(elapsed * samplerate)
+
+                if target_sample > samples_sent and samples_sent < total_samples:
+                    chunk_end = min(samples_sent + chunk_size, total_samples)
+                    chunk_data = fft_data[samples_sent:chunk_end]
+
+                    if len(chunk_data) > 0:
+                        _send_fft_to_animation(chunk_data, animation_server)
+
+                    samples_sent = chunk_end
+
+                time.sleep(0.02)  # ~50 FPS for smooth animation
+
+        fft_thread = threading.Thread(target=fft_thread_func, daemon=True)
+        fft_thread.start()
+
+        # Play audio using simple sd.play() + sd.wait()
+        # This is the most reliable method
+        play_kwargs = {}
+        if output_device_index is not None:
+            play_kwargs['device'] = output_device_index
+
+        sd.play(audio_data, samplerate, **play_kwargs)
+        sd.wait()  # Block until playback is complete
+
+        # Stop FFT thread
+        stop_fft.set()
+        fft_thread.join(timeout=1.0)
 
         logger.info("FFT analysis playback completed")
         return True

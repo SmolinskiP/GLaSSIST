@@ -32,6 +32,7 @@ scipy==1.15.3
 six==1.17.0
 sounddevice==0.5.2
 soundfile==0.13.1
+audioread==3.1.0
 sympy==1.14.0
 threadpoolctl==3.6.0
 tqdm==4.67.1

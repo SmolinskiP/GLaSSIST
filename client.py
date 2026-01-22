@@ -43,7 +43,7 @@ class HomeAssistantClient:
         
         try:
             self.websocket = await asyncio.wait_for(
-                websockets.connect(uri), 
+                websockets.connect(uri, max_size=10 * 1024 * 1024),  # 10MB limit
                 timeout=15.0
             )
             logger.info("Connection established")
