@@ -465,6 +465,10 @@ A: GLaSSIST automatically saves current volume levels, reduces them to a target 
 **Q: Can I use wait_for_response: false for announcements?**  
 A: Yes! Set wait_for_response to false for TTS-only announcements that don't need user input. Perfect for notifications, status updates, and confirmations.
 
+## 📈 Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=SmolinskiP/GLASSIST&type=Date)](https://star-history.com/#SmolinskiP/GLASSIST&Date)
+
 ## 📄 License
 
 MIT License. Do whatever you want, just don't blame me when something doesn't work.
