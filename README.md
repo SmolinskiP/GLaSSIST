@@ -465,7 +465,7 @@ A: GLaSSIST automatically saves current volume levels, reduces them to a target 
 **Q: Can I use wait_for_response: false for announcements?**  
 A: Yes! Set wait_for_response to false for TTS-only announcements that don't need user input. Perfect for notifications, status updates, and confirmations.
 
-**Q: I'm trying to get the latest version but when I download the latest setup exe it wants me to enter my server config and API token again. Is there a way to upgrade without doing all this again? It's running on a tablet so typing this stuff in isn't super convenient.**
+**Q: I'm trying to get the latest version but when I download the latest setup exe it wants me to enter my server config and API token again. Is there a way to upgrade without doing all this again?**
 A: Sure. Just don't type anything in installer, then it won't replace the .env file with configuration ;)
 
 ## 📈 Star History
