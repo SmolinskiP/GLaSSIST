@@ -1,4 +1,4 @@
-# 🎤 GLaSSIST
+# ![blur](https://capsule-render.vercel.app/api?type=blur&height=300&color=gradient&text=GLaSSIST&strokeWidth=2&section=footer&reversal=true&fontAlign=50&stroke=E0E0E0&fontSize=55&textBg=false)
 
 <div align="center">
   <img src="https://github.com/user-attachments/assets/23c012ed-11c0-4f3b-9eef-b9fa16071e13" alt="Alt text" width="300">
