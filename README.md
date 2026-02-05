@@ -1,10 +1,10 @@
 # ![blur](https://capsule-render.vercel.app/api?type=blur&height=300&color=gradient&text=GLaSSIST&strokeWidth=2&section=footer&reversal=true&fontAlign=50&stroke=E0E0E0&fontSize=55&textBg=false)
 
+Desktop voice application for Home Assistant with visual animations and VAD (Voice Activity Detection). Because who has time to click through interfaces when you can just talk to your computer like it's a broken microphone?
+
 <div align="center">
   <img src="https://github.com/user-attachments/assets/23c012ed-11c0-4f3b-9eef-b9fa16071e13" alt="Alt text" width="300">
 </div>
-
-Desktop voice application for Home Assistant with visual animations and VAD (Voice Activity Detection). Because who has time to click through interfaces when you can just talk to your computer like it's a broken microphone?
 
 ## 🚀 Key Features
 
