@@ -1,8 +1,4 @@
-# 🎤 GLaSSIST
-
-<div align="center">
-  <img src="https://github.com/user-attachments/assets/23c012ed-11c0-4f3b-9eef-b9fa16071e13" alt="Alt text" width="300">
-</div>
+# ![blur](https://capsule-render.vercel.app/api?type=blur&height=300&color=gradient&text=GLaSSIST&strokeWidth=2&section=footer&reversal=true&fontAlign=50&stroke=E0E0E0&fontSize=55&textBg=false)
 
 Desktop voice application for Home Assistant with visual animations and VAD (Voice Activity Detection). Because who has time to click through interfaces when you can just talk to your computer like it's a broken microphone?
 
@@ -26,6 +22,10 @@ Desktop voice application for Home Assistant with visual animations and VAD (Voi
 - **Interactive Prompts API** - Home Assistant can ask questions and get voice responses
 - **HTTP API Server** - External applications can trigger voice prompts via REST API
 - **Media Player Volume Management** - Automatic volume control during voice interactions
+
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/23c012ed-11c0-4f3b-9eef-b9fa16071e13" alt="Alt text" width="300">
+</div>
 
 ## 📋 Requirements
 
@@ -464,6 +464,13 @@ A: GLaSSIST automatically saves current volume levels, reduces them to a target 
 
 **Q: Can I use wait_for_response: false for announcements?**  
 A: Yes! Set wait_for_response to false for TTS-only announcements that don't need user input. Perfect for notifications, status updates, and confirmations.
+
+**Q: I'm trying to get the latest version but when I download the latest setup exe it wants me to enter my server config and API token again. Is there a way to upgrade without doing all this again?**  
+A: Sure. Just don't type anything in installer, then it won't replace the .env file with configuration ;)
+
+## 📈 Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=SmolinskiP/GLASSIST&type=Date)](https://star-history.com/#SmolinskiP/GLASSIST&Date)
 
 ## 📄 License
 
