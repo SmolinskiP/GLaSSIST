@@ -168,30 +168,10 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
     def wakeup(self) -> None:
         """Trigger a pipeline run — called when wake word detected."""
         if self._timer_active:
-            _LOGGER.info("Wake word during timer — stopping timer sound, starting pipeline")
+            _LOGGER.info("Wake word during timer — stopping timer sound (say wake word again to interact)")
             self._timer_active = False
-
-            def _stop_and_start():
-                try:
-                    import sounddevice as sd
-                    sd.stop()
-                except Exception:
-                    pass
-                loop = self._loop
-                if loop is not None and loop.is_running():
-                    def _safe_start():
-                        try:
-                            self._start_pipeline_run()
-                        except Exception:
-                            _LOGGER.exception("Failed to start pipeline after timer stop")
-                    loop.call_soon_threadsafe(_safe_start)
-                else:
-                    try:
-                        self._start_pipeline_run()
-                    except Exception:
-                        _LOGGER.exception("Failed to start pipeline after timer stop")
-
-            threading.Thread(target=_stop_and_start, daemon=True).start()
+            # Don't call sd.stop() — concurrent sd.play() calls can crash PortAudio.
+            # The timer loop checks _timer_active before each repeat and will stop naturally.
             return
 
         if self.block_wake_words:
@@ -448,6 +428,16 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
             self._start_pipeline_run()
         elif self._timer_active:
             _LOGGER.info("Pipeline ended — playing pending timer sound")
+            self._set_animation("hidden")
+            # Release wake word block so user can interact while timer sounds
+            self._block_wake_words = True
+            loop = self._loop
+            if loop is not None:
+                def _schedule():
+                    loop.call_later(0.5, self._release_block)
+                loop.call_soon_threadsafe(_schedule)
+            else:
+                self._release_block()
             self._play_timer_sound()
         else:
             self._block_wake_words = True
@@ -558,6 +548,11 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
             self._loop = asyncio.get_running_loop()
         except RuntimeError:
             self._loop = None
+        if self._animation_server:
+            try:
+                self._animation_server.show_success("Connected to Home Assistant", duration=2.0)
+            except Exception:
+                pass
 
     def connection_lost(self, exc) -> None:
         super().connection_lost(exc)
@@ -570,6 +565,11 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
         self._timer_active = False
         self._speech_end_handled = False
         self._known_timer_ids.clear()
+        if self._animation_server:
+            try:
+                self._animation_server.show_connecting("Connecting...")
+            except Exception:
+                pass
 
 
 class SatelliteServer:

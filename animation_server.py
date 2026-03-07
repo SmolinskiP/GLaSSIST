@@ -19,6 +19,7 @@ class AnimationServer:
         self.loop = None
         self.thread = None
         self.current_state = "hidden"
+        self.current_state_message = ""
         self.audio_data_buffer = []
         
     def start(self):
@@ -53,10 +54,13 @@ class AnimationServer:
         self.clients.add(websocket)
         
         try:
-            await self._send_to_client(websocket, {
-                "type": "state_change",
-                "state": self.current_state
-            })
+            init_msg = {"type": "state_change", "state": self.current_state}
+            if self.current_state_message:
+                if self.current_state in ("error",):
+                    init_msg["errorMessage"] = self.current_state_message
+                else:
+                    init_msg["successMessage"] = self.current_state_message
+            await self._send_to_client(websocket, init_msg)
             
             async for message in websocket:
                 try:
@@ -131,20 +135,21 @@ class AnimationServer:
             logger.info(f"Success message: {success_message}")
         
         self.current_state = new_state
-        
+        self.current_state_message = success_message or error_message or ""
+
         message = {
             "type": "state_change",
             "state": new_state,
             "timestamp": utils.get_timestamp(),
             **kwargs
         }
-        
+
         if error_message:
             message["errorMessage"] = error_message
-            
+
         if success_message:
             message["successMessage"] = success_message
-        
+
         self._safe_broadcast(message)
     
     def show_success(self, message: str = "Success", duration: float = 3.0):
@@ -161,6 +166,10 @@ class AnimationServer:
         
         threading.Thread(target=hide_after_delay, daemon=True).start()
     
+    def show_connecting(self, message: str = "Connecting..."):
+        """Show connecting animation (persistent, no auto-hide)."""
+        self.change_state("connecting", success_message=message)
+
     def show_error(self, message: str = "Error", duration: float = 5.0):
         """Show error animation for specified time."""
         self.change_state("error", error_message=message)

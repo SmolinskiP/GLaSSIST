@@ -168,7 +168,8 @@
             processing: 0xff9800,
             responding: 0x9c27b0,
             error: 0xf44336,
-            success: 0x4caf50
+            success: 0x4caf50,
+            connecting: 0xffeb3b
         };
         
         // SHADER WITH GRADIENT AND EFFECTS
@@ -337,9 +338,11 @@
                 if (currentState === 'error') {
                     showErrorText(errorMessage);
                 }
-                // Show success text only in success state
+                // Show success text only in success/connecting state
                 else if (currentState === 'success') {
-                    showSuccessText(successMessage);
+                    showSuccessText(successMessage, '#4caf50');
+                } else if (currentState === 'connecting') {
+                    showSuccessText(successMessage, '#ffeb3b');
                 }
             }
             
@@ -384,10 +387,12 @@
             }
         }
         
-        function showSuccessText(message) {
+        function showSuccessText(message, color = '#4caf50') {
             const successElement = document.getElementById('successText');
             if (successElement && message) {
                 successElement.textContent = message;
+                successElement.style.color = color;
+                successElement.style.textShadow = `0 0 10px ${color}88`;
                 successElement.style.display = 'block';
                 console.log('Showed success text:', message);
             }
@@ -562,6 +567,12 @@
                         ring.material.uniforms.usePulse.value = 1.0; // Pulsing mode
                         break;
                         
+                    case 'connecting':
+                        // Connecting: very slow pulse
+                        ring.material.uniforms.pulseSpeed.value = 1.0;
+                        ring.material.uniforms.usePulse.value = 1.0; // Pulsing mode
+                        break;
+
                     case 'success':
                         // Success: constant brightness, no pulsing
                         ring.material.uniforms.audioLevel.value = 0.8; // Constant value for brightness
@@ -596,8 +607,8 @@
                 errorMessage = data.errorMessage;
             }
             
-            // Save success message if available
-            if (newState === 'success' && data.successMessage) {
+            // Save success/connecting message if available
+            if ((newState === 'success' || newState === 'connecting') && data.successMessage) {
                 successMessage = data.successMessage;
             }
             
@@ -617,7 +628,9 @@
             if (newState === 'error') {
                 showErrorText(errorMessage);
             } else if (newState === 'success') {
-                showSuccessText(successMessage);
+                showSuccessText(successMessage, '#4caf50');
+            } else if (newState === 'connecting') {
+                showSuccessText(successMessage, '#ffeb3b');
             }
             
             if (!isAnimating) {

@@ -891,6 +891,8 @@ class HAAssistApp:
             pipeline_id=pipeline_id,
         )
 
+        self.animation_server.show_connecting("Connecting...")
+
         async def _run_server():
             await self.satellite_server.start()
             logger.info(f"ESPHome satellite server started on port {port}")
