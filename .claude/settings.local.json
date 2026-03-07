@@ -3,7 +3,9 @@
     "allow": [
       "Bash(rg:*)",
       "WebFetch(domain:developers.home-assistant.io)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "WebSearch",
+      "Bash(pip install \"aioesphomeapi>=29.0.0\" \"zeroconf>=0.131.0\")"
     ],
     "deny": []
   }

@@ -120,6 +120,7 @@ class ImprovedSettingsDialog:
             'HA_WAKE_WORD_THRESHOLD': utils.get_env('HA_WAKE_WORD_THRESHOLD', 0.5, float),
             'HA_WAKE_WORD_VAD_THRESHOLD': utils.get_env('HA_WAKE_WORD_VAD_THRESHOLD', 0.3, float),
             'HA_WAKE_WORD_NOISE_SUPPRESSION': utils.get_env('HA_WAKE_WORD_NOISE_SUPPRESSION', 'false'),
+            'HA_TIMER_SOUND': utils.get_env('HA_TIMER_SOUND', ''),
         }
         
         # Pause wake word detection temporarily for better GUI responsiveness
@@ -909,10 +910,28 @@ class ImprovedSettingsDialog:
         sound_check = ttk.Checkbutton(feedback_frame, text="Play sounds on activation/deactivation", variable=self.sound_feedback_var)
         sound_check.pack(anchor=tk.W)
         
-        sound_desc = ttk.Label(feedback_frame, 
+        sound_desc = ttk.Label(feedback_frame,
                               text="Plays activation.wav and deactivation.wav from 'sound' folder",
                               font=("Segoe UI", 9), foreground="gray")
         sound_desc.pack(anchor=tk.W, pady=(5, 0))
+
+        timer_frame = ttk.Frame(feedback_frame)
+        timer_frame.pack(fill=tk.X, pady=(10, 0))
+        ttk.Label(timer_frame, text="Timer sound:").pack(side=tk.LEFT)
+        self.timer_sound_var = tk.StringVar(value=current_settings.get('HA_TIMER_SOUND', ''))
+        timer_entry = ttk.Entry(timer_frame, textvariable=self.timer_sound_var, width=35)
+        timer_entry.pack(side=tk.LEFT, padx=(5, 5))
+        def _browse_timer_sound():
+            import tkinter.filedialog as fd
+            path = fd.askopenfilename(
+                title="Select timer sound",
+                filetypes=[("Audio files", "*.wav *.mp3 *.flac *.ogg"), ("All files", "*.*")]
+            )
+            if path:
+                self.timer_sound_var.set(path)
+        ttk.Button(timer_frame, text="Browse…", command=_browse_timer_sound).pack(side=tk.LEFT)
+        ttk.Label(feedback_frame, text="Leave empty to use the default generated beep",
+                  font=("Segoe UI", 9), foreground="gray").pack(anchor=tk.W)
 
         vad_frame = ttk.LabelFrame(parent, text="Voice Activity Detection (VAD)", padding="10")
         vad_frame.pack(fill=tk.X, pady=(0, 10))
@@ -1379,6 +1398,7 @@ class ImprovedSettingsDialog:
                 'HA_FRAME_DURATION_MS': self.frame_duration_var.get(),
                 'ANIMATION_PORT': self.animation_port_var.get(),
                 'HA_SOUND_FEEDBACK': 'true' if self.sound_feedback_var.get() else 'false',
+                'HA_TIMER_SOUND': self.timer_sound_var.get().strip(),
                 'HA_MICROPHONE_INDEX': str(selected_mic_index),
                 'HA_OUTPUT_DEVICE_INDEX': str(selected_output_index),
                 
@@ -1487,6 +1507,8 @@ class ImprovedSettingsDialog:
             
             env_content += "\n# === AUDIO FEEDBACK ===\n"
             env_content += f"HA_SOUND_FEEDBACK={settings['HA_SOUND_FEEDBACK']}\n"
+            if settings.get('HA_TIMER_SOUND'):
+                env_content += f"HA_TIMER_SOUND={settings['HA_TIMER_SOUND']}\n"
 
             env_content += "\n# === WAKE WORD DETECTION ===\n"
             env_content += f"HA_WAKE_WORD_ENABLED={settings.get('HA_WAKE_WORD_ENABLED', 'false')}\n"

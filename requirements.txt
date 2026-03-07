@@ -1,3 +1,7 @@
+# ESPHome Native API (satellite mode)
+aioesphomeapi==44.2.0
+zeroconf==0.148.0
+
 bottle==0.13.3
 certifi==2025.4.26
 cffi==1.17.1

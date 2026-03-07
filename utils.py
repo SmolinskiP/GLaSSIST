@@ -209,10 +209,11 @@ def get_datetime_string():
     """Return formatted date and time string."""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-def play_audio_from_url(url, host, animation_server=None):
+def play_audio_from_url(url, host, animation_server=None, done_callback=None):
     """
     Play audio from given URL using sounddevice and soundfile.
     Optionally send FFT data to animation server during playback.
+    done_callback is called when playback finishes (used by ESPHome satellite mode).
     """
     logger = setup_logger()
     
@@ -221,62 +222,70 @@ def play_audio_from_url(url, host, animation_server=None):
         return False
     
     try:
-        if url.startswith('/'):
-            if host.startswith(('localhost', '127.0.0.1', '192.168.', '10.', '172.')):
-                protocol = "http"
-            else:
-                protocol = "https"
-            full_url = f"{protocol}://{host}{url}"
+        import re as _re
+        _is_local = os.path.isabs(url) or _re.match(r'^[A-Za-z]:[/\\]', url)
+
+        if _is_local:
+            local_path = os.path.normpath(url)
+            logger.info(f"Playing local audio file: {local_path}")
+            data, samplerate = sf.read(local_path)
         else:
-            full_url = url
-        
-        logger.info(f"Downloading audio from: {full_url}")
-        
-        response = requests.get(full_url, timeout=10)
-        if response.status_code != 200:
-            logger.error(f"Audio download error: {response.status_code}")
-            return False
-        
-        audio_buffer = io.BytesIO(response.content)
+            if url.startswith('/'):
+                if host.startswith(('localhost', '127.0.0.1', '192.168.', '10.', '172.')):
+                    protocol = "http"
+                else:
+                    protocol = "https"
+                full_url = f"{protocol}://{host}{url}"
+            else:
+                full_url = url
 
-        logger.info("Reading audio file...")
-        import tempfile
-        data = None
-        samplerate = None
+            logger.info(f"Downloading audio from: {full_url}")
 
-        # Try audioread first (better MP3 support via system codecs)
-        try:
-            import audioread
-            audio_buffer.seek(0)
+            response = requests.get(full_url, timeout=10)
+            if response.status_code != 200:
+                logger.error(f"Audio download error: {response.status_code}")
+                return False
 
-            # Save to temp file for audioread
-            with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as tmp_file:
-                tmp_path = tmp_file.name
-                tmp_file.write(response.content)
+            audio_buffer = io.BytesIO(response.content)
 
-            with audioread.audio_open(tmp_path) as f:
-                samplerate = f.samplerate
-                channels = f.channels
-                # Read all audio data
-                audio_bytes = b''.join(f)
+            logger.info("Reading audio file...")
+            import tempfile
+            data = None
+            samplerate = None
 
-            # Convert bytes to numpy array (16-bit signed integers)
-            data = np.frombuffer(audio_bytes, dtype=np.int16)
-            # Normalize to float32 [-1, 1]
-            data = data.astype(np.float32) / 32768.0
-            if channels == 2:
-                data = data.reshape((-1, 2))
-            logger.info(f"Decoded with audioread: {len(data)} samples, {samplerate}Hz, {channels}ch")
-
-            # Clean up temp file
+            # Try audioread first (better MP3 support via system codecs)
             try:
-                os.unlink(tmp_path)
-            except:
-                pass
-        except Exception as e:
-            logger.warning(f"audioread failed, falling back to soundfile: {e}")
-            audio_buffer.seek(0)
-            data, samplerate = sf.read(audio_buffer)
+                import audioread
+                audio_buffer.seek(0)
+
+                # Save to temp file for audioread
+                with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as tmp_file:
+                    tmp_path = tmp_file.name
+                    tmp_file.write(response.content)
+
+                with audioread.audio_open(tmp_path) as f:
+                    samplerate = f.samplerate
+                    channels = f.channels
+                    # Read all audio data
+                    audio_bytes = b''.join(f)
+
+                # Convert bytes to numpy array (16-bit signed integers)
+                data = np.frombuffer(audio_bytes, dtype=np.int16)
+                # Normalize to float32 [-1, 1]
+                data = data.astype(np.float32) / 32768.0
+                if channels == 2:
+                    data = data.reshape((-1, 2))
+                logger.info(f"Decoded with audioread: {len(data)} samples, {samplerate}Hz, {channels}ch")
+
+                # Clean up temp file
+                try:
+                    os.unlink(tmp_path)
+                except:
+                    pass
+            except Exception as e:
+                logger.warning(f"audioread failed, falling back to soundfile: {e}")
+                audio_buffer.seek(0)
+                data, samplerate = sf.read(audio_buffer)
         output_device_index = get_output_device_index()
         output_sample_rate = get_output_sample_rate()
         if output_device_index is not None:
@@ -287,7 +296,7 @@ def play_audio_from_url(url, host, animation_server=None):
             samplerate = output_sample_rate
         if animation_server:
             logger.info(f"Playing with FFT analysis (samplerate: {samplerate})...")
-            return _play_with_fft_analysis(
+            result = _play_with_fft_analysis(
                 data,
                 samplerate,
                 animation_server,
@@ -301,10 +310,22 @@ def play_audio_from_url(url, host, animation_server=None):
                 sd.play(data, samplerate)
             sd.wait()
             logger.info("Audio playback completed")
-            return True
-            
+            result = True
+
+        if done_callback:
+            try:
+                done_callback()
+            except Exception as e:
+                logger.error(f"done_callback error: {e}")
+        return result
+
     except Exception as e:
         logger.exception(f"Audio playback error: {str(e)}")
+        if done_callback:
+            try:
+                done_callback()
+            except Exception:
+                pass
         return False
 
 def _play_with_fft_analysis(audio_data, samplerate, animation_server, output_device_index=None):

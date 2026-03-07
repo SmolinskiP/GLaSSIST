@@ -115,6 +115,11 @@ class FletSettingsApp:
             'HA_WAKE_WORD_NOISE_SUPPRESSION': utils.get_env('HA_WAKE_WORD_NOISE_SUPPRESSION', 'false'),
             'HA_MEDIA_PLAYER_ENTITIES': utils.get_env('HA_MEDIA_PLAYER_ENTITIES', ''),
             'HA_MEDIA_PLAYER_TARGET_VOLUME': utils.get_env('HA_MEDIA_PLAYER_TARGET_VOLUME', 0.3, float),
+            'HA_TIMER_SOUND': utils.get_env('HA_TIMER_SOUND', ''),
+            'HA_CONTINUE_ON_QUESTION': utils.get_env('HA_CONTINUE_ON_QUESTION', 'false'),
+            'CONNECTION_MODE': utils.get_env('CONNECTION_MODE', 'websocket'),
+            'DEVICE_NAME': utils.get_env('DEVICE_NAME', 'GLaSSIST'),
+            'ESPHOME_PORT': utils.get_env('ESPHOME_PORT', '6053'),
         }
     
     async def _create_ui(self, current_settings):
@@ -221,6 +226,7 @@ class FletSettingsApp:
             )
         ], expand=True)
         
+        self.page.overlay.append(self.timer_sound_picker)
         self.page.add(main_container)
         
         # Auto-refresh wake word models after all UI is created
@@ -232,6 +238,33 @@ class FletSettingsApp:
     
     async def _create_connection_tab(self, current_settings):
         """Create connection settings tab"""
+        # Connection mode selector
+        self.connection_mode_dropdown = ft.Dropdown(
+            label="Connection Mode",
+            value=current_settings.get('CONNECTION_MODE', 'websocket'),
+            options=[
+                ft.dropdown.Option("websocket", "WebSocket — GLaSSIST connects to HA"),
+                ft.dropdown.Option("esphome", "ESPHome Satellite — HA connects to GLaSSIST"),
+            ],
+            expand=True,
+        )
+
+        # ESPHome fields
+        self.device_name_field = ft.TextField(
+            label="Device Name",
+            value=current_settings.get('DEVICE_NAME', 'GLaSSIST'),
+            prefix_icon=ft.Icons.DEVICES,
+            helper_text="Name shown in Home Assistant device list",
+            expand=True,
+        )
+        self.esphome_port_field = ft.TextField(
+            label="ESPHome Port",
+            value=current_settings.get('ESPHOME_PORT', '6053'),
+            prefix_icon=ft.Icons.SETTINGS_ETHERNET,
+            helper_text="TCP port HA connects to (default: 6053)",
+            expand=True,
+        )
+
         # Input fields
         self.host_field = ft.TextField(
             label="Home Assistant Server Address",
@@ -277,11 +310,30 @@ class FletSettingsApp:
         
         return ft.Container(
             content=ft.Column([
-                # Connection settings card
+                # Connection mode card
                 ft.Card(
                     content=ft.Container(
                         content=ft.Column([
-                            ft.Text("🔗 Connection Settings", size=18, weight=ft.FontWeight.BOLD),
+                            ft.Text("🔌 Connection Mode", size=18, weight=ft.FontWeight.BOLD),
+                            ft.Text(
+                                "WebSocket: GLaSSIST connects to HA (standard mode).\n"
+                                "ESPHome Satellite: HA discovers GLaSSIST as a smart speaker device — enables timers, conversation mode.",
+                                color=ft.Colors.GREY_700,
+                                size=13,
+                            ),
+                            ft.Container(height=8),
+                            self.connection_mode_dropdown,
+                        ]),
+                        padding=20,
+                    ),
+                    elevation=2,
+                ),
+
+                # WebSocket connection settings card
+                ft.Card(
+                    content=ft.Container(
+                        content=ft.Column([
+                            ft.Text("🔗 WebSocket Settings", size=18, weight=ft.FontWeight.BOLD),
                             self.host_field,
                             self.token_field,
                             ft.Container(height=10),
@@ -324,11 +376,31 @@ class FletSettingsApp:
                         padding=20
                     ),
                     elevation=2
-                )
+                ),
+
+                # ESPHome satellite card
+                ft.Card(
+                    content=ft.Container(
+                        content=ft.Column([
+                            ft.Text("📡 ESPHome Satellite Settings", size=18, weight=ft.FontWeight.BOLD),
+                            ft.Text(
+                                "Used only when Connection Mode is set to ESPHome Satellite. "
+                                "Home Assistant will discover this device automatically via mDNS.",
+                                color=ft.Colors.GREY_700,
+                                size=13,
+                            ),
+                            ft.Container(height=10),
+                            self.device_name_field,
+                            self.esphome_port_field,
+                        ]),
+                        padding=20,
+                    ),
+                    elevation=2,
+                ),
             ]),
             padding=10
         )
-    
+
     async def _create_audio_tab(self, current_settings):
         """Create audio settings tab"""
         # Hotkey dropdown
@@ -351,7 +423,34 @@ class FletSettingsApp:
             value=current_settings['HA_SOUND_FEEDBACK'] == 'true',
             active_color=ft.Colors.GREEN_600
         )
-        
+
+        # Timer sound file picker
+        self.timer_sound_field = ft.TextField(
+            label="Timer sound file",
+            value=current_settings.get('HA_TIMER_SOUND', ''),
+            hint_text="Leave empty to use the default beep",
+            expand=True,
+            read_only=True,
+        )
+
+        def _pick_timer_sound_result(e: ft.FilePickerResultEvent):
+            if e.files:
+                self.timer_sound_field.value = e.files[0].path
+                self.timer_sound_field.update()
+
+        self.timer_sound_picker = ft.FilePicker(on_result=_pick_timer_sound_result)
+
+        def _clear_timer_sound(e):
+            self.timer_sound_field.value = ""
+            self.timer_sound_field.update()
+
+        # Continue conversation on question mark
+        self.continue_on_question_switch = ft.Switch(
+            label="Continue conversation when response ends with '?'",
+            value=current_settings.get('HA_CONTINUE_ON_QUESTION', 'false') == 'true',
+            active_color=ft.Colors.PURPLE_400,
+        )
+
         # VAD sensitivity slider
         self.vad_slider = ft.Slider(
             min=0, max=3, divisions=3,
@@ -422,13 +521,41 @@ class FletSettingsApp:
                             ft.Text(
                                 "Plays activation.wav and deactivation.wav from the 'sound' folder",
                                 color=ft.Colors.GREY_600, size=12
-                            )
+                            ),
+                            ft.Container(height=8),
+                            ft.Row([
+                                self.timer_sound_field,
+                                ft.IconButton(
+                                    icon=ft.Icons.FOLDER_OPEN,
+                                    tooltip="Browse for timer sound file",
+                                    on_click=lambda _: self.timer_sound_picker.pick_files(
+                                        dialog_title="Select timer sound",
+                                        allowed_extensions=["wav", "mp3", "flac", "ogg"],
+                                    ),
+                                ),
+                                ft.IconButton(
+                                    icon=ft.Icons.CLEAR,
+                                    tooltip="Reset to default beep",
+                                    on_click=_clear_timer_sound,
+                                ),
+                            ]),
+                            ft.Text(
+                                "Custom sound played when a timer finishes. Leave empty for the default beep.",
+                                color=ft.Colors.GREY_600, size=12
+                            ),
+                            ft.Divider(),
+                            self.continue_on_question_switch,
+                            ft.Text(
+                                "Works in both WebSocket and ESPHome mode. Workaround for integrations that don't "
+                                "send continue_conversation=1 (e.g. Claude/Anthropic).",
+                                color=ft.Colors.GREY_600, size=12
+                            ),
                         ]),
                         padding=20
                     ),
                     elevation=2
                 ),
-                
+
                 # Voice detection card
                 ft.Card(
                     content=ft.Container(
@@ -1828,7 +1955,16 @@ class FletSettingsApp:
                 
                 # Media player settings
                 'HA_MEDIA_PLAYER_ENTITIES': self.media_player_entities_field.value.strip(),
-                'HA_MEDIA_PLAYER_TARGET_VOLUME': str(round(self.target_volume_slider.value, 2))
+                'HA_MEDIA_PLAYER_TARGET_VOLUME': str(round(self.target_volume_slider.value, 2)),
+
+                # Audio / conversation
+                'HA_TIMER_SOUND': self._copy_timer_sound(self.timer_sound_field.value.strip()),
+                'HA_CONTINUE_ON_QUESTION': 'true' if self.continue_on_question_switch.value else 'false',
+
+                # Connection mode
+                'CONNECTION_MODE': self.connection_mode_dropdown.value or 'websocket',
+                'DEVICE_NAME': self.device_name_field.value.strip() or 'GLaSSIST',
+                'ESPHOME_PORT': self.esphome_port_field.value.strip() or '6053',
             }
             
             # Save to .env file
@@ -1872,10 +2008,14 @@ class FletSettingsApp:
             env_content += "# Generated by Flet-based settings dialog\n\n"
             
             env_content += "# === CONNECTION ===\n"
+            env_content += f"CONNECTION_MODE={settings['CONNECTION_MODE']}\n"
             env_content += f"HA_HOST={settings['HA_HOST']}\n"
             env_content += f"HA_TOKEN={settings['HA_TOKEN']}\n"
             if settings['HA_PIPELINE_ID']:
                 env_content += f"HA_PIPELINE_ID={settings['HA_PIPELINE_ID']}\n"
+            env_content += f"\n# === ESPHOME SATELLITE MODE ===\n"
+            env_content += f"DEVICE_NAME={settings['DEVICE_NAME']}\n"
+            env_content += f"ESPHOME_PORT={settings['ESPHOME_PORT']}\n"
             
             env_content += "\n# === ACTIVATION ===\n"
             env_content += f"HA_HOTKEY={settings['HA_HOTKEY']}\n"
@@ -1902,6 +2042,9 @@ class FletSettingsApp:
             
             env_content += "\n# === AUDIO FEEDBACK ===\n"
             env_content += f"HA_SOUND_FEEDBACK={settings['HA_SOUND_FEEDBACK']}\n"
+            if settings.get('HA_TIMER_SOUND'):
+                env_content += f"HA_TIMER_SOUND={settings['HA_TIMER_SOUND']}\n"
+            env_content += f"HA_CONTINUE_ON_QUESTION={settings['HA_CONTINUE_ON_QUESTION']}\n"
 
             env_content += "\n# === WAKE WORD DETECTION ===\n"
             env_content += f"HA_WAKE_WORD_ENABLED={settings['HA_WAKE_WORD_ENABLED']}\n"
@@ -1958,6 +2101,36 @@ class FletSettingsApp:
         self.page.update()
         if callback:
             callback()
+
+    def _copy_timer_sound(self, path: str) -> str:
+        """Copy timer sound file into GLaSSIST's sound folder. Returns new path."""
+        if not path or not os.path.isfile(path):
+            return path
+        sound_dir = os.path.join(os.path.dirname(__file__), 'sound')
+        dest = os.path.join(sound_dir, os.path.basename(path))
+        if os.path.normpath(path) == os.path.normpath(dest):
+            return dest
+        try:
+            import shutil
+            os.makedirs(sound_dir, exist_ok=True)
+            shutil.copy2(path, dest)
+            logger.info(f"Timer sound copied to: {dest}")
+            return dest
+        except Exception as e:
+            logger.error(f"Could not copy timer sound: {e}")
+            return path
+
+    def close(self, timeout=3.0):
+        """Close the settings window (called by main app on shutdown)."""
+        try:
+            if hasattr(self, 'page') and self.page:
+                self.page.window_close()
+        except Exception:
+            pass
+        # Wait for the Flet thread/subprocess to actually exit
+        thread = getattr(self, '_thread', None)
+        if thread and thread.is_alive():
+            thread.join(timeout=timeout)
 
 
 def show_flet_settings(animation_server=None):
@@ -2056,9 +2229,11 @@ def show_flet_settings(animation_server=None):
         # Run in separate daemon thread so it dies with main app
         thread = threading.Thread(target=run_flet, daemon=True)
         thread.start()
-        
+        app._thread = thread
+
         logger.info("Flet settings started in daemon thread")
-        
+        return app
+
     except Exception as e:
         logger.error(f"Failed to show Flet settings: {e}")
         raise

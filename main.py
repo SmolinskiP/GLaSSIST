@@ -20,6 +20,7 @@ from platform_utils import check_linux_dependencies, hide_window_from_taskbar, g
 from dummy_animation_server import DummyAnimationServer
 from conversation_manager import ConversationManager
 from prompt_server import PromptServer
+from satellite_protocol import SatelliteServer
 
 logger = utils.setup_logger()
 
@@ -39,6 +40,8 @@ class HAAssistApp:
         self.wake_word_detector = None
         self.conversation_manager = None
         self.prompt_server = None
+        self.satellite_server = None
+        self.connection_mode = utils.get_env("CONNECTION_MODE", "websocket").lower()
         self.animations_enabled = utils.get_env_bool("HA_ANIMATIONS_ENABLED", True)
         self.response_text_enabled = utils.get_env_bool("HA_RESPONSE_TEXT_ENABLED", True)
         self.open_settings_on_start = open_settings_on_start
@@ -74,14 +77,19 @@ class HAAssistApp:
 
     def on_wake_word_detected(self, model_name, confidence):
         """Callback when wake word is detected."""
-        logger.info(f" Wake word '{model_name}' detected (confidence: {confidence:.3f})")
-        
-        # Check if we're not already processing a command
+        logger.info(f"🎯 Wake word '{model_name}' detected (confidence: {confidence:.3f})")
+
+        if self.connection_mode == "esphome":
+            if self.satellite_server:
+                self.satellite_server.wakeup()
+            else:
+                logger.warning("ESPHome mode: satellite server not running")
+            return
+
+        # WebSocket mode: check if busy then trigger
         if self.animation_server.current_state != "hidden":
             logger.info("Application is busy, ignoring wake word")
             return
-        
-        # Trigger voice command processing
         self.on_voice_command_trigger()
 
     def start_wake_word_detection(self):
@@ -89,9 +97,9 @@ class HAAssistApp:
         if self.wake_word_detector and self.wake_word_detector.enabled:
             success = self.wake_word_detector.start_detection()
             if success:
-                logger.info(" Wake word detection started")
+                logger.info("✅ Wake word detection started")
             else:
-                logger.error(" Failed to start wake word detection")
+                logger.error("❌ Failed to start wake word detection")
             return success
         return False
     
@@ -134,7 +142,7 @@ class HAAssistApp:
     def _show_wake_word_status(self, icon=None, item=None):
         """Show wake word detection status with animation."""
         if not self.wake_word_detector:
-            print(" Wake word detector not initialized")
+            print("❌ Wake word detector not initialized")
             if self.animation_server:
                 self.animation_server.show_error("Wake word detector not initialized", duration=4.0)
             return
@@ -142,8 +150,8 @@ class HAAssistApp:
         info = self.wake_word_detector.get_model_info()
         
         status_lines = []
-        status_lines.append(f"Enabled: {' Yes' if info['enabled'] else ' No'}")
-        status_lines.append(f"Running: {' Yes' if info['is_running'] else ' No'}")
+        status_lines.append(f"Enabled: {'✅ Yes' if info['enabled'] else '❌ No'}")
+        status_lines.append(f"Running: {'✅ Yes' if info['is_running'] else '❌ No'}")
         status_lines.append(f"Models: {', '.join(info['selected_models'])}")
         status_lines.append(f"Threshold: {info['detection_threshold']}")
         
@@ -151,7 +159,7 @@ class HAAssistApp:
         for line in status_lines:
             print(line)
         print(f"VAD threshold: {info['vad_threshold']}")
-        print(f"Noise suppression: {' Yes' if info['noise_suppression'] else ' No'}")
+        print(f"Noise suppression: {'✅ Yes' if info['noise_suppression'] else '❌ No'}")
         print(f"Available models: {len(info['available_models'])}")
         print("========================\n")
         
@@ -161,7 +169,7 @@ class HAAssistApp:
             if self.animation_server:
                 self.animation_server.show_success(animation_message, duration=5.0)
             
-            print("Say your wake word to test detection!")
+            print("💡 Say your wake word to test detection!")
             
         elif info['enabled'] and not info['is_running']:
             animation_message = "Wake word enabled but not running"
@@ -169,7 +177,7 @@ class HAAssistApp:
             if self.animation_server:
                 self.animation_server.show_error(animation_message, duration=5.0)
             
-            print(" Wake word detection enabled but not running")
+            print("⚠️ Wake word detection enabled but not running")
             
         else:
             animation_message = "Wake word detection disabled"
@@ -177,15 +185,15 @@ class HAAssistApp:
             if self.animation_server:
                 self.animation_server.show_error(animation_message, duration=4.0)
             
-            print("Enable wake word detection in Settings > Models")
+            print("💡 Enable wake word detection in Settings > Models")
 
     def _restart_wake_word(self, icon=None, item=None):
         """Restart wake word detection."""
         if not self.wake_word_detector:
-            print(" Wake word detector not available")
+            print("❌ Wake word detector not available")
             return
         
-        print(" Restarting wake word detection...")
+        print("🔄 Restarting wake word detection...")
         
         # Stop current detection
         self.stop_wake_word_detection()
@@ -194,12 +202,12 @@ class HAAssistApp:
         success = self.wake_word_detector.reload_models()
         
         if success:
-            print(" Wake word detection restarted successfully")
+            print("✅ Wake word detection restarted successfully")
 
             if self.animation_server:
                 self.animation_server.show_success("Wake word restarted", duration=3.0)
         else:
-            print(" Failed to restart wake word detection")
+            print("❌ Failed to restart wake word detection")
 
             if self.animation_server:
                 self.animation_server.show_error("Wake word restart failed", duration=5.0)
@@ -241,20 +249,20 @@ class HAAssistApp:
     def _toggle_wake_word_detection(self, icon=None, item=None):
         """Pause or resume wake word detection from tray."""
         if not self.wake_word_detector or not self.wake_word_detector.enabled:
-            print(" Wake word detection not available")
+            print("❌ Wake word detection not available")
             if self.animation_server:
                 self.animation_server.show_error("Wake word disabled in settings", duration=3.0)
             return
 
         if self.wake_word_detector.is_running:
             self.stop_wake_word_detection()
-            print(" Wake word detection paused")
+            print("⏸️ Wake word detection paused")
             if self.animation_server:
                 self.animation_server.show_error("Wake word paused", duration=3.0)
         else:
             started = self.start_wake_word_detection()
             if started:
-                print(" Wake word detection resumed")
+                print("▶️ Wake word detection resumed")
                 if self.animation_server:
                     self.animation_server.show_success("Wake word resumed", duration=3.0)
         self._refresh_tray_menu()
@@ -279,14 +287,14 @@ class HAAssistApp:
                     success, message = loop.run_until_complete(test_client.test_connection())
                     
                     if success:
-                        logger.info(f"Connection test:  {message}")
-                        print(f" Connection test: {message}")
+                        logger.info(f"Connection test: ✅ {message}")
+                        print(f"✅ Connection test: {message}")
                         
                         if self.animation_server:
                             self.animation_server.show_success("Connection successful", duration=3.0)
                     else:
-                        logger.error(f"Connection test:  {message}")
-                        print(f" Connection test: {message}")
+                        logger.error(f"Connection test: ❌ {message}")
+                        print(f"❌ Connection test: {message}")
                         
                         if self.animation_server:
                             self.animation_server.show_error(f"Connection failed", duration=5.0)
@@ -297,8 +305,8 @@ class HAAssistApp:
             except Exception as e:
                 error_msg = f"Test error: {str(e)}"
                 logger.error(error_msg)
-                print(f" {error_msg}")
-                
+                print(f"❌ {error_msg}")
+
                 if self.animation_server:
                     self.animation_server.show_error("Test error", duration=5.0)
         
@@ -352,11 +360,11 @@ class HAAssistApp:
                             print("Use 'Settings' to change pipeline.")
                             
                             if len(pipelines) > 1:
-                                print("\n TIP:")
+                                print("\n💡 TIP:")
                                 print("Copy the ID of chosen pipeline and paste it in app settings.")
                                 
                     else:
-                        print("Cannot connect to Home Assistant")
+                        print("❌ Cannot connect to Home Assistant")
                         print("Check connection settings.")
                     
                 finally:
@@ -365,12 +373,12 @@ class HAAssistApp:
             except Exception as e:
                 error_msg = f"Error fetching pipelines: {str(e)}"
                 logger.error(error_msg)
-                print(f"{error_msg}")
-                
-                print(f" DEBUG: Error type: {type(e).__name__}")
+                print(f"❌ {error_msg}")
+
+                print(f"📋 DEBUG: Error type: {type(e).__name__}")
                 if hasattr(e, '__traceback__'):
                     import traceback
-                    print(" Stack trace:")
+                    print("📋 Stack trace:")
                     traceback.print_exc()
         
         threading.Thread(target=pipelines_thread, daemon=True).start()
@@ -457,11 +465,17 @@ class HAAssistApp:
     def open_settings(self, icon=None, item=None):
         """Open enhanced settings window."""
         logger.info("Opening enhanced settings...")
-        
         try:
+            if self.settings_window and hasattr(self.settings_window, "is_alive"):
+                try:
+                    if self.settings_window.is_alive():
+                        logger.info("Settings window already open")
+                        return
+                except Exception:
+                    pass
+
             from flet_settings import show_flet_settings
-            show_flet_settings(self.animation_server)
-            
+            self.settings_window = show_flet_settings(self.animation_server)            
         except ImportError as e:
             logger.error(f"improved_settings_dialog.py not found: {e}")
             
@@ -561,107 +575,117 @@ class HAAssistApp:
             if pipeline_id and not ha_client.validate_pipeline_id(pipeline_id):
                 logger.warning(f"Pipeline '{pipeline_id}' not available - using default")
                 
-            if not await ha_client.start_assist_pipeline(timeout_seconds=30):
-                logger.error("Failed to start Assist pipeline")
-                self.animation_server.change_state("error", "Cannot start voice assistant")
-                await asyncio.sleep(5)
-                self.animation_server.change_state("hidden")
-                utils.play_feedback_sound("deactivation")
-                return False
-            
-            logger.info("Assist pipeline started successfully")
-            
-            print("\n=== LISTENING ===")
-            print("(Waiting for voice, speak to microphone...)")
-            
-            async def on_audio_chunk(audio_chunk):
-                self.animation_server.send_audio_data(audio_chunk)
-                success = await ha_client.send_audio_chunk(audio_chunk)
-                if not success:
-                    logger.warning("Error sending audio chunk")
-            
-            async def on_audio_end():
-                logger.info("=== SWITCHING TO PROCESSING ===")
-                self.animation_server.change_state("processing")
-                await asyncio.sleep(0.8)
-                
-                success = await ha_client.end_audio()
-                if not success:
-                    logger.warning("Error ending audio")
-            
-            if await audio_manager.record_audio(on_audio_chunk, on_audio_end):
-                logger.info("Audio sent successfully")
-                
-                logger.info("=== RECEIVING RESPONSE ===")
-                results = await ha_client.receive_response(timeout_seconds=45)
-                
-                error_found = False
-                for result in results:
-                    if result.get('type') == 'event':
-                        event = result.get('event', {})
-                        if event.get('type') == 'error':
-                            error_code = event.get('data', {}).get('code', 'unknown')
-                            error_message = event.get('data', {}).get('message', 'Unknown error')
-                            
-                            print(f"\n=== ASSISTANT ERROR ===")
-                            utils.safe_print(f"Error: {error_code} - {error_message}")
+            continue_on_question = utils.get_env("HA_CONTINUE_ON_QUESTION", "false").lower() in ("true", "1", "yes")
+            keep_listening = True
+
+            while keep_listening:
+                keep_listening = False  # assume one turn unless question detected
+
+                if not await ha_client.start_assist_pipeline(timeout_seconds=30):
+                    logger.error("Failed to start Assist pipeline")
+                    self.animation_server.change_state("error", "Cannot start voice assistant")
+                    await asyncio.sleep(5)
+                    self.animation_server.change_state("hidden")
+                    utils.play_feedback_sound("deactivation")
+                    return False
+
+                logger.info("Assist pipeline started successfully")
+
+                print("\n=== LISTENING ===")
+                print("(Waiting for voice, speak to microphone...)")
+
+                async def on_audio_chunk(audio_chunk):
+                    self.animation_server.send_audio_data(audio_chunk)
+                    success = await ha_client.send_audio_chunk(audio_chunk)
+                    if not success:
+                        logger.warning("Error sending audio chunk")
+
+                async def on_audio_end():
+                    logger.info("=== SWITCHING TO PROCESSING ===")
+                    self.animation_server.change_state("processing")
+                    await asyncio.sleep(0.8)
+                    success = await ha_client.end_audio()
+                    if not success:
+                        logger.warning("Error ending audio")
+
+                if await audio_manager.record_audio(on_audio_chunk, on_audio_end):
+                    logger.info("Audio sent successfully")
+
+                    logger.info("=== RECEIVING RESPONSE ===")
+                    results = await ha_client.receive_response(timeout_seconds=45)
+
+                    error_found = False
+                    for result in results:
+                        if result.get('type') == 'event':
+                            event = result.get('event', {})
+                            if event.get('type') == 'error':
+                                error_code = event.get('data', {}).get('code', 'unknown')
+                                error_message = event.get('data', {}).get('message', 'Unknown error')
+
+                                print(f"\n=== ASSISTANT ERROR ===")
+                                utils.safe_print(f"Error: {error_code} - {error_message}")
+                                print("===========================\n")
+
+                                full_error_message = f"{error_code}: {error_message}"
+
+                                if error_code == "stt-stream-failed":
+                                    full_error_message = "Speech not recognized. Try again."
+                                elif error_code == "intent-failed":
+                                    full_error_message = "Command not understood. Speak clearer."
+                                elif error_code == "pipeline-not-found":
+                                    full_error_message = "Configuration error. Check settings."
+                                elif error_code == "stt-no-text-recognized":
+                                    full_error_message = "No words detected. Try again."
+
+                                self.animation_server.change_state("error", full_error_message)
+                                await asyncio.sleep(5)
+                                self.animation_server.change_state("hidden")
+                                utils.play_feedback_sound("deactivation")
+
+                                error_found = True
+                                break
+
+                    if not error_found:
+                        response = ha_client.extract_assistant_response(results)
+
+                        if response and response != "No response from assistant":
+                            print("\n=== ASSISTANT RESPONSE ===")
+                            utils.safe_print(response)
                             print("===========================\n")
-                            
-                            full_error_message = f"{error_code}: {error_message}"
-                            
-                            if error_code == "stt-stream-failed":
-                                full_error_message = "Speech not recognized. Try again."
-                            elif error_code == "intent-failed":
-                                full_error_message = "Command not understood. Speak clearer."
-                            elif error_code == "pipeline-not-found":
-                                full_error_message = "Configuration error. Check settings."
-                            elif error_code == "stt-no-text-recognized":
-                                full_error_message = "No words detected. Try again."
-                            
-                            self.animation_server.change_state("error", full_error_message)
+
+                            self.animation_server.change_state("responding")
+
+                            if self.response_text_enabled:
+                                self.animation_server.send_response_text(response)
+
+                            audio_url = ha_client.extract_audio_url(results)
+                            if audio_url:
+                                print("Playing voice response with FFT analysis...")
+                                success = utils.play_audio_from_url(audio_url, ha_client.host, self.animation_server)
+                                if not success:
+                                    logger.warning("Failed to play response audio")
+
+                            if continue_on_question and response.rstrip().endswith("?"):
+                                logger.info("Response ends with '?' - continuing conversation")
+                                self.animation_server.change_state("listening")
+                                utils.play_feedback_sound("activation")
+                                keep_listening = True
+                            else:
+                                await asyncio.sleep(3)
+                                self.animation_server.change_state("hidden")
+                                utils.play_feedback_sound("deactivation")
+                        else:
+                            print("\nNo response from assistant or processing error.")
+                            self.animation_server.change_state("error", "Assistant did not respond")
                             await asyncio.sleep(5)
                             self.animation_server.change_state("hidden")
                             utils.play_feedback_sound("deactivation")
-                            
-                            error_found = True
-                            break
-                
-                if not error_found:
-                    response = ha_client.extract_assistant_response(results)
-                    
-                    if response and response != "No response from assistant":
-                        print("\n=== ASSISTANT RESPONSE ===")
-                        utils.safe_print(response)
-                        print("===========================\n")
-                        
-                        self.animation_server.change_state("responding")
-                        
-                        # Send response text if enabled
-                        if self.response_text_enabled:
-                            self.animation_server.send_response_text(response)
-                        
-                        audio_url = ha_client.extract_audio_url(results)
-                        if audio_url:
-                            print("Playing voice response with FFT analysis...")
-                            success = utils.play_audio_from_url(audio_url, ha_client.host, self.animation_server)
-                            if not success:
-                                logger.warning("Failed to play response audio")
-                        
-                        await asyncio.sleep(3)
-                        self.animation_server.change_state("hidden")
-                        utils.play_feedback_sound("deactivation")
-                    else:
-                        print("\nNo response from assistant or processing error.")
-                        self.animation_server.change_state("error", "Assistant did not respond")
-                        await asyncio.sleep(5)
-                        self.animation_server.change_state("hidden")
-                        utils.play_feedback_sound("deactivation")
-            else:
-                logger.error("Failed to record and send audio")
-                self.animation_server.change_state("error", "Audio recording error")
-                await asyncio.sleep(5)
-                self.animation_server.change_state("hidden")
-                utils.play_feedback_sound("deactivation")
+                else:
+                    logger.error("Failed to record and send audio")
+                    self.animation_server.change_state("error", "Audio recording error")
+                    await asyncio.sleep(5)
+                    self.animation_server.change_state("hidden")
+                    utils.play_feedback_sound("deactivation")
                 
         except asyncio.TimeoutError:
             logger.error("Timeout during voice command processing")
@@ -718,16 +742,23 @@ class HAAssistApp:
 
     def on_voice_command_trigger(self):
         """Callback called when user activates voice command."""
+        if self.connection_mode == "esphome":
+            if self.satellite_server:
+                self.satellite_server.start_conversation()
+            else:
+                logger.warning("ESPHome mode: satellite server not running")
+            return
+
         if self.animation_server.current_state != "hidden":
             logger.info("Application is busy, ignoring trigger")
             return
-        
+
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        
+
         def run_async():
             loop.run_until_complete(self.process_voice_command())
-        
+
         thread = threading.Thread(target=run_async, daemon=True)
         thread.start()
     
@@ -832,40 +863,121 @@ class HAAssistApp:
         threading.Thread(target=tray_thread, daemon=True).start()
         logger.info("System tray started")
     
+    def _start_esphome_mode(self):
+        """Start ESPHome satellite server and continuous audio streaming loop."""
+        device_name = utils.get_env("DEVICE_NAME", "GLaSSIST")
+        port = utils.get_env("ESPHOME_PORT", 6053, int)
+        pipeline_id = utils.get_env("HA_PIPELINE_ID")
+
+        def on_tts_url(url: str, done_callback=None):
+            """Play TTS audio from URL, call done_callback when finished."""
+            host = utils.get_env("HA_HOST", "")
+            threading.Thread(
+                target=utils.play_audio_from_url,
+                args=(url, host, self.animation_server),
+                kwargs={"done_callback": done_callback},
+                daemon=True,
+            ).start()
+
+        def on_tts_finished():
+            logger.info("TTS playback finished")
+
+        self.satellite_server = SatelliteServer(
+            device_name=device_name,
+            animation_server=self.animation_server,
+            on_tts_url=on_tts_url,
+            on_tts_finished=on_tts_finished,
+            port=port,
+            pipeline_id=pipeline_id,
+        )
+
+        async def _run_server():
+            await self.satellite_server.start()
+            logger.info(f"ESPHome satellite server started on port {port}")
+            # Keep server running
+            while self.is_running:
+                await asyncio.sleep(1)
+            await self.satellite_server.stop()
+
+        def _server_thread():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(_run_server())
+
+        threading.Thread(target=_server_thread, daemon=True, name="esphome-server").start()
+
+        # Continuous audio streaming thread - feeds mic audio to satellite server
+        def _audio_stream_thread():
+            import time
+            logger.info("ESPHome audio stream thread started")
+            while self.is_running:
+                if not self.audio_manager or not self.audio_manager.stream:
+                    time.sleep(0.1)
+                    continue
+                try:
+                    data = self.audio_manager.stream.read(
+                        self.audio_manager.chunk_size, exception_on_overflow=False
+                    )
+                    if self.satellite_server:
+                        self.satellite_server.handle_audio(data)
+                        if self.satellite_server.is_streaming_audio and self.animation_server:
+                            self.animation_server.send_audio_data(data)
+                except Exception as e:
+                    logger.debug(f"Audio stream read error: {e}")
+                    time.sleep(0.05)
+
+        threading.Thread(target=_audio_stream_thread, daemon=True, name="esphome-audio").start()
+        logger.info(f"ESPHome mode active - device '{device_name}', port {port}")
+
     def run(self):
         """Main run method."""
         try:
             logger.info("Starting GLaSSIST Desktop...")
-            
-            # Initialize HA client and audio manager at startup
-            logger.info("Initializing HA client and audio manager...")
+            self.is_running = True
+
+            # Initialize audio manager at startup (both modes need it)
+            logger.info("Initializing audio manager...")
             try:
-                self.ha_client = HomeAssistantClient()
                 self.audio_manager = AudioManager()
                 self.audio_manager.init_audio()
-                logger.info("✅ HA client and audio manager initialized")
+                logger.info("✅ Audio manager initialized")
             except Exception as e:
-                logger.error(f"❌ Failed to initialize HA client or audio manager: {e}")
-                self.ha_client = None
+                logger.error(f"❌ Failed to initialize audio manager: {e}")
                 self.audio_manager = None
-            
+
+            if self.connection_mode == "esphome":
+                logger.info("Connection mode: ESPHome satellite")
+            else:
+                logger.info("Connection mode: WebSocket API")
+                # Initialize HA client only for WebSocket mode
+                try:
+                    self.ha_client = HomeAssistantClient()
+                    logger.info("✅ HA client initialized")
+                except Exception as e:
+                    logger.error(f"❌ Failed to initialize HA client: {e}")
+                    self.ha_client = None
+
             self.setup_animation_server()
-            
-            # Setup conversation system after HA client and audio manager are initialized
-            if self.ha_client and self.audio_manager:
+
+            # Setup conversation system (WebSocket mode only)
+            if self.connection_mode != "esphome" and self.ha_client and self.audio_manager:
                 if self.setup_conversation_manager():
                     # Pass app reference to conversation manager
                     self.conversation_manager._app_instance = self
                     self.setup_prompt_server()
                 else:
                     logger.warning("Failed to setup conversation manager")
-            else:
+            elif self.connection_mode != "esphome":
                 logger.warning("HA client or audio manager not initialized - conversation features disabled")
             
+            # Start ESPHome satellite server after animation server is ready
+            if self.connection_mode == "esphome" and self.audio_manager:
+                self._start_esphome_mode()
+
             if not self.setup_webview():
                 logger.error("Failed to configure interface")
                 return
-            
+
             self.setup_hotkey()
             self.create_tray_icon()
             self.run_tray()
@@ -920,9 +1032,38 @@ class HAAssistApp:
             
         logger.info("Cleaning up resources...")
         self._cleanup_done = True
-        
+        self.is_running = False
+
+        # Close settings window if open
+        if self.settings_window:
+            try:
+                closed = False
+                try:
+                    closed = self.settings_window.close(timeout=2.0)
+                except TypeError:
+                    # Backward compatibility for legacy close() signatures.
+                    self.settings_window.close()
+                    closed = True
+
+                if closed:
+                    logger.info("Settings window closed")
+                else:
+                    logger.warning("Settings window close request timed out")
+            except Exception as e:
+                logger.debug(f"Error closing settings window: {e}")
+            self.settings_window = None
         # Stop wake word detection first
         self.stop_wake_word_detection()
+
+        # Stop ESPHome satellite server
+        if self.satellite_server:
+            try:
+                loop = asyncio.new_event_loop()
+                loop.run_until_complete(self.satellite_server.stop())
+                loop.close()
+                logger.info("ESPHome satellite server stopped")
+            except Exception as e:
+                logger.error(f"Error stopping satellite server: {e}")
         
         # Stop prompt server
         if hasattr(self, 'prompt_server') and self.prompt_server:
@@ -1023,15 +1164,18 @@ class HAAssistApp:
 def validate_configuration():
     """Validate application configuration and return list of issues."""
     issues = []
-    
-    host = utils.get_env("HA_HOST")
-    token = utils.get_env("HA_TOKEN")
-    
-    if not host:
-        issues.append("Missing Home Assistant server address (HA_HOST)")
-    
-    if not token:
-        issues.append("Missing access token (HA_TOKEN)")
+
+    connection_mode = utils.get_env("CONNECTION_MODE", "websocket").lower()
+
+    if connection_mode == "websocket":
+        host = utils.get_env("HA_HOST")
+        token = utils.get_env("HA_TOKEN")
+
+        if not host:
+            issues.append("Missing Home Assistant server address (HA_HOST)")
+
+        if not token:
+            issues.append("Missing access token (HA_TOKEN)")
     
     sample_rate = utils.get_env("HA_SAMPLE_RATE", 16000, int)
     if sample_rate not in [8000, 16000, 22050, 44100, 48000]:
@@ -1108,7 +1252,7 @@ def main():
     for path in possible_paths:
         if os.path.exists(path):
             abs_path = os.path.abspath(path)
-            print(f"USING .ENV FILE: {abs_path}")
+            print(f"📄 USING .ENV FILE: {abs_path}")
             env_found = True
             
             with open(abs_path, 'r', encoding='utf-8') as f:
@@ -1128,25 +1272,25 @@ def main():
             break
     
     if not env_found:
-        print("NO .ENV FILE - using default settings")
+        print("⚠️  NO .ENV FILE - using default settings")
         print("Run application and go to 'Settings' to configure connection.")
         print("-" * 50)
     
-    print("CHECKING CONFIGURATION...")
+    print("🔍 CHECKING CONFIGURATION...")
     config_issues = validate_configuration()
     
     if config_issues:
-        print("  CONFIGURATION ISSUES FOUND:")
+        print("⚠️  CONFIGURATION ISSUES FOUND:")
         for issue in config_issues:
             print(f"   • {issue}")
         print("\nApplication may not work correctly.")
         print("Go to 'Settings' to fix issues.")
     else:
-        print(" Configuration looks correct")
+        print("✅ Configuration looks correct")
     
     print("-" * 50)
     
-    print(" KEY SETTINGS:")
+    print("📋 KEY SETTINGS:")
     important_settings = {
         'HA_HOST': utils.get_env('HA_HOST', 'MISSING'),
         'HA_PIPELINE_ID': utils.get_env('HA_PIPELINE_ID', '(default)'),
@@ -1181,7 +1325,9 @@ def main():
 
     app = HAAssistApp(open_settings_on_start=args.settings)
     app.run()
+    os._exit(0)
 
 
 if __name__ == "__main__":
     main()
+
