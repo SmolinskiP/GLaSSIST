@@ -339,6 +339,7 @@ The app plays sounds from `sound/` directory:
 
 ### Interface & Controls
 - `HA_HOTKEY` - Activation hotkey (ctrl+shift+h, ctrl+alt+h, alt+space, etc.)
+- `HA_AUTO_SHOW_WINDOW_ON_LISTEN` - If hidden, show window while listening and re-hide after interaction (true/false)
 - `HA_SOUND_FEEDBACK` - Activation sounds (true/false)
 - `HA_RESPONSE_TEXT_ENABLED` - Show assistant responses as text overlay (true/false)
 - `HA_ANIMATIONS_ENABLED` - Enable visual animations with Three.js (true/false)
@@ -388,6 +389,11 @@ The app plays sounds from `sound/` directory:
    ```bash
    python3 --version
    ```
+
+### Global hotkey on Linux (non-root)
+If you see: `You must be root to use this library on linux` for the `keyboard` backend, this is expected on many systems.
+GLaSSIST automatically falls back to `pynput` global hotkeys in non-root sessions (especially useful on X11).
+On Wayland, global hotkeys may still depend on compositor/session policy; tray actions and wake word remain available.
 
 **Note**: Python 3.13+ is not supported due to multiple dependency incompatibilities (tflite-runtime, numpy versions). Use Python 3.11 for best results.
 

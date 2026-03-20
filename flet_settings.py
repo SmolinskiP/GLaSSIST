@@ -8,12 +8,72 @@ import os
 import threading
 import webbrowser
 import subprocess
+import socket
+import time
 import platform as platform_module
 import utils
 from client import HomeAssistantClient
 from audio import AudioManager
 
 logger = utils.setup_logger()
+
+def _ensure_typing_extensions_sentinel():
+    """Ensure typing_extensions provides Sentinel (required by modern pydantic_core)."""
+    try:
+        from typing_extensions import Sentinel  # noqa: F401
+        return True
+    except Exception:
+        logger.warning("typing_extensions missing Sentinel; attempting self-heal upgrade")
+        try:
+            import sys
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "--upgrade", "typing_extensions>=4.14.0,<5"],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            from typing_extensions import Sentinel  # noqa: F401
+            logger.info("typing_extensions upgraded successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to upgrade typing_extensions automatically: {e}")
+            return False
+
+
+def _pick_free_local_port() -> int:
+    """Pick an available localhost TCP port."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return int(s.getsockname()[1])
+
+
+def _wait_for_port(host: str, port: int, timeout_sec: float = 8.0) -> bool:
+    """Wait until host:port accepts TCP connections."""
+    deadline = time.time() + timeout_sec
+    while time.time() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=0.4):
+                return True
+        except OSError:
+            time.sleep(0.12)
+    return False
+
+
+def _shutdown_loop_cleanly(loop: asyncio.AbstractEventLoop) -> None:
+    """Best-effort loop shutdown to avoid pending-task warnings."""
+    try:
+        pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+        for task in pending:
+            task.cancel()
+        if pending:
+            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+        loop.run_until_complete(loop.shutdown_asyncgens())
+    except Exception:
+        pass
+    finally:
+        loop.close()
 
 class FletSettingsApp:
     def __init__(self, animation_server=None):
@@ -120,6 +180,17 @@ class FletSettingsApp:
             'CONNECTION_MODE': utils.get_env('CONNECTION_MODE', 'websocket'),
             'DEVICE_NAME': utils.get_env('DEVICE_NAME', 'GLaSSIST'),
             'ESPHOME_PORT': utils.get_env('ESPHOME_PORT', '6053'),
+            'HA_ENABLE_LINUX_TRAY': utils.get_env('HA_ENABLE_LINUX_TRAY', 'true'),
+            'HA_ENABLE_LINUX_TRAY_WAYLAND': utils.get_env('HA_ENABLE_LINUX_TRAY_WAYLAND', 'true'),
+            'HA_WEBVIEW_GUI': utils.get_env('HA_WEBVIEW_GUI', 'qt'),
+            'HA_ALLOW_GTK_TRAY': utils.get_env('HA_ALLOW_GTK_TRAY', 'false'),
+            'HA_FORCE_OPAQUE_WINDOW': utils.get_env('HA_FORCE_OPAQUE_WINDOW', 'true'),
+            'WINDOW_TRANSPARENT': utils.get_env('WINDOW_TRANSPARENT', 'false'),
+            'WINDOW_FRAMELESS': utils.get_env('WINDOW_FRAMELESS', 'false'),
+            'HA_ALLOW_LINUX_TRAY_WITH_WEBVIEW': utils.get_env('HA_ALLOW_LINUX_TRAY_WITH_WEBVIEW', 'false'),
+            'HA_HIDE_FROM_TASKBAR': utils.get_env('HA_HIDE_FROM_TASKBAR', 'true'),
+            'HA_SETTINGS_USE_BROWSER': utils.get_env('HA_SETTINGS_USE_BROWSER', 'true'),
+            'HA_AUTO_SHOW_WINDOW_ON_LISTEN': utils.get_env('HA_AUTO_SHOW_WINDOW_ON_LISTEN', 'true'),
         }
     
     async def _create_ui(self, current_settings):
@@ -172,6 +243,11 @@ class FletSettingsApp:
                     text="Media Players",
                     icon=ft.Icons.VOLUME_UP,
                     content=await self._create_media_players_tab(current_settings)
+                ),
+                ft.Tab(
+                    text="Desktop",
+                    icon=ft.Icons.DESKTOP_WINDOWS,
+                    content=await self._create_desktop_tab(current_settings)
                 ),
                 ft.Tab(
                     text="Advanced",
@@ -1047,6 +1123,129 @@ class FletSettingsApp:
             ]),
             padding=10
         )
+
+    async def _create_desktop_tab(self, current_settings):
+        """Create Linux desktop integration settings tab."""
+        self.enable_linux_tray_switch = ft.Switch(
+            label="Enable system tray integration",
+            value=current_settings.get('HA_ENABLE_LINUX_TRAY', 'true') == 'true',
+            active_color=ft.Colors.GREEN_600
+        )
+        self.enable_linux_tray_wayland_switch = ft.Switch(
+            label="Allow tray integration on Wayland",
+            value=current_settings.get('HA_ENABLE_LINUX_TRAY_WAYLAND', 'true') == 'true',
+            active_color=ft.Colors.GREEN_600
+        )
+        self.hide_from_taskbar_switch = ft.Switch(
+            label="Hide assistant window from taskbar",
+            value=current_settings.get('HA_HIDE_FROM_TASKBAR', 'true') == 'true',
+            active_color=ft.Colors.BLUE_600
+        )
+        self.auto_show_window_on_listen_switch = ft.Switch(
+            label="Auto-show window when listening, then re-hide when done",
+            value=current_settings.get('HA_AUTO_SHOW_WINDOW_ON_LISTEN', 'true') == 'true',
+            active_color=ft.Colors.BLUE_600
+        )
+        self.settings_use_browser_switch = ft.Switch(
+            label="Open settings in web browser (Linux stability mode)",
+            value=current_settings.get('HA_SETTINGS_USE_BROWSER', 'true') == 'true',
+            active_color=ft.Colors.BLUE_600
+        )
+        self.force_opaque_window_switch = ft.Switch(
+            label="Force opaque window (avoid transparent compositor issues)",
+            value=current_settings.get('HA_FORCE_OPAQUE_WINDOW', 'true') == 'true',
+            active_color=ft.Colors.INDIGO_600
+        )
+        self.window_transparent_switch = ft.Switch(
+            label="Transparent window",
+            value=current_settings.get('WINDOW_TRANSPARENT', 'false') == 'true',
+            active_color=ft.Colors.INDIGO_600
+        )
+        self.window_frameless_switch = ft.Switch(
+            label="Frameless window",
+            value=current_settings.get('WINDOW_FRAMELESS', 'false') == 'true',
+            active_color=ft.Colors.INDIGO_600
+        )
+        self.webview_gui_dropdown = ft.Dropdown(
+            label="Webview backend",
+            value=str(current_settings.get('HA_WEBVIEW_GUI', 'qt')).strip().lower() or "qt",
+            options=[
+                ft.dropdown.Option("qt"),
+                ft.dropdown.Option("gtk"),
+                ft.dropdown.Option("edgechromium"),
+            ],
+            helper_text="Linux recommended: qt. Changes apply after restart.",
+            expand=True
+        )
+        self.allow_gtk_tray_switch = ft.Switch(
+            label="Allow GTK tray path (expert)",
+            value=current_settings.get('HA_ALLOW_GTK_TRAY', 'false') == 'true',
+            active_color=ft.Colors.ORANGE_600
+        )
+        self.allow_linux_tray_with_webview_switch = ft.Switch(
+            label="Allow Linux tray with webview together (expert)",
+            value=current_settings.get('HA_ALLOW_LINUX_TRAY_WITH_WEBVIEW', 'false') == 'true',
+            active_color=ft.Colors.ORANGE_600
+        )
+
+        return ft.Container(
+            content=ft.Column([
+                ft.Card(
+                    content=ft.Container(
+                        content=ft.Column([
+                            ft.Text("🖥️ Desktop Integration", size=18, weight=ft.FontWeight.BOLD),
+                            ft.Text(
+                                "These options control tray behavior, window manager integration, and Linux rendering stability.",
+                                color=ft.Colors.GREY_700, size=13
+                            ),
+                            ft.Container(height=8),
+                            self.enable_linux_tray_switch,
+                            self.enable_linux_tray_wayland_switch,
+                            self.hide_from_taskbar_switch,
+                            self.auto_show_window_on_listen_switch,
+                            self.settings_use_browser_switch,
+                            self.webview_gui_dropdown,
+                            ft.Text("Most of these settings require restarting GLaSSIST.",
+                                    color=ft.Colors.BLUE_700, size=12),
+                        ]),
+                        padding=20
+                    ),
+                    elevation=2
+                ),
+                ft.Card(
+                    content=ft.Container(
+                        content=ft.Column([
+                            ft.Text("🪟 Window Behavior", size=18, weight=ft.FontWeight.BOLD),
+                            self.force_opaque_window_switch,
+                            self.window_transparent_switch,
+                            self.window_frameless_switch,
+                            ft.Text(
+                                "Transparent + frameless can be unstable on some Wayland/KDE setups.",
+                                color=ft.Colors.GREY_600, size=12
+                            )
+                        ]),
+                        padding=20
+                    ),
+                    elevation=2
+                ),
+                ft.Card(
+                    content=ft.Container(
+                        content=ft.Column([
+                            ft.Text("⚠️ Expert Overrides", size=18, weight=ft.FontWeight.BOLD),
+                            self.allow_gtk_tray_switch,
+                            self.allow_linux_tray_with_webview_switch,
+                            ft.Text(
+                                "Leave these off unless you are troubleshooting. They can cause tray/UI instability.",
+                                color=ft.Colors.ORANGE_700, size=12
+                            )
+                        ]),
+                        padding=20
+                    ),
+                    elevation=2
+                ),
+            ]),
+            padding=10
+        )
     
     async def _create_about_tab(self):
         """Create about tab"""
@@ -1193,7 +1392,11 @@ class FletSettingsApp:
                         else:
                             return False, message, []
                     finally:
-                        loop.close()
+                        try:
+                            loop.run_until_complete(test_client.close())
+                        except Exception:
+                            pass
+                        _shutdown_loop_cleanly(loop)
                         
                 except Exception as ex:
                     return False, str(ex), []
@@ -1677,7 +1880,11 @@ class FletSettingsApp:
                         return True, pipelines
                     return False, []
                 finally:
-                    loop.close()
+                    try:
+                        loop.run_until_complete(test_client.close())
+                    except Exception:
+                        pass
+                    _shutdown_loop_cleanly(loop)
             
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -1965,6 +2172,19 @@ class FletSettingsApp:
                 'CONNECTION_MODE': self.connection_mode_dropdown.value or 'websocket',
                 'DEVICE_NAME': self.device_name_field.value.strip() or 'GLaSSIST',
                 'ESPHOME_PORT': self.esphome_port_field.value.strip() or '6053',
+
+                # Linux desktop/runtime behavior.
+                'HA_ENABLE_LINUX_TRAY': 'true' if self.enable_linux_tray_switch.value else 'false',
+                'HA_ENABLE_LINUX_TRAY_WAYLAND': 'true' if self.enable_linux_tray_wayland_switch.value else 'false',
+                'HA_WEBVIEW_GUI': (self.webview_gui_dropdown.value or 'qt').strip().lower(),
+                'HA_ALLOW_GTK_TRAY': 'true' if self.allow_gtk_tray_switch.value else 'false',
+                'HA_FORCE_OPAQUE_WINDOW': 'true' if self.force_opaque_window_switch.value else 'false',
+                'WINDOW_TRANSPARENT': 'true' if self.window_transparent_switch.value else 'false',
+                'WINDOW_FRAMELESS': 'true' if self.window_frameless_switch.value else 'false',
+                'HA_ALLOW_LINUX_TRAY_WITH_WEBVIEW': 'true' if self.allow_linux_tray_with_webview_switch.value else 'false',
+                'HA_HIDE_FROM_TASKBAR': 'true' if self.hide_from_taskbar_switch.value else 'false',
+                'HA_SETTINGS_USE_BROWSER': 'true' if self.settings_use_browser_switch.value else 'false',
+                'HA_AUTO_SHOW_WINDOW_ON_LISTEN': 'true' if self.auto_show_window_on_listen_switch.value else 'false',
             }
             
             # Save to .env file
@@ -2056,6 +2276,19 @@ class FletSettingsApp:
             env_content += "\n# === MEDIA PLAYER VOLUME MANAGEMENT ===\n"
             env_content += f"HA_MEDIA_PLAYER_ENTITIES={settings['HA_MEDIA_PLAYER_ENTITIES']}\n"
             env_content += f"HA_MEDIA_PLAYER_TARGET_VOLUME={settings['HA_MEDIA_PLAYER_TARGET_VOLUME']}\n"
+
+            env_content += "\n# === LINUX TRAY / WEBVIEW (runtime) ===\n"
+            env_content += f"HA_ENABLE_LINUX_TRAY={settings.get('HA_ENABLE_LINUX_TRAY', 'true')}\n"
+            env_content += f"HA_ENABLE_LINUX_TRAY_WAYLAND={settings.get('HA_ENABLE_LINUX_TRAY_WAYLAND', 'true')}\n"
+            env_content += f"HA_WEBVIEW_GUI={settings.get('HA_WEBVIEW_GUI', 'qt')}\n"
+            env_content += f"HA_ALLOW_GTK_TRAY={settings.get('HA_ALLOW_GTK_TRAY', 'false')}\n"
+            env_content += f"HA_FORCE_OPAQUE_WINDOW={settings.get('HA_FORCE_OPAQUE_WINDOW', 'true')}\n"
+            env_content += f"WINDOW_TRANSPARENT={settings.get('WINDOW_TRANSPARENT', 'false')}\n"
+            env_content += f"WINDOW_FRAMELESS={settings.get('WINDOW_FRAMELESS', 'false')}\n"
+            env_content += f"HA_ALLOW_LINUX_TRAY_WITH_WEBVIEW={settings.get('HA_ALLOW_LINUX_TRAY_WITH_WEBVIEW', 'false')}\n"
+            env_content += f"HA_HIDE_FROM_TASKBAR={settings.get('HA_HIDE_FROM_TASKBAR', 'true')}\n"
+            env_content += f"HA_SETTINGS_USE_BROWSER={settings.get('HA_SETTINGS_USE_BROWSER', 'true')}\n"
+            env_content += f"HA_AUTO_SHOW_WINDOW_ON_LISTEN={settings.get('HA_AUTO_SHOW_WINDOW_ON_LISTEN', 'true')}\n"
             
             env_content += "\n# === DEBUG ===\n"
             env_content += f"DEBUG={settings['DEBUG']}\n"
@@ -2142,6 +2375,10 @@ def show_flet_settings(animation_server=None):
         
         def run_flet():
             try:
+                if not _ensure_typing_extensions_sentinel():
+                    logger.error("Settings cannot start: typing_extensions Sentinel is unavailable")
+                    return
+
                 # Set UTF-8 encoding for Cyrillic support
                 import sys
                 import os
@@ -2184,16 +2421,55 @@ def show_flet_settings(animation_server=None):
                 
                 # Temporarily replace signal handler during Flet startup
                 signal.signal = dummy_signal
+                selected_view = ft.FLET_APP
+                original_display_url_prefix = None
                 
                 try:
                     logger.info("Starting Flet app...")
-                    # Try with explicit parameters for better compatibility
-                    ft.app(
-                        target=app.main, 
-                        view=ft.FLET_APP,
-                        assets_dir=None,  # Disable assets to avoid path issues
-                        upload_dir=None   # Disable uploads to avoid path issues  
+                    # Linux desktop Flet binary can crash on close in some GTK/Wayland stacks.
+                    # Use browser mode by default on Linux for stability.
+                    force_browser_settings = (
+                        platform_module.system() == "Linux" and
+                        utils.get_env("HA_SETTINGS_USE_BROWSER", True, bool)
                     )
+                    selected_view = ft.WEB_BROWSER if force_browser_settings else ft.FLET_APP
+                    logger.info(f"Flet settings view mode: {'WEB_BROWSER' if selected_view == ft.WEB_BROWSER else 'FLET_APP'}")
+
+                    app_kwargs = dict(
+                        target=app.main,
+                        view=selected_view,
+                        assets_dir=None,  # Disable assets to avoid path issues
+                        upload_dir=None   # Disable uploads to avoid path issues
+                    )
+
+                    # WEB_BROWSER can race browser-open before server is ready.
+                    # Use fixed localhost + port, suppress Flet auto-open, and open only when reachable.
+                    original_display_url_prefix = os.environ.get("FLET_DISPLAY_URL_PREFIX")
+                    if selected_view == ft.WEB_BROWSER:
+                        browser_host = "127.0.0.1"
+                        browser_port = int(utils.get_env("HA_SETTINGS_BROWSER_PORT", 0, int))
+                        if browser_port <= 0:
+                            browser_port = _pick_free_local_port()
+                        browser_url = f"http://{browser_host}:{browser_port}"
+                        os.environ["FLET_DISPLAY_URL_PREFIX"] = "GLASSIST_SETTINGS_URL"
+                        app_kwargs["host"] = browser_host
+                        app_kwargs["port"] = browser_port
+                        logger.info(f"Flet settings browser URL: {browser_url}")
+
+                        def open_browser_when_ready():
+                            if _wait_for_port(browser_host, browser_port, timeout_sec=10.0):
+                                try:
+                                    opened = webbrowser.open_new_tab(browser_url)
+                                    logger.info(f"Opened settings browser tab: ok={opened}")
+                                except Exception as browser_error:
+                                    logger.error(f"Failed to open settings browser tab: {browser_error}")
+                            else:
+                                logger.error(f"Settings web server not reachable at {browser_url}")
+
+                        threading.Thread(target=open_browser_when_ready, daemon=True).start()
+
+                    # Try with explicit parameters for better compatibility
+                    ft.app(**app_kwargs)
                     logger.info("Flet app started successfully")
                 except Exception as flet_error:
                     logger.error(f"Flet app failed to start: {flet_error}")
@@ -2210,6 +2486,11 @@ def show_flet_settings(animation_server=None):
                         logger.error(f"Web view fallback also failed: {web_error}")
                         raise flet_error  # Re-raise original error
                 finally:
+                    if selected_view == ft.WEB_BROWSER:
+                        if original_display_url_prefix is None:
+                            os.environ.pop("FLET_DISPLAY_URL_PREFIX", None)
+                        else:
+                            os.environ["FLET_DISPLAY_URL_PREFIX"] = original_display_url_prefix
                     # Restore original signal handler
                     signal.signal = original_signal
                     # Restore original working directory

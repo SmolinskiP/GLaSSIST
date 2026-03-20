@@ -24,6 +24,25 @@ from satellite_protocol import SatelliteServer
 
 logger = utils.setup_logger()
 
+class _QtTrayBridge:
+    """Signal bridge to run tray setup on Qt application thread."""
+    def __init__(self, app_instance):
+        from qtpy.QtCore import QObject, Signal, Slot
+
+        class _BridgeObject(QObject):
+            trigger = Signal()
+
+            def __init__(self, outer):
+                super().__init__()
+                self.outer = outer
+                self.trigger.connect(self._run)
+
+            @Slot()
+            def _run(self):
+                self.outer._setup_qt_tray_icon(internal_call=True)
+
+        self.obj = _BridgeObject(app_instance)
+
 class HAAssistApp:
     """Main application class with enhanced features."""
 
@@ -36,7 +55,16 @@ class HAAssistApp:
         self.settings_window = None
         self.is_running = False
         self.tray_icon = None
+        self.qt_tray_icon = None
+        self.qt_tray_menu = None
+        self.qt_tray_actions = []
+        self.qt_tray_retry_timer = None
+        self.qt_tray_bridge = None
         self.window_visible = True
+        self._window_visibility_lock = threading.Lock()
+        self._auto_window_restore_pending = False
+        self.hotkey_backend = None
+        self._pynput_hotkeys = None
         self.wake_word_detector = None
         self.conversation_manager = None
         self.prompt_server = None
@@ -45,6 +73,7 @@ class HAAssistApp:
         self.animations_enabled = utils.get_env_bool("HA_ANIMATIONS_ENABLED", True)
         self.response_text_enabled = utils.get_env_bool("HA_RESPONSE_TEXT_ENABLED", True)
         self.open_settings_on_start = open_settings_on_start
+        self.webview_gui = str(utils.get_env("HA_WEBVIEW_GUI", "gtk" if platform.system() == "Linux" else "")).strip().lower()
 
         # Platform detection
         self.is_linux = platform.system() == "Linux"
@@ -110,10 +139,24 @@ class HAAssistApp:
             logger.info("Wake word detection stopped")
 
     def create_tray_icon(self):
-        if platform.system() == "Linux":
-            logger.info("System tray disabled on Linux - use hotkey ctrl+shift+h")
-            return
         """Create system tray icon with cross-platform support."""
+        if platform.system() == "Linux":
+            session_type = os.environ.get("XDG_SESSION_TYPE", "").lower()
+            default_linux_tray = session_type == "x11"
+            linux_tray_enabled = utils.get_env("HA_ENABLE_LINUX_TRAY", default_linux_tray, bool)
+            allow_wayland_tray = utils.get_env("HA_ENABLE_LINUX_TRAY_WAYLAND", False, bool)
+
+            if not linux_tray_enabled:
+                logger.info("System tray disabled on Linux (set HA_ENABLE_LINUX_TRAY=true to enable)")
+                return
+
+            if session_type == "wayland" and not allow_wayland_tray:
+                logger.warning(
+                    "Linux tray disabled on Wayland by default to avoid desktop instability. "
+                    "Set HA_ENABLE_LINUX_TRAY_WAYLAND=true to force-enable."
+                )
+                return
+
         icon_path = get_icon_path()
         
         if icon_path and os.path.exists(icon_path):
@@ -130,14 +173,17 @@ class HAAssistApp:
         
         menu = self._build_tray_menu()
         
-        self.tray_icon = pystray.Icon(
-            "GLaSSIST",
-            image,
-            "GLaSSIST Desktop",
-            menu
-        )
-        
-        logger.info("System tray icon created")
+        try:
+            self.tray_icon = pystray.Icon(
+                "GLaSSIST",
+                image,
+                "GLaSSIST Desktop",
+                menu
+            )
+            logger.info("System tray icon created")
+        except Exception as e:
+            self.tray_icon = None
+            logger.error(f"Failed to create system tray icon: {e}")
 
     def _show_wake_word_status(self, icon=None, item=None):
         """Show wake word detection status with animation."""
@@ -226,6 +272,7 @@ class HAAssistApp:
             item('🎤 Activate voice (%s)' % utils.get_env("HA_HOTKEY", "ctrl+shift+h"),
                  self.trigger_voice_command),
             pystray.Menu.SEPARATOR,
+            item('🪟 Show/Hide window', self.toggle_window),
             item(self._get_toggle_label(), self._toggle_wake_word_detection),
             item('🎯 Wake word status', self._show_wake_word_status),
             item('🔄 Restart wake word', self._restart_wake_word),
@@ -444,18 +491,40 @@ class HAAssistApp:
         window_width = utils.get_env("WINDOW_WIDTH", 400, int)
         window_height = utils.get_env("WINDOW_HEIGHT", 400, int)
         
+        # Linux-safe defaults make window management much easier on KDE/GNOME.
+        default_on_top = False if self.is_linux else True
+        default_frameless = False if self.is_linux else True
+        default_transparent = False if self.is_linux else True
+        default_resizable = True if self.is_linux else False
+        force_opaque_window = utils.get_env("HA_FORCE_OPAQUE_WINDOW", self.is_linux, bool)
+
+        transparent_window = utils.get_env("WINDOW_TRANSPARENT", default_transparent, bool)
+        frameless_window = utils.get_env("WINDOW_FRAMELESS", default_frameless, bool)
+
+        # pywebview Qt backend can crash with frameless on Linux/Wayland+KDE.
+        # Keep a safe fallback at runtime even if .env has it enabled.
+        if self.is_linux and self.webview_gui == "qt" and frameless_window:
+            logger.warning(
+                "WINDOW_FRAMELESS=true is not stable with Linux+Qt webview. "
+                "Forcing frameless off for this session."
+            )
+            frameless_window = False
+
+        if self.is_linux and force_opaque_window:
+            transparent_window = False
+
         self.window = webview.create_window(
             'GLaSSIST',
             index_path,
             width=window_width,
             height=window_height,
-            resizable=False,
+            resizable=utils.get_env("WINDOW_RESIZABLE", default_resizable, bool),
             fullscreen=False,
             minimized=False,
-            on_top=True,
+            on_top=utils.get_env("WINDOW_ON_TOP", default_on_top, bool),
             shadow=False,
-            frameless=True,
-            transparent=True,
+            frameless=frameless_window,
+            transparent=transparent_window,
             y=10
         )
         
@@ -520,6 +589,13 @@ class HAAssistApp:
         target_volume = None
         
         try:
+            # Timing controls (shorter defaults for snappier desktop UX)
+            error_display_seconds = utils.get_env("HA_ERROR_DISPLAY_SECONDS", 2.0, float)
+            response_hide_delay_seconds = utils.get_env("HA_RESPONSE_HIDE_DELAY_SECONDS", 0.8, float)
+            audio_end_settle_seconds = utils.get_env("HA_AUDIO_END_SETTLE_SECONDS", 0.25, float)
+            pipeline_start_timeout_seconds = utils.get_env("HA_PIPELINE_START_TIMEOUT_SECONDS", 20, int)
+            receive_response_timeout_seconds = utils.get_env("HA_RECEIVE_RESPONSE_TIMEOUT_SECONDS", 25, int)
+
             # Load media player configuration
             entities_config = utils.get_env("HA_MEDIA_PLAYER_ENTITIES", "")
             if entities_config:
@@ -544,7 +620,7 @@ class HAAssistApp:
             if not await ha_client.connect():
                 logger.error("Failed to connect to Home Assistant")
                 self.animation_server.change_state("error", "Cannot connect to Home Assistant")
-                await asyncio.sleep(5)
+                await asyncio.sleep(error_display_seconds)
                 self.animation_server.change_state("hidden")
                 utils.play_feedback_sound("deactivation")
                 return False
@@ -581,10 +657,10 @@ class HAAssistApp:
             while keep_listening:
                 keep_listening = False  # assume one turn unless question detected
 
-                if not await ha_client.start_assist_pipeline(timeout_seconds=30):
+                if not await ha_client.start_assist_pipeline(timeout_seconds=pipeline_start_timeout_seconds):
                     logger.error("Failed to start Assist pipeline")
                     self.animation_server.change_state("error", "Cannot start voice assistant")
-                    await asyncio.sleep(5)
+                    await asyncio.sleep(error_display_seconds)
                     self.animation_server.change_state("hidden")
                     utils.play_feedback_sound("deactivation")
                     return False
@@ -603,7 +679,7 @@ class HAAssistApp:
                 async def on_audio_end():
                     logger.info("=== SWITCHING TO PROCESSING ===")
                     self.animation_server.change_state("processing")
-                    await asyncio.sleep(0.8)
+                    await asyncio.sleep(audio_end_settle_seconds)
                     success = await ha_client.end_audio()
                     if not success:
                         logger.warning("Error ending audio")
@@ -612,7 +688,7 @@ class HAAssistApp:
                     logger.info("Audio sent successfully")
 
                     logger.info("=== RECEIVING RESPONSE ===")
-                    results = await ha_client.receive_response(timeout_seconds=45)
+                    results = await ha_client.receive_response(timeout_seconds=receive_response_timeout_seconds)
 
                     error_found = False
                     for result in results:
@@ -638,7 +714,7 @@ class HAAssistApp:
                                     full_error_message = "No words detected. Try again."
 
                                 self.animation_server.change_state("error", full_error_message)
-                                await asyncio.sleep(5)
+                                await asyncio.sleep(error_display_seconds)
                                 self.animation_server.change_state("hidden")
                                 utils.play_feedback_sound("deactivation")
 
@@ -671,26 +747,26 @@ class HAAssistApp:
                                 utils.play_feedback_sound("activation")
                                 keep_listening = True
                             else:
-                                await asyncio.sleep(3)
+                                await asyncio.sleep(response_hide_delay_seconds)
                                 self.animation_server.change_state("hidden")
                                 utils.play_feedback_sound("deactivation")
                         else:
                             print("\nNo response from assistant or processing error.")
                             self.animation_server.change_state("error", "Assistant did not respond")
-                            await asyncio.sleep(5)
+                            await asyncio.sleep(error_display_seconds)
                             self.animation_server.change_state("hidden")
                             utils.play_feedback_sound("deactivation")
                 else:
                     logger.error("Failed to record and send audio")
                     self.animation_server.change_state("error", "Audio recording error")
-                    await asyncio.sleep(5)
+                    await asyncio.sleep(error_display_seconds)
                     self.animation_server.change_state("hidden")
                     utils.play_feedback_sound("deactivation")
                 
         except asyncio.TimeoutError:
             logger.error("Timeout during voice command processing")
             self.animation_server.change_state("error", "Timeout - assistant not responding")
-            await asyncio.sleep(5)
+            await asyncio.sleep(error_display_seconds)
             self.animation_server.change_state("hidden")
             utils.play_feedback_sound("deactivation")
             
@@ -702,7 +778,7 @@ class HAAssistApp:
                 error_msg = error_msg[:77] + "..."
             
             self.animation_server.change_state("error", f"Error: {error_msg}")
-            await asyncio.sleep(5)
+            await asyncio.sleep(error_display_seconds)
             self.animation_server.change_state("hidden")
             utils.play_feedback_sound("deactivation")
         finally:
@@ -738,6 +814,7 @@ class HAAssistApp:
                 except Exception as e:
                     logger.error(f"Error closing temp HA client: {e}")
             
+            self._auto_restore_window_hidden_state()
             logger.info("Voice command session cleanup completed")
 
     def on_voice_command_trigger(self):
@@ -753,14 +830,66 @@ class HAAssistApp:
             logger.info("Application is busy, ignoring trigger")
             return
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        # If the desktop window is currently hidden, temporarily show it for the interaction.
+        # We'll restore hidden state in process_voice_command() finally block.
+        self._auto_show_window_for_interaction()
 
         def run_async():
-            loop.run_until_complete(self.process_voice_command())
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(self.process_voice_command())
+            finally:
+                # Prevent per-interaction event loop leaks.
+                loop.close()
 
-        thread = threading.Thread(target=run_async, daemon=True)
+        thread = threading.Thread(target=run_async, daemon=True, name="voice-command")
         thread.start()
+
+    def _auto_show_window_for_interaction(self):
+        """Temporarily show hidden window for active voice interaction."""
+        if not utils.get_env("HA_AUTO_SHOW_WINDOW_ON_LISTEN", True, bool):
+            return
+        with self._window_visibility_lock:
+            if self.window_visible or self._auto_window_restore_pending:
+                return
+            if not (hasattr(webview, 'windows') and webview.windows):
+                return
+            try:
+                window = webview.windows[0]
+                if hasattr(window, "show"):
+                    window.show()
+                elif hasattr(window, "restore"):
+                    window.restore()
+                self.window_visible = True
+                self._auto_window_restore_pending = True
+                logger.info("Window auto-shown for voice interaction")
+            except Exception as e:
+                logger.debug(f"Could not auto-show window for interaction: {e}")
+
+    def _auto_restore_window_hidden_state(self):
+        """Re-hide window only if it was auto-shown for an interaction."""
+        if not utils.get_env("HA_AUTO_SHOW_WINDOW_ON_LISTEN", True, bool):
+            with self._window_visibility_lock:
+                self._auto_window_restore_pending = False
+            return
+        with self._window_visibility_lock:
+            if not self._auto_window_restore_pending:
+                return
+            try:
+                if hasattr(webview, 'windows') and webview.windows:
+                    window = webview.windows[0]
+                    if hasattr(window, "hide"):
+                        window.hide()
+                    elif hasattr(window, "minimize"):
+                        window.minimize()
+                    self.window_visible = False
+                    self.hide_from_taskbar()
+                    logger.info("Window re-hidden after voice interaction")
+            except Exception as e:
+                logger.debug(f"Could not re-hide window after interaction: {e}")
+            finally:
+                self._auto_window_restore_pending = False
     
     def hide_from_taskbar(self):
         """Hide window from taskbar using cross-platform implementation."""
@@ -780,24 +909,93 @@ class HAAssistApp:
     
     def setup_hotkey(self):
         """Setup keyboard shortcut."""
+        hotkey = utils.get_env("HA_HOTKEY", "ctrl+shift+h")
+
+        # First choice: `keyboard` library.
         try:
-            import keyboard
-            
-            hotkey = utils.get_env("HA_HOTKEY", "ctrl+shift+h")
+            import importlib
+            keyboard = importlib.import_module("keyboard")
+        except Exception as e:
+            logger.warning(
+                "Global hotkey support disabled: failed to import 'keyboard' in %s: %s",
+                sys.executable,
+                e,
+            )
+            logger.debug("Keyboard import traceback", exc_info=True)
+            return self._setup_pynput_hotkey(hotkey)
+
+        try:
             keyboard.add_hotkey(hotkey, self.on_voice_command_trigger)
             logger.info(f"Keyboard shortcut set: {hotkey}")
             
             # Add escape key to hide interface quickly
             keyboard.add_hotkey("escape", self.hide_interface)
             logger.info("ESC key set to hide interface")
+            self.hotkey_backend = "keyboard"
             
             return True
-            
-        except ImportError:
-            logger.warning("keyboard library not installed - run: pip install keyboard")
-            return False
         except Exception as e:
-            logger.error(f"Error setting up keyboard shortcut: {e}")
+            error_text = str(e)
+            if self.is_linux and "must be root" in error_text.lower():
+                logger.info(
+                    "Global hotkey disabled on Linux for non-root runtime (%s). "
+                    "Trying pynput fallback.",
+                    error_text,
+                )
+                return self._setup_pynput_hotkey(hotkey)
+            else:
+                logger.warning(
+                    "Hotkey registration failed (keyboard module loaded): %s. "
+                    "Global shortcuts may be unavailable in this desktop/session.",
+                    e,
+                )
+            logger.debug("Hotkey registration traceback", exc_info=True)
+            return False
+
+    def _to_pynput_hotkey(self, hotkey):
+        """Convert env hotkey format (ctrl+shift+h) to pynput format."""
+        normalized_parts = []
+        for part in str(hotkey).lower().replace(" ", "").split("+"):
+            if part in ("ctrl", "control"):
+                normalized_parts.append("<ctrl>")
+            elif part in ("alt", "option"):
+                normalized_parts.append("<alt>")
+            elif part in ("shift",):
+                normalized_parts.append("<shift>")
+            elif part in ("super", "meta", "win", "windows", "cmd", "command"):
+                normalized_parts.append("<cmd>")
+            else:
+                normalized_parts.append(part)
+        return "+".join(normalized_parts)
+
+    def _setup_pynput_hotkey(self, hotkey):
+        """Fallback global hotkeys using pynput (works on X11 without root)."""
+        try:
+            from pynput import keyboard as pynput_keyboard
+        except Exception as e:
+            logger.info(f"pynput fallback unavailable: {e}")
+            return False
+
+        try:
+            hotkey_spec = self._to_pynput_hotkey(hotkey)
+            bindings = {
+                hotkey_spec: self.on_voice_command_trigger,
+                "<esc>": self.hide_interface,
+            }
+            listener = pynput_keyboard.GlobalHotKeys(bindings)
+            listener.start()
+            self._pynput_hotkeys = listener
+            self.hotkey_backend = "pynput"
+            logger.info(f"Global hotkey set via pynput: {hotkey}")
+            logger.info("ESC key set via pynput")
+            return True
+        except Exception as e:
+            logger.info(
+                "pynput hotkey fallback failed: %s. "
+                "Global shortcuts may be unavailable; use tray or wake word.",
+                e,
+            )
+            logger.debug("pynput hotkey setup traceback", exc_info=True)
             return False
     
     def hide_interface(self):
@@ -808,14 +1006,37 @@ class HAAssistApp:
     
     def toggle_window(self, icon=None, item=None):
         """Toggle window visibility."""
+        with self._window_visibility_lock:
+            self._auto_window_restore_pending = False
         if self.window_visible:
             if hasattr(webview, 'windows') and webview.windows:
-                webview.windows[0].minimize()
+                window = webview.windows[0]
+                if hasattr(window, "hide"):
+                    window.hide()
+                    logger.info("Window hidden to tray")
+                else:
+                    window.minimize()
+                # Enforce taskbar hiding after hide/minimize (best effort; backend/session dependent).
+                self.hide_from_taskbar()
             self.window_visible = False
             logger.info("Window hidden")
         else:
             if hasattr(webview, 'windows') and webview.windows:
-                webview.windows[0].restore()
+                window = webview.windows[0]
+                if hasattr(window, "show"):
+                    window.show()
+                elif hasattr(window, "restore"):
+                    window.restore()
+                else:
+                    # Last resort: try both methods if API shape differs by backend.
+                    try:
+                        window.restore()
+                    except Exception:
+                        pass
+                    try:
+                        window.show()
+                    except Exception:
+                        pass
             self.window_visible = True
             logger.info("Window shown")
     
@@ -833,6 +1054,16 @@ class HAAssistApp:
                 logger.info("Tray icon stopped")
             except Exception as e:
                 logger.error(f"Error stopping tray icon: {e}")
+
+        if self.qt_tray_icon:
+            try:
+                self.qt_tray_icon.hide()
+                self.qt_tray_icon = None
+                self.qt_tray_menu = None
+                self.qt_tray_actions = []
+                logger.info("Qt tray icon stopped")
+            except Exception as e:
+                logger.error(f"Error stopping Qt tray icon: {e}")
         
         # Close webview windows
         if hasattr(webview, 'windows') and webview.windows:
@@ -854,6 +1085,10 @@ class HAAssistApp:
     
     def run_tray(self):
         """Run tray icon in separate thread."""
+        if not self.tray_icon:
+            logger.info("No tray icon available, skipping tray startup")
+            return
+
         def tray_thread():
             try:
                 self.tray_icon.run()
@@ -862,6 +1097,124 @@ class HAAssistApp:
         
         threading.Thread(target=tray_thread, daemon=True).start()
         logger.info("System tray started")
+
+    def _setup_qt_tray_icon(self, internal_call=False):
+        """Create native Qt tray icon for Linux+Qt backend."""
+        logger.debug("Qt tray setup attempt started")
+        if self.qt_tray_icon is not None:
+            logger.debug("Qt tray already initialized")
+            return True
+        try:
+            from qtpy.QtWidgets import QApplication, QSystemTrayIcon, QMenu
+            from qtpy.QtGui import QIcon, QAction
+            from qtpy.QtCore import QThread
+        except Exception as e:
+            logger.error(f"Qt tray import failed: {e}")
+            return False
+
+        app = QApplication.instance()
+        if app is None:
+            logger.warning("Qt tray setup skipped: QApplication instance not available")
+            return False
+
+        session = os.environ.get("XDG_SESSION_TYPE", "unknown")
+        desktop = os.environ.get("XDG_CURRENT_DESKTOP", "unknown")
+        logger.debug(f"Qt tray environment: session={session}, desktop={desktop}")
+
+        tray_available = QSystemTrayIcon.isSystemTrayAvailable()
+        logger.debug(f"Qt system tray available: {tray_available}")
+        if not tray_available:
+            logger.warning("Qt system tray is not available in this session")
+            return False
+
+        try:
+            app_thread = app.thread()
+            current_thread = QThread.currentThread()
+            on_app_thread = app_thread == current_thread
+            logger.debug(f"Qt tray thread check: on_app_thread={on_app_thread}")
+
+            if not on_app_thread and not internal_call:
+                if self.qt_tray_bridge is None:
+                    self.qt_tray_bridge = _QtTrayBridge(self)
+                    self.qt_tray_bridge.obj.moveToThread(app_thread)
+                logger.debug("Qt tray setup deferred to QApplication thread")
+                self.qt_tray_bridge.obj.trigger.emit()
+                return False
+        except Exception:
+            pass
+
+        icon_path = get_icon_path()
+        icon = QIcon(icon_path) if icon_path and os.path.exists(icon_path) else QIcon()
+        tray = QSystemTrayIcon(icon, app)
+        tray.setToolTip("GLaSSIST Desktop")
+
+        menu = QMenu()
+        actions = []
+
+        action_activate = QAction("Activate voice", menu)
+        action_activate.triggered.connect(lambda: self.trigger_voice_command())
+        menu.addAction(action_activate)
+        actions.append(action_activate)
+
+        action_toggle = QAction("Show/Hide window", menu)
+        action_toggle.triggered.connect(lambda: self.toggle_window())
+        menu.addAction(action_toggle)
+        actions.append(action_toggle)
+
+        action_pause_resume = QAction("Pause/Resume wake word", menu)
+        action_pause_resume.triggered.connect(lambda: self._toggle_wake_word_detection())
+        menu.addAction(action_pause_resume)
+        actions.append(action_pause_resume)
+
+        action_settings = QAction("Settings", menu)
+        action_settings.triggered.connect(lambda: self.open_settings())
+        menu.addAction(action_settings)
+        actions.append(action_settings)
+
+        menu.addSeparator()
+
+        action_quit = QAction("Close", menu)
+        action_quit.triggered.connect(lambda: self.quit_application())
+        menu.addAction(action_quit)
+        actions.append(action_quit)
+
+        tray.setContextMenu(menu)
+        tray.show()
+        logger.debug(f"Qt tray visible after show(): {tray.isVisible()}")
+
+        self.qt_tray_icon = tray
+        self.qt_tray_menu = menu
+        self.qt_tray_actions = actions
+        logger.info("Native Qt tray icon started")
+        return True
+
+    def _post_webview_start(self):
+        """Executed after webview loop starts."""
+        try:
+            enable_linux_tray = utils.get_env("HA_ENABLE_LINUX_TRAY", False, bool)
+            if not (self.is_linux and self.webview_gui == "qt" and enable_linux_tray):
+                return
+
+            # Attempt immediately first.
+            immediate_ok = self._setup_qt_tray_icon()
+            if immediate_ok:
+                return
+
+            # Retry once shortly after startup in case tray host initializes late.
+            # Use Python timer here to avoid creating QTimer outside a Qt-managed thread.
+            def retry_setup():
+                try:
+                    ok = self._setup_qt_tray_icon()
+                    logger.debug(f"Qt tray retry result: {ok}")
+                except Exception as e:
+                    logger.error(f"Qt tray retry failed: {e}")
+
+            self.qt_tray_retry_timer = threading.Timer(1.5, retry_setup)
+            self.qt_tray_retry_timer.daemon = True
+            self.qt_tray_retry_timer.start()
+            logger.debug("Scheduled native Qt tray setup retry")
+        except Exception as e:
+            logger.error(f"Failed to schedule Qt tray setup: {e}")
     
     def _start_esphome_mode(self):
         """Start ESPHome satellite server and continuous audio streaming loop."""
@@ -981,8 +1334,26 @@ class HAAssistApp:
                 return
 
             self.setup_hotkey()
-            self.create_tray_icon()
-            self.run_tray()
+            use_qt_native_tray = (
+                self.is_linux and
+                self.webview_gui == "qt" and
+                utils.get_env("HA_ENABLE_LINUX_TRAY", False, bool)
+            )
+            linux_tray_with_webview_conflict = (
+                self.is_linux and
+                self.webview_gui in ("gtk", "qt") and
+                not utils.get_env("HA_ALLOW_LINUX_TRAY_WITH_WEBVIEW", False, bool)
+            )
+            if use_qt_native_tray:
+                logger.info("Using native Qt tray path (deferred until webview loop starts)")
+            elif linux_tray_with_webview_conflict:
+                logger.warning(
+                    "Linux tray disabled because Linux webview + pystray can crash due to UI-thread/main-context "
+                    "conflicts. Set HA_ALLOW_LINUX_TRAY_WITH_WEBVIEW=true to force (not recommended)."
+                )
+            else:
+                self.create_tray_icon()
+                self.run_tray()
             self.start_wake_word_detection()
             self._refresh_tray_menu()
 
@@ -991,13 +1362,14 @@ class HAAssistApp:
             def on_window_loaded():
                 import time
                 time.sleep(2)
-                logger.info("Attempting to hide window from taskbar...")
+                hide_taskbar_default = False if self.is_linux else True
+                should_hide_taskbar = utils.get_env("HA_HIDE_FROM_TASKBAR", hide_taskbar_default, bool)
 
-                old_level = logger.level
-                logger.setLevel(10)
-
-                self.hide_from_taskbar()
-                logger.setLevel(old_level)
+                if should_hide_taskbar:
+                    logger.info("Attempting to hide window from taskbar...")
+                    self.hide_from_taskbar()
+                else:
+                    logger.info("Taskbar hiding disabled")
 
                 # Open settings automatically if --settings flag was passed
                 if self.open_settings_on_start:
@@ -1008,7 +1380,14 @@ class HAAssistApp:
             threading.Thread(target=on_window_loaded, daemon=True).start()
             
             if self.animations_enabled:
-                webview.start(debug=utils.get_env("DEBUG", False, bool))
+                debug_mode = utils.get_env("DEBUG", False, bool)
+                if self.is_linux:
+                    if self.webview_gui:
+                        webview.start(func=self._post_webview_start, gui=self.webview_gui, debug=debug_mode)
+                    else:
+                        webview.start(func=self._post_webview_start, debug=debug_mode)
+                else:
+                    webview.start(debug=debug_mode)
             else:
                 logger.info("Running in headless mode (animations disabled)")
                 try:
@@ -1054,6 +1433,16 @@ class HAAssistApp:
             except Exception as e:
                 logger.debug(f"Error closing settings window: {e}")
             self.settings_window = None
+
+        # Stop global hotkey listener if using pynput fallback.
+        if self._pynput_hotkeys:
+            try:
+                self._pynput_hotkeys.stop()
+                logger.info("pynput hotkey listener stopped")
+            except Exception as e:
+                logger.debug(f"Error stopping pynput hotkey listener: {e}")
+            self._pynput_hotkeys = None
+            self.hotkey_backend = None
         # Stop wake word detection first
         self.stop_wake_word_detection()
 
@@ -1086,23 +1475,12 @@ class HAAssistApp:
         # Close HA client connection if exists
         if hasattr(self, 'ha_client') and self.ha_client:
             try:
-                # Run close in asyncio loop if one exists
-                loop = None
+                # Use a dedicated loop to avoid cross-thread loop contamination during shutdown.
+                close_loop = asyncio.new_event_loop()
                 try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    # No running loop, create a new one
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    
-                if loop and not loop.is_closed():
-                    if loop.is_running():
-                        # Schedule close for later
-                        asyncio.create_task(self.ha_client.close())
-                    else:
-                        # Run close synchronously
-                        loop.run_until_complete(self.ha_client.close())
-                        
+                    close_loop.run_until_complete(self.ha_client.close())
+                finally:
+                    close_loop.close()
                 self.ha_client = None
                 logger.info("HA Client connection closed")
                 
@@ -1332,4 +1710,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
