@@ -223,25 +223,50 @@ def play_audio_from_url(url, host, animation_server=None, done_callback=None):
     
     try:
         import re as _re
-        _is_local = os.path.isabs(url) or _re.match(r'^[A-Za-z]:[/\\]', url)
 
-        if _is_local:
-            local_path = os.path.normpath(url)
+        is_http_url = isinstance(url, str) and (
+            url.startswith("http://") or url.startswith("https://")
+        )
+        is_windows_abs = bool(_re.match(r'^[A-Za-z]:[/\\]', str(url)))
+        is_unix_abs = isinstance(url, str) and url.startswith("/")
+
+        # Treat as local only if it's clearly a local path and exists.
+        # This prevents HA paths like "/api/tts_proxy/..." from being misread as files.
+        is_local_file = is_windows_abs or (is_unix_abs and os.path.exists(url))
+
+        if is_local_file and not is_http_url:
+            local_path = os.path.normpath(os.path.expanduser(url))
             logger.info(f"Playing local audio file: {local_path}")
             data, samplerate = sf.read(local_path)
         else:
-            if url.startswith('/'):
-                if host.startswith(('localhost', '127.0.0.1', '192.168.', '10.', '172.')):
+            if is_http_url:
+                full_url = url
+            elif isinstance(url, str) and url.startswith('/'):
+                if not host:
+                    host = os.getenv("HA_HOST", "")
+                host = (host or "").strip()
+                if not host:
+                    logger.error("HA_HOST is empty - cannot build audio URL")
+                    return False
+                if host.startswith(("http://", "https://")):
+                    full_url = f"{host}{url}"
+                elif host.startswith(('localhost', '127.0.0.1', '192.168.', '10.', '172.')):
                     protocol = "http"
+                    full_url = f"{protocol}://{host}{url}"
                 else:
                     protocol = "https"
-                full_url = f"{protocol}://{host}{url}"
+                    full_url = f"{protocol}://{host}{url}"
             else:
-                full_url = url
+                full_url = str(url)
 
             logger.info(f"Downloading audio from: {full_url}")
 
-            response = requests.get(full_url, timeout=10)
+            headers = {}
+            ha_token = os.getenv("HA_TOKEN", "").strip()
+            if ha_token:
+                headers["Authorization"] = f"Bearer {ha_token}"
+
+            response = requests.get(full_url, headers=headers, timeout=30)
             if response.status_code != 200:
                 logger.error(f"Audio download error: {response.status_code}")
                 return False

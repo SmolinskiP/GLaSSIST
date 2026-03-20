@@ -8,6 +8,7 @@ import numpy as np
 import pyaudio
 import utils
 import platform
+import re
 from platform_utils import check_wake_word_noise_suppression
 
 logger = utils.setup_logger()
@@ -24,7 +25,11 @@ class WakeWordDetector:
         else:
             self.enabled = bool(enabled_str)
             
-        self.models_dir = os.path.join(os.path.dirname(__file__), 'models')
+        self.local_models_dir = os.path.join(os.path.dirname(__file__), 'models')
+        # Keep models_dir for backward compatibility with existing code paths.
+        self.models_dir = self.local_models_dir
+        self.default_model_dirs = []
+        self.model_search_dirs = [self.local_models_dir]
         self.sample_rate = 16000  # openWakeWord requires 16kHz
         self.chunk_size = int(self.sample_rate * 0.08)  # 80ms frames
         
@@ -55,9 +60,72 @@ class WakeWordDetector:
     
     def _ensure_models_directory(self):
         """Ensure models directory exists."""
-        if not os.path.exists(self.models_dir):
-            os.makedirs(self.models_dir)
-            logger.info(f"Created models directory: {self.models_dir}")
+        if not os.path.exists(self.local_models_dir):
+            os.makedirs(self.local_models_dir)
+            logger.info(f"Created models directory: {self.local_models_dir}")
+
+    def _discover_openwakeword_model_dirs(self, openwakeword_module):
+        """Find default model directories used by installed openWakeWord."""
+        dirs = []
+        package_dir = os.path.dirname(openwakeword_module.__file__)
+
+        candidates = [
+            os.path.join(package_dir, "resources", "models"),
+            os.path.join(package_dir, "resources"),
+            os.path.join(os.path.expanduser("~"), ".cache", "openwakeword", "models"),
+            os.path.join(os.path.expanduser("~"), ".cache", "openwakeword"),
+        ]
+
+        # Try to read known attributes from openwakeword.utils if present.
+        try:
+            ow_utils = openwakeword_module.utils
+            for attr in ("MODELS_DIR", "MODEL_DIR", "PRETRAINED_MODELS_DIR"):
+                value = getattr(ow_utils, attr, None)
+                if isinstance(value, str) and value.strip():
+                    candidates.append(value.strip())
+        except Exception:
+            pass
+
+        seen = set()
+        for path in candidates:
+            norm = os.path.normpath(path)
+            if norm not in seen:
+                seen.add(norm)
+                dirs.append(norm)
+        return dirs
+
+    def _list_model_files(self, directory):
+        """List model files in a directory."""
+        files = []
+        if not directory or not os.path.isdir(directory):
+            return files
+        try:
+            for filename in os.listdir(directory):
+                if filename.endswith((".onnx", ".tflite")):
+                    files.append(os.path.join(directory, filename))
+        except Exception:
+            pass
+        return files
+
+    def _ensure_default_models_available(self, openwakeword_module):
+        """Download default models if installed openWakeWord has no model files."""
+        existing = []
+        for model_dir in self.default_model_dirs:
+            existing.extend(self._list_model_files(model_dir))
+        if existing:
+            return
+
+        logger.warning("No default openWakeWord model files found; attempting download")
+        try:
+            openwakeword_module.utils.download_models()
+        except Exception as e:
+            logger.warning(f"Default model download failed: {e}")
+
+        # Refresh directories after potential download
+        self.default_model_dirs = self._discover_openwakeword_model_dirs(openwakeword_module)
+        self.model_search_dirs = [self.local_models_dir] + [
+            d for d in self.default_model_dirs if d != self.local_models_dir
+        ]
     
     def _get_selected_models(self):
         """Get list of selected wake word models."""
@@ -65,17 +133,53 @@ class WakeWordDetector:
         if isinstance(models_config, str):
             return [m.strip() for m in models_config.split(',') if m.strip()]
         return models_config if models_config else ["alexa"]
+
+    def _normalize_model_name(self, model_name):
+        """Normalize model names (e.g., hey_mycroft_v0.1 -> hey_mycroft)."""
+        name = os.path.splitext(str(model_name))[0].lower().strip()
+        name = re.sub(r"_v\d+(?:\.\d+)?$", "", name)
+        return name
+
+    def _find_model_file(self, model_name, extension):
+        """Find best matching model file in configured search directories."""
+        # 1) Exact filename match first
+        exact_filename = f"{model_name}{extension}"
+        for search_dir in self.model_search_dirs:
+            candidate = os.path.join(search_dir, exact_filename)
+            if os.path.exists(candidate):
+                return candidate
+
+        # 2) Fallback to versioned filenames (e.g., hey_mycroft_v0.1.onnx)
+        prefix = f"{model_name}_v"
+        matches = []
+        for search_dir in self.model_search_dirs:
+            if not os.path.isdir(search_dir):
+                continue
+            try:
+                for filename in os.listdir(search_dir):
+                    if filename.startswith(prefix) and filename.endswith(extension):
+                        matches.append(os.path.join(search_dir, filename))
+            except Exception:
+                continue
+        if matches:
+            return sorted(matches)[-1]
+        return None
     
     def _init_openwakeword(self):
         """Initialize openWakeWord library."""
         try:
-            print("DEBUG: Trying to import openwakeword...")
+            logger.debug("Trying to import openwakeword...")
             import openwakeword
-            print("DEBUG: openwakeword imported successfully")
+            logger.debug("openwakeword imported successfully")
+            self.default_model_dirs = self._discover_openwakeword_model_dirs(openwakeword)
+            self.model_search_dirs = [self.local_models_dir] + [
+                d for d in self.default_model_dirs if d != self.local_models_dir
+            ]
+            self._ensure_default_models_available(openwakeword)
             
-            print("DEBUG: Trying to import Model...")
+            logger.debug("Trying to import openwakeword Model...")
             from openwakeword.model import Model
-            print("DEBUG: Model imported successfully")
+            logger.debug("Model imported successfully")
             
             logger.info("Initializing openWakeWord...")
             
@@ -101,28 +205,37 @@ class WakeWordDetector:
                 
                 # Platform-specific model preference
                 if platform.system() == "Linux":
-                    # Linux: prefer .tflite models (better performance)
-                    if tflite_paths:
+                    # Linux: prefer ONNX by default for compatibility with modern NumPy stacks.
+                    prefer_tflite = utils.get_env_bool("HA_WAKE_WORD_PREFER_TFLITE", False)
+                    if prefer_tflite and tflite_paths:
                         try:
                             import tflite_runtime
                             model_kwargs['wakeword_models'] = tflite_paths
+                            model_kwargs['inference_framework'] = "tflite"
                             logger.info(f"Loading TFLite models on Linux: {', '.join(self.selected_models)}")
                         except ImportError:
                             logger.warning("TFLite runtime not available, trying ONNX...")
                             if onnx_paths:
                                 model_kwargs['wakeword_models'] = onnx_paths
+                                model_kwargs['inference_framework'] = "onnx"
                                 logger.info(f"Loading ONNX models as fallback: {', '.join(self.selected_models)}")
                             else:
                                 logger.info("Falling back to default openWakeWord models")
                     elif onnx_paths:
                         model_kwargs['wakeword_models'] = onnx_paths
+                        model_kwargs['inference_framework'] = "onnx"
                         logger.info(f"Loading ONNX models on Linux: {', '.join(self.selected_models)}")
+                    elif tflite_paths:
+                        logger.warning("Using TFLite models on Linux as fallback")
+                        model_kwargs['wakeword_models'] = tflite_paths
+                        model_kwargs['inference_framework'] = "tflite"
                     else:
                         logger.info("No custom models found, using defaults")
                 else:
                     # Windows: prefer ONNX, avoid TFLite due to compatibility issues
                     if onnx_paths:
                         model_kwargs['wakeword_models'] = onnx_paths
+                        model_kwargs['inference_framework'] = "onnx"
                         logger.info(f"Loading ONNX models on Windows: {', '.join(self.selected_models)}")
                     elif tflite_paths:
                         logger.warning("Found .tflite models but tflite-runtime not reliable on Windows")
@@ -132,23 +245,41 @@ class WakeWordDetector:
             else:
                 logger.info("Using default openWakeWord models")
             
-            print(f"DEBUG: About to create Model with kwargs: {model_kwargs}")
+            logger.debug(f"Creating Model with kwargs: {model_kwargs}")
             
             try:
                 self.model = Model(**model_kwargs)
-                print("DEBUG: Model created successfully")
+                logger.debug("Model created successfully")
             except Exception as model_error:
-                print(f"DEBUG: Model creation failed: {model_error}")
+                logger.debug(f"Model creation failed: {model_error}")
+                # Retry with explicit ONNX backend if ONNX models were provided but framework mismatched.
+                if (
+                    "wakeword_models" in model_kwargs
+                    and any(str(p).endswith(".onnx") for p in model_kwargs.get("wakeword_models", []))
+                    and "inference framework is selected" in str(model_error).lower()
+                ):
+                    logger.warning(f"Retrying wake word model with explicit ONNX framework: {model_error}")
+                    retry_kwargs = dict(model_kwargs)
+                    retry_kwargs["inference_framework"] = "onnx"
+                    logger.debug(f"Retrying with kwargs: {retry_kwargs}")
+                    self.model = Model(**retry_kwargs)
+                    logger.debug("Retry model created successfully")
+                    logger.info(f" Wake word detection initialized")
+                    logger.info(f"   Models: {', '.join(self.selected_models)}")
+                    logger.info(f"   Threshold: {self.detection_threshold}")
+                    logger.info(f"   VAD threshold: {self.vad_threshold}")
+                    logger.info(f"   Noise suppression: {self.noise_suppression}")
+                    return True
                 if "tflite" in str(model_error).lower() and "wakeword_models" in model_kwargs:
                     logger.warning(f"Failed to load custom models: {model_error}")
                     logger.info("Falling back to default openWakeWord models")
                     # Remove custom models and try with defaults
                     model_kwargs_fallback = {k: v for k, v in model_kwargs.items() if k != 'wakeword_models'}
-                    print(f"DEBUG: Trying fallback with kwargs: {model_kwargs_fallback}")
+                    logger.debug(f"Trying fallback with kwargs: {model_kwargs_fallback}")
                     self.model = Model(**model_kwargs_fallback)
-                    print("DEBUG: Fallback model created successfully")
+                    logger.debug("Fallback model created successfully")
                 else:
-                    print(f"DEBUG: Re-raising model error: {model_error}")
+                    logger.debug(f"Re-raising model error: {model_error}")
                     raise model_error
             
             logger.info(f" Wake word detection initialized")
@@ -160,12 +291,12 @@ class WakeWordDetector:
             return True
             
         except ImportError as import_error:
-            print(f"DEBUG: ImportError: {import_error}")
+            logger.debug(f"ImportError while initializing wake word detector: {import_error}")
             logger.error("openWakeWord not installed. Run: pip install openwakeword")
             self.enabled = False
             return False
         except Exception as e:
-            print(f"DEBUG: Other error: {e}")
+            logger.debug(f"Other wake word initialization error: {e}")
             logger.error(f"Failed to initialize openWakeWord: {e}")
             self.enabled = False
             return False
@@ -177,20 +308,20 @@ class WakeWordDetector:
         for model_name in self.selected_models:
             model_found = False
             
-            # On Linux, prefer .tflite first
+            # On Linux, prefer ONNX first by default for runtime compatibility.
             if platform.system() == "Linux":
-                extensions = ['.tflite', '.onnx']
+                prefer_tflite = utils.get_env_bool("HA_WAKE_WORD_PREFER_TFLITE", False)
+                extensions = ['.tflite', '.onnx'] if prefer_tflite else ['.onnx', '.tflite']
             else:
                 extensions = ['.onnx', '.tflite']
             
             for ext in extensions:
-                model_file = f"{model_name}{ext}"
-                local_path = os.path.join(self.models_dir, model_file)
-                
-                if os.path.exists(local_path):
-                    paths.append(local_path)
-                    logger.info(f"Found local model: {local_path}")
+                model_path = self._find_model_file(model_name, ext)
+                if model_path:
+                    paths.append(model_path)
+                    logger.info(f"Found model: {model_path}")
                     model_found = True
+                if model_found:
                     break
             
             if not model_found:
@@ -387,10 +518,13 @@ class WakeWordDetector:
     
     def _process_predictions(self, predictions):
         """Process wake word predictions and trigger callback if detected."""
+        selected_models_normalized = {self._normalize_model_name(m) for m in self.selected_models}
+
         for model_name, score in predictions.items():
             if score >= self.detection_threshold:
-                # Only trigger on models that were specifically selected by user
-                if model_name in self.selected_models:
+                model_name_normalized = self._normalize_model_name(model_name)
+                # Trigger when exact selected name or normalized selected base matches.
+                if model_name in self.selected_models or model_name_normalized in selected_models_normalized:
                     logger.info(f"Wake word detected: '{model_name}' (confidence: {score:.3f})")
                     
                     # Call detection callback
@@ -423,13 +557,14 @@ class WakeWordDetector:
     
     def _get_available_models(self):
         """Get list of available model files."""
-        models = []
-        if os.path.exists(self.models_dir):
-            for filename in os.listdir(self.models_dir):
-                if filename.endswith(('.onnx', '.tflite')):
-                    model_name = os.path.splitext(filename)[0]
-                    models.append(model_name)
-        return models
+        models = set()
+        for search_dir in self.model_search_dirs:
+            if os.path.isdir(search_dir):
+                for filename in os.listdir(search_dir):
+                    if filename.endswith(('.onnx', '.tflite')):
+                        model_name = os.path.splitext(filename)[0]
+                        models.add(model_name)
+        return sorted(models)
     
     def update_threshold(self, new_threshold):
         """Update detection threshold dynamically."""
@@ -481,17 +616,30 @@ def download_default_models():
 
 def list_available_models():
     """List all available wake word models."""
-    models_dir = os.path.join(os.path.dirname(__file__), 'models')
-    
-    if not os.path.exists(models_dir):
-        return []
-    
-    models = []
-    for filename in os.listdir(models_dir):
-        if filename.endswith(('.onnx', '.tflite')):
-            model_name = os.path.splitext(filename)[0]
-            models.append(model_name)
-    
+    models = set()
+    local_models_dir = os.path.join(os.path.dirname(__file__), 'models')
+    search_dirs = [local_models_dir]
+
+    try:
+        import openwakeword
+        package_dir = os.path.dirname(openwakeword.__file__)
+        search_dirs.extend([
+            os.path.join(package_dir, "resources", "models"),
+            os.path.join(package_dir, "resources"),
+            os.path.join(os.path.expanduser("~"), ".cache", "openwakeword", "models"),
+            os.path.join(os.path.expanduser("~"), ".cache", "openwakeword"),
+        ])
+    except Exception:
+        pass
+
+    for directory in search_dirs:
+        if not os.path.isdir(directory):
+            continue
+        for filename in os.listdir(directory):
+            if filename.endswith(('.onnx', '.tflite')):
+                model_name = os.path.splitext(filename)[0]
+                models.add(model_name)
+
     return sorted(models)
 
 
