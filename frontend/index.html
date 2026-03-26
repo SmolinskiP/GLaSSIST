@@ -345,29 +345,36 @@
             if (!fallbackCtx) return;
 
             clearFallbackCanvas();
-            if (currentState === 'hidden') return;
 
             const cx = window.innerWidth / 2;
             const cy = window.innerHeight / 2;
+            const isHiddenState = currentState === 'hidden';
             const radiusBase = Math.min(window.innerWidth, window.innerHeight) * 0.22;
             const audioPulse = 1 + Math.min(audioLevel, 1) * 0.22;
             const timedPulse = 1 + 0.08 * Math.sin(time * 4.0);
-            const pulse = (currentState === 'listening' || currentState === 'responding') ? audioPulse : timedPulse;
+            const idlePulse = 1 + 0.02 * Math.sin(time * 1.6);
+            const pulse = isHiddenState
+                ? idlePulse
+                : ((currentState === 'listening' || currentState === 'responding') ? audioPulse : timedPulse);
             const radius = radiusBase * pulse;
-            const color = stateColorToCss(currentState);
+            const color = isHiddenState ? '#2e5166' : stateColorToCss(currentState);
+            const outerWidth = isHiddenState ? 8 : 18;
+            const innerWidth = isHiddenState ? 3 : 5;
+            const shadowBlur = isHiddenState ? 14 : 30;
+            const secondaryAlpha = isHiddenState ? 0.35 : 0.6;
 
             fallbackCtx.save();
             fallbackCtx.globalCompositeOperation = 'lighter';
             fallbackCtx.strokeStyle = color;
-            fallbackCtx.lineWidth = 18;
+            fallbackCtx.lineWidth = outerWidth;
             fallbackCtx.shadowColor = color;
-            fallbackCtx.shadowBlur = 30;
+            fallbackCtx.shadowBlur = shadowBlur;
             fallbackCtx.beginPath();
             fallbackCtx.arc(cx, cy, radius, 0, Math.PI * 2);
             fallbackCtx.stroke();
 
-            fallbackCtx.lineWidth = 5;
-            fallbackCtx.globalAlpha = 0.6;
+            fallbackCtx.lineWidth = innerWidth;
+            fallbackCtx.globalAlpha = secondaryAlpha;
             fallbackCtx.beginPath();
             fallbackCtx.arc(cx, cy, radius + 10, 0, Math.PI * 2);
             fallbackCtx.stroke();
@@ -640,6 +647,14 @@
                 
                 // Update parameters based on state
                 switch (currentState) {
+                    case 'hidden':
+                        // Subtle idle glow so users know the app is alive.
+                        ring.material.uniforms.color.value.set(0x2e5166);
+                        ring.material.uniforms.pulseSpeed.value = 0.8;
+                        ring.material.uniforms.audioLevel.value = 0.05;
+                        ring.material.uniforms.usePulse.value = 1.0;
+                        break;
+
                     case 'listening':
                         // Listening: reacts only to sound
                         ring.material.uniforms.audioLevel.value = audioLevel;
@@ -710,7 +725,12 @@
             }
             
             if (newState === 'hidden') {
-                stopAnimation();
+                if (ring) {
+                    ring.visible = true;
+                }
+                if (!isAnimating) {
+                    startAnimation();
+                }
                 return;
             } 
             
