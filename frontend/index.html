@@ -142,6 +142,8 @@
         // Global variables
         let scene, camera, renderer, animationFrameId;
         let ring;
+        let useCanvasFallback = false;
+        let fallbackCtx = null;
         let websocket = null;
         let currentState = 'hidden';
         let audioData = [];
@@ -171,6 +173,11 @@
             success: 0x4caf50,
             connecting: 0xffeb3b
         };
+
+        function stateColorToCss(state) {
+            const color = stateColors[state] || stateColors.hidden;
+            return `#${color.toString(16).padStart(6, '0')}`;
+        }
         
         // SHADER WITH GRADIENT AND EFFECTS
         const ringVertexShader = `
@@ -270,26 +277,87 @@
         
         // Three.js initialization
         function initThree() {
-            scene = new THREE.Scene();
-            scene.background = null;
-            
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.z = 5;
-            
-            renderer = new THREE.WebGLRenderer({ 
-                canvas: document.getElementById('canvas'),
-                antialias: true,
-                alpha: true,
-                premultipliedAlpha: false
-            });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.setClearColor(0x000000, 0);
-            
-            createAnimations();
-            
-            renderer.render(scene, camera);
-            console.log('Three.js initialized with error and success text support');
+            try {
+                scene = new THREE.Scene();
+                scene.background = null;
+
+                camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                camera.position.z = 5;
+
+                renderer = new THREE.WebGLRenderer({
+                    canvas: document.getElementById('canvas'),
+                    antialias: true,
+                    alpha: true,
+                    premultipliedAlpha: false
+                });
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.setPixelRatio(window.devicePixelRatio);
+                renderer.setClearColor(0x000000, 0);
+
+                createAnimations();
+                renderer.render(scene, camera);
+                console.log('Three.js initialized with error and success text support');
+            } catch (error) {
+                console.warn('WebGL initialization failed, using canvas fallback:', error);
+                initCanvasFallback();
+            }
+        }
+
+        function initCanvasFallback() {
+            const canvas = document.getElementById('canvas');
+            fallbackCtx = canvas.getContext('2d');
+            useCanvasFallback = !!fallbackCtx;
+            resizeFallbackCanvas();
+            clearFallbackCanvas();
+        }
+
+        function resizeFallbackCanvas() {
+            if (!fallbackCtx) return;
+            const canvas = fallbackCtx.canvas;
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = Math.max(1, Math.floor(window.innerWidth * dpr));
+            canvas.height = Math.max(1, Math.floor(window.innerHeight * dpr));
+            canvas.style.width = `${window.innerWidth}px`;
+            canvas.style.height = `${window.innerHeight}px`;
+            fallbackCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+
+        function clearFallbackCanvas() {
+            if (!fallbackCtx) return;
+            fallbackCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+        }
+
+        function renderFallbackRing(audioLevel, time) {
+            if (!fallbackCtx) return;
+
+            clearFallbackCanvas();
+            if (currentState === 'hidden') return;
+
+            const cx = window.innerWidth / 2;
+            const cy = window.innerHeight / 2;
+            const radiusBase = Math.min(window.innerWidth, window.innerHeight) * 0.22;
+            const audioPulse = 1 + Math.min(audioLevel, 1) * 0.22;
+            const timedPulse = 1 + 0.08 * Math.sin(time * 4.0);
+            const pulse = (currentState === 'listening' || currentState === 'responding') ? audioPulse : timedPulse;
+            const radius = radiusBase * pulse;
+            const color = stateColorToCss(currentState);
+
+            fallbackCtx.save();
+            fallbackCtx.globalCompositeOperation = 'lighter';
+            fallbackCtx.strokeStyle = color;
+            fallbackCtx.lineWidth = 18;
+            fallbackCtx.shadowColor = color;
+            fallbackCtx.shadowBlur = 30;
+            fallbackCtx.beginPath();
+            fallbackCtx.arc(cx, cy, radius, 0, Math.PI * 2);
+            fallbackCtx.stroke();
+
+            fallbackCtx.lineWidth = 5;
+            fallbackCtx.globalAlpha = 0.6;
+            fallbackCtx.beginPath();
+            fallbackCtx.arc(cx, cy, radius + 10, 0, Math.PI * 2);
+            fallbackCtx.stroke();
+            fallbackCtx.restore();
         }
         
         function createAnimations() {
@@ -321,7 +389,9 @@
             
             animationFrameId = requestAnimationFrame(animate);
             updateAnimation();
-            renderer.render(scene, camera);
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
         }
         
         function startAnimation() {
@@ -367,7 +437,11 @@
                 animationFrameId = null;
             }
             
-            renderer.render(scene, camera);
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            } else {
+                clearFallbackCanvas();
+            }
         }
         
         function showErrorText(message) {
@@ -532,6 +606,11 @@
             
             // Process audio data with normalization
             const audioLevel = processAudioLevel(audioData);
+
+            if (useCanvasFallback) {
+                renderFallbackRing(audioLevel, time);
+                return;
+            }
             
             // Update ring shader
             if (ring && ring.material.uniforms) {
@@ -699,9 +778,17 @@
         });
         
         window.addEventListener('resize', function() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+            if (camera) {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+            }
+            if (renderer) {
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+            if (useCanvasFallback) {
+                resizeFallbackCanvas();
+                renderFallbackRing(processAudioLevel(audioData), performance.now() * 0.001);
+            }
         });
         
         function startHeartbeat() {
