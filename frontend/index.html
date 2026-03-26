@@ -1,263 +1,723 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GLaSSIST</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: #101418;
-      font-family: "Segoe UI", Tahoma, sans-serif;
-      -webkit-app-region: drag;
-    }
-    #app {
-      position: relative;
-      width: 100vw;
-      height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: radial-gradient(circle at 50% 45%, #17222a 0%, #101418 55%, #0a0d10 100%);
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GLaSSIST Desktop</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: transparent;
+            overflow: hidden;
+            -webkit-app-region: drag;
+        }
+        
+        html {
+            background: transparent;
+        }
+        
+        #container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+            background: transparent;
+        }
+        
+        #canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: transparent;
+        }
+        
+        /* Error text */
+        #errorText {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #f44336;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 14px;
+            font-weight: bold;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(244, 67, 54, 0.8);
+            pointer-events: none;
+            z-index: 1000;
+            display: none;
+            max-width: 280px;
+            line-height: 1.4;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: 1px solid #f44336;
+            animation: pulse-error 0.7s infinite alternate ease-in-out;
+        }
+        
+        /* Success text */
+        #successText {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #4caf50;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 14px;
+            font-weight: bold;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(76, 175, 80, 0.8);
+            pointer-events: none;
+            z-index: 1000;
+            display: none;
+            max-width: 280px;
+            line-height: 1.4;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: 1px solid #4caf50;
+        }
+        
+        /* Response text */
+        #responseText {
+            position: absolute;
+            bottom: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #2196f3;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 16px;
+            font-weight: 500;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(33, 150, 243, 0.8);
+            pointer-events: none;
+            z-index: 1000;
+            display: none;
+            max-width: 80%;
+            line-height: 1.5;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px 20px;
+            border-radius: 12px;
+            border: 1px solid #2196f3;
+            animation: typewriter 0.8s ease-out;
+        }
 
-    #ring {
-      width: 190px;
-      height: 190px;
-      border-radius: 50%;
-      border: 12px solid #4fc3f7;
-      background: transparent;
-      box-shadow: 0 0 18px rgba(79, 195, 247, 0.80), inset 0 0 18px rgba(79, 195, 247, 0.45);
-      opacity: 0.72;
-      transform: scale(0.93);
-      transition: border-color 120ms linear, box-shadow 120ms linear, opacity 120ms linear, transform 80ms linear;
-      pointer-events: none;
-      z-index: 20;
-      display: block;
-    }
+        @keyframes pulse-error {
+            from {
+                opacity: 0.8;
+                text-shadow: 0 0 10px rgba(244, 67, 54, 0.8);
+            }
+            to {
+                opacity: 1.0;
+                text-shadow: 0 0 20px rgba(244, 67, 54, 1.0);
+            }
+        }
 
-    #ring.pulsing {
-      animation: pulse 1.1s infinite ease-in-out;
-    }
-
-    @keyframes pulse {
-      0% { transform: scale(0.90); }
-      50% { transform: scale(1.03); }
-      100% { transform: scale(0.90); }
-    }
-
-    #state {
-      position: absolute;
-      top: 12px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 12px;
-      color: #cfd8dc;
-      background: rgba(0, 0, 0, 0.45);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 999px;
-      padding: 4px 10px;
-      pointer-events: none;
-      z-index: 30;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-    }
-
-    #errorText, #successText, #responseText {
-      position: absolute;
-      left: 50%;
-      transform: translateX(-50%);
-      max-width: 80%;
-      text-align: center;
-      line-height: 1.4;
-      padding: 10px 14px;
-      border-radius: 10px;
-      display: none;
-      pointer-events: none;
-      z-index: 40;
-      background: rgba(0, 0, 0, 0.70);
-      border: 1px solid transparent;
-    }
-
-    #errorText {
-      top: 50%;
-      transform: translate(-50%, -50%);
-      color: #ff6b6b;
-      border-color: #ff6b6b;
-      font-weight: 700;
-    }
-
-    #successText {
-      top: 50%;
-      transform: translate(-50%, -50%);
-      color: #7ee787;
-      border-color: #7ee787;
-      font-weight: 700;
-    }
-
-    #responseText {
-      bottom: 18%;
-      color: #90caf9;
-      border-color: #90caf9;
-      font-size: 15px;
-    }
-  </style>
+        @keyframes typewriter {
+            from {
+                opacity: 0;
+                transform: translateX(-50%) scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(-50%) scale(1);
+            }
+        }
+    </style>
 </head>
 <body>
-  <div id="app">
-    <div id="state">hidden</div>
-    <div id="ring"></div>
-    <div id="errorText"></div>
-    <div id="successText"></div>
-    <div id="responseText"></div>
-  </div>
+    <div id="container">
+        <canvas id="canvas"></canvas>
+        <div id="errorText"></div>
+        <div id="successText"></div>
+        <div id="responseText"></div>
+    </div>
 
-  <script>
-    let websocket = null;
-    let currentState = "hidden";
-    let audioData = [];
-    let isAnimating = false;
-
-    const ring = document.getElementById("ring");
-    const stateLabel = document.getElementById("state");
-    const errorText = document.getElementById("errorText");
-    const successText = document.getElementById("successText");
-    const responseText = document.getElementById("responseText");
-
-    const stateColors = {
-      hidden: "#2f6f86",
-      listening: "#4fc3f7",
-      processing: "#ff9800",
-      responding: "#9c27b0",
-      error: "#f44336",
-      success: "#4caf50",
-      connecting: "#ffeb3b"
-    };
-
-    const pulseStates = new Set(["processing", "error", "connecting", "success"]);
-
-    function show(el, msg) {
-      if (!el) return;
-      if (typeof msg === "string") el.textContent = msg;
-      el.style.display = "block";
-    }
-
-    function hide(el) {
-      if (!el) return;
-      el.style.display = "none";
-    }
-
-    function getAudioLevel(fft) {
-      if (!Array.isArray(fft) || fft.length === 0) return 0;
-      const n = Math.min(24, fft.length);
-      let s = 0;
-      for (let i = 0; i < n; i++) s += Math.max(0, Number(fft[i]) || 0);
-      return Math.min(1, s / n);
-    }
-
-    function applyStateVisual(state, level) {
-      const color = stateColors[state] || stateColors.hidden;
-      const isHidden = state === "hidden";
-
-      ring.style.borderColor = color;
-      ring.style.boxShadow = `0 0 18px ${color}cc, inset 0 0 18px ${color}66`;
-      ring.style.opacity = isHidden ? "0.72" : "0.96";
-
-      if (pulseStates.has(state)) {
-        ring.classList.add("pulsing");
-      } else {
-        ring.classList.remove("pulsing");
-        const minScale = isHidden ? 0.90 : 0.92;
-        const maxScale = isHidden ? 0.95 : 1.10;
-        const scale = minScale + (maxScale - minScale) * Math.min(1, Math.max(0, level));
-        ring.style.transform = `scale(${scale})`;
-      }
-
-      stateLabel.textContent = state;
-    }
-
-    function changeState(newState, data = {}) {
-      if (!newState) return;
-      currentState = newState;
-
-      hide(errorText);
-      hide(successText);
-      if (newState === "hidden") hide(responseText);
-
-      if (newState === "error" && data.errorMessage) show(errorText, data.errorMessage);
-      if ((newState === "success" || newState === "connecting") && data.successMessage) {
-        show(successText, data.successMessage);
-      }
-
-      applyStateVisual(newState, 0);
-
-      if (!isAnimating) {
-        isAnimating = true;
-        requestAnimationFrame(animate);
-      }
-    }
-
-    function animate() {
-      if (!isAnimating) return;
-      const level = getAudioLevel(audioData);
-      applyStateVisual(currentState, level);
-      requestAnimationFrame(animate);
-    }
-
-    function handleMessage(data) {
-      switch (data.type) {
-        case "state_change":
-          changeState(data.state, data);
-          break;
-        case "audio_data":
-          audioData = data.fft || [];
-          break;
-        case "response_text":
-          if (data.text) show(responseText, data.text);
-          break;
-        default:
-          break;
-      }
-    }
-
-    function initWebSocket() {
-      try {
-        websocket = new WebSocket("ws://localhost:8765");
-
-        websocket.onopen = () => {
-          websocket.send(JSON.stringify({ type: "ready" }));
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Global variables
+        let scene, camera, renderer, animationFrameId;
+        let ring;
+        let websocket = null;
+        let currentState = 'hidden';
+        let audioData = [];
+        let isConnected = false;
+        let isAnimating = false;
+        let errorMessage = '';
+        let successMessage = '';
+        let responseTextEnabled = true;
+        let currentResponseText = '';
+        let responseTextTimeout = null;
+        
+        // Audio normalization variables
+        let audioBuffer = [];
+        const AUDIO_BUFFER_SIZE = 5;  // Smoothing buffer
+        let audioBaseline = 0.15;     // Minimum level (for silence)
+        let audioMax = 0.5;           // Maximum level (limiter)
+        let audioHistory = [];        // History for adaptive normalization
+        const HISTORY_SIZE = 100;     // History length for adaptation
+        
+        // Colors for different states
+        const stateColors = {
+            hidden: 0x000000,
+            listening: 0x4fc3f7,
+            processing: 0xff9800,
+            responding: 0x9c27b0,
+            error: 0xf44336,
+            success: 0x4caf50,
+            connecting: 0xffeb3b
         };
+        
+        // SHADER WITH GRADIENT AND EFFECTS
+        const ringVertexShader = `
+            precision highp float;
+            varying vec2 vUv;
+            
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+        
+        const ringFragmentShader = `
+            precision highp float;
+            uniform float time;
+            uniform float audioLevel;
+            uniform vec3 color;
+            uniform float pulseSpeed;
+            uniform float usePulse;
+            varying vec2 vUv;
+            
+            // Function for creating random noise
+            float random(vec2 st) {
+                return fract(sin(dot(st.xy, vec2(12.9898, 78.233))) * 43758.5453123);
+            }
+            
+            void main() {
+                // Ring calculations
+                vec2 center = vec2(0.5, 0.5);
+                float dist = distance(vUv, center) * 2.0;  // Scale to 0-1 range
+                
+                // Create ring (circle with hole)
+                float innerRadius = 0.7;
+                float outerRadius = 0.95;
+                float ring = smoothstep(innerRadius, innerRadius + 0.02, dist) * (1.0 - smoothstep(outerRadius - 0.02, outerRadius, dist));
+                
+                // Pulsing - time or audio dependent
+                float pulse;
+                if (usePulse > 0.5) {
+                    // Automatic pulsing mode (processing, error)
+                    pulse = 0.6 + 0.4 * sin(time * pulseSpeed);
+                } else {
+                    // Audio mode (listening, responding) - NORMALIZED RESPONSE
+                    // Linear transformation: baseline->0.7, max->1.0
+                    pulse = 0.7 + audioLevel * 0.3;
+                }
+                
+                // Gradient - brighter inside, darker outside
+                float gradient = 1.0 - (dist - innerRadius) / (outerRadius - innerRadius);
+                gradient = pow(gradient, 1.5);  // Enhance gradient effect
+                
+                // Additional light effect following pulse
+                float glow = smoothstep(0.0, 0.8, gradient) * pulse;
+                
+                // Light wave effect around ring - SUBTLE
+                float wavePulse = sin(time * 3.0 + dist * 8.0) * 0.5 + 0.5;
+                float waves = wavePulse * mix(0.1, audioLevel * 0.3, 0.7) * smoothstep(outerRadius - 0.1, outerRadius, dist);
+                
+                // Noise for texture - SUBTLE
+                float noise = random(vUv + vec2(time * 0.1, 0.0)) * 0.03;
+                
+                // Additional light effects reacting to sound - SUBTLE
+                float sparkle = sin(time * 10.0 + vUv.x * 20.0 + vUv.y * 15.0);
+                sparkle = pow(max(0.0, sparkle), 10.0) * 0.1 * pulse;
+                
+                // Combine effects
+                float levelFactor = mix(0.75, 0.9, audioLevel);
+                float intensity = ring * (gradient + glow * 0.6 + waves + sparkle + noise) * levelFactor;
+                
+                // Final color
+                vec3 baseColor = color * intensity;
+                
+                // Add glow for selected color
+                vec3 glowColor;
+                if (color.r > 0.7 && color.g < 0.5) {  // Red (error)
+                    glowColor = vec3(1.0, 0.3, 0.1);
+                } else if (color.r > 0.7 && color.g > 0.5) {  // Orange (processing)
+                    glowColor = vec3(1.0, 0.7, 0.2);
+                } else if (color.b > 0.7) {  // Blue (listening)
+                    glowColor = vec3(0.2, 0.6, 1.0);
+                } else if (color.g > 0.7 && color.r < 0.5) {  // Green (success)
+                    glowColor = vec3(0.2, 1.0, 0.3);
+                } else {  // Purple (responding)
+                    glowColor = vec3(1.0, 0.2, 1.0);
+                }
+                
+                // Additional glow effect - SUBTLE
+                float audioGlow = usePulse < 0.5 ? mix(0.5, audioLevel, 0.7) : 0.7;
+                vec3 finalColor = baseColor + glowColor * glow * audioGlow * 0.45;
+                
+                // Transparency
+                float alpha = intensity * (0.7 + audioLevel * 0.3);
+                
+                gl_FragColor = vec4(finalColor, alpha);
+            }
+        `;
+        
+        // Three.js initialization
+        function initThree() {
+            scene = new THREE.Scene();
+            scene.background = null;
+            
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 5;
+            
+            renderer = new THREE.WebGLRenderer({ 
+                canvas: document.getElementById('canvas'),
+                antialias: true,
+                alpha: true,
+                premultipliedAlpha: false
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setClearColor(0x000000, 0);
+            
+            createAnimations();
+            
+            renderer.render(scene, camera);
+            console.log('Three.js initialized with error and success text support');
+        }
+        
+        function createAnimations() {
+            // Use plane for shader that will draw the ring
+            const planeGeometry = new THREE.PlaneGeometry(4, 4);
+            const ringMaterial = new THREE.ShaderMaterial({
+                vertexShader: ringVertexShader,
+                fragmentShader: ringFragmentShader,
+                uniforms: {
+                    time: { value: 0.0 },
+                    audioLevel: { value: 0.0 },
+                    color: { value: new THREE.Color(0x4fc3f7) },
+                    pulseSpeed: { value: 2.0 },
+                    usePulse: { value: 0.0 }  // 0 = audio mode, 1 = pulsing mode
+                },
+                transparent: true,
+                depthTest: false,
+                depthWrite: false,
+                blending: THREE.NormalBlending
+            });
+            
+            ring = new THREE.Mesh(planeGeometry, ringMaterial);
+            ring.visible = false;
+            scene.add(ring);
+        }
+        
+        function animate() {
+            if (!isAnimating) return;
+            
+            animationFrameId = requestAnimationFrame(animate);
+            updateAnimation();
+            renderer.render(scene, camera);
+        }
+        
+        function startAnimation() {
+            if (isAnimating) return;
+            
+            isAnimating = true;
+            console.log('Starting animation');
+            
+            // Show appropriate elements based on state
+            if (currentState !== 'hidden') {
+                ring.visible = true;
+                
+                // Show error text only in error state
+                if (currentState === 'error') {
+                    showErrorText(errorMessage);
+                }
+                // Show success text only in success/connecting state
+                else if (currentState === 'success') {
+                    showSuccessText(successMessage, '#4caf50');
+                } else if (currentState === 'connecting') {
+                    showSuccessText(successMessage, '#ffeb3b');
+                }
+            }
+            
+            animate();
+        }
+        
+        function stopAnimation() {
+            if (!isAnimating) return;
+            
+            isAnimating = false;
+            console.log('Stopping animation');
+            
+            // Hide all elements
+            ring.visible = false;
+            
+            // Hide all texts
+            hideErrorText();
+            hideSuccessText();
+            
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+            
+            renderer.render(scene, camera);
+        }
+        
+        function showErrorText(message) {
+            const errorElement = document.getElementById('errorText');
+            if (errorElement && message) {
+                errorElement.textContent = message;
+                errorElement.style.display = 'block';
+                console.log('Showed error text:', message);
+            }
+        }
+        
+        function hideErrorText() {
+            const errorElement = document.getElementById('errorText');
+            if (errorElement) {
+                errorElement.style.display = 'none';
+                console.log('Hidden error text');
+            }
+        }
+        
+        function showSuccessText(message, color = '#4caf50') {
+            const successElement = document.getElementById('successText');
+            if (successElement && message) {
+                successElement.textContent = message;
+                successElement.style.color = color;
+                successElement.style.textShadow = `0 0 10px ${color}88`;
+                successElement.style.display = 'block';
+                console.log('Showed success text:', message);
+            }
+        }
+        
+        function hideSuccessText() {
+            const successElement = document.getElementById('successText');
+            if (successElement) {
+                successElement.style.display = 'none';
+                console.log('Hidden success text');
+            }
+        }
+        
+        function showResponseText(text) {
+            if (!responseTextEnabled || !text) return;
+            
+            const responseElement = document.getElementById('responseText');
+            if (responseElement) {
+                // Clear any existing timeout
+                if (responseTextTimeout) {
+                    clearTimeout(responseTextTimeout);
+                }
+                
+                // Set the text and show the element
+                responseElement.textContent = text;
+                responseElement.style.display = 'block';
+                currentResponseText = text;
+                
+                console.log('Showed response text:', text);
+                
+                // Text will stay visible until animation ends (state changes to 'hidden')
+                // No automatic timeout
+            }
+        }
+        
+        function hideResponseText() {
+            const responseElement = document.getElementById('responseText');
+            if (responseElement) {
+                responseElement.style.display = 'none';
+                currentResponseText = '';
+                console.log('Hidden response text');
+            }
+            
+            if (responseTextTimeout) {
+                clearTimeout(responseTextTimeout);
+                responseTextTimeout = null;
+            }
+        }
+        
+        // Audio level normalization function
+        function normalizeAudioLevel(rawLevel) {
+            // Cap maximum value
+            const cappedLevel = Math.min(rawLevel, audioMax);
+            
+            // Linear normalization between baseline and max
+            const range = audioMax - audioBaseline;
+            if (range <= 0) return 0;
+            
+            // If level is below baseline, return small value
+            if (cappedLevel < audioBaseline) {
+                return Math.max(0, cappedLevel / audioBaseline * 0.1);
+            }
+            
+            // Normalize between baseline and max to 0.1-1.0 range
+            return 0.1 + 0.9 * (cappedLevel - audioBaseline) / range;
+        }
+        
+        // Adaptive audio level processing function
+        function processAudioLevel(audioData) {
+            if (!audioData || audioData.length === 0) return 0;
+            
+            // Calculate average audio level from raw data
+            let avgLevel = 0;
+            let count = 0;
+            
+            // Take data from lower and mid frequencies
+            const relevantRange = Math.min(audioData.length, 20);
+            for (let i = 0; i < relevantRange; i++) {
+                // Apply different weights for different frequencies
+                // Lower frequencies have higher weight
+                const weight = (relevantRange - i) / relevantRange;
+                avgLevel += audioData[i] * weight;
+                count += weight;
+            }
+            
+            // Avoid division by zero
+            if (count <= 0) return 0;
+            
+            // Raw audio level
+            const rawLevel = avgLevel / count;
+            
+            // Add to history for adaptive normalization
+            audioHistory.push(rawLevel);
+            if (audioHistory.length > HISTORY_SIZE) {
+                audioHistory.shift();
+            }
+            
+            // Update baseline and max adaptively
+            if (audioHistory.length > 10) {
+                // Sort history
+                const sortedHistory = [...audioHistory].sort((a, b) => a - b);
+                // Baseline is 15th percentile
+                const baselineIndex = Math.floor(sortedHistory.length * 0.15);
+                // Max is 90th percentile
+                const maxIndex = Math.floor(sortedHistory.length * 0.9);
+                
+                // Update values with some inertia
+                audioBaseline = audioBaseline * 0.9 + sortedHistory[baselineIndex] * 0.1;
+                audioMax = audioMax * 0.9 + sortedHistory[maxIndex] * 0.1;
+                
+                // Ensure baseline and max are reasonable
+                audioBaseline = Math.max(0.05, audioBaseline);
+                audioMax = Math.max(audioBaseline * 1.5, audioMax);
+            }
+            
+            // Normalize level
+            const normalizedLevel = normalizeAudioLevel(rawLevel);
+            
+            // Add to smoothing buffer
+            audioBuffer.push(normalizedLevel);
+            if (audioBuffer.length > AUDIO_BUFFER_SIZE) {
+                audioBuffer.shift();
+            }
+            
+            // Calculate average from buffer for smoother animation
+            let smoothedLevel = 0;
+            for (let i = 0; i < audioBuffer.length; i++) {
+                smoothedLevel += audioBuffer[i];
+            }
+            smoothedLevel /= audioBuffer.length;
+            
+            return smoothedLevel;
+        }
+        
+        function updateAnimation() {
+            const time = performance.now() * 0.001;
+            
+            // Process audio data with normalization
+            const audioLevel = processAudioLevel(audioData);
+            
+            // Update ring shader
+            if (ring && ring.material.uniforms) {
+                // Update time for all states
+                ring.material.uniforms.time.value = time;
+                
+                // Set ring color
+                ring.material.uniforms.color.value.set(stateColors[currentState] || stateColors.hidden);
+                
+                // Update parameters based on state
+                switch (currentState) {
+                    case 'listening':
+                        // Listening: reacts only to sound
+                        ring.material.uniforms.audioLevel.value = audioLevel;
+                        ring.material.uniforms.usePulse.value = 0.0; // Audio mode
+                        break;
+                        
+                    case 'processing':
+                        // Processing: slow pulsing
+                        ring.material.uniforms.pulseSpeed.value = 2.0;
+                        ring.material.uniforms.usePulse.value = 1.0; // Pulsing mode
+                        break;
+                        
+                    case 'responding':
+                        // Responding: reacts to sound
+                        ring.material.uniforms.audioLevel.value = audioLevel;
+                        ring.material.uniforms.usePulse.value = 0.0; // Audio mode
+                        break;
+                        
+                    case 'error':
+                        // Error: fast pulsing
+                        ring.material.uniforms.pulseSpeed.value = 6.0;
+                        ring.material.uniforms.usePulse.value = 1.0; // Pulsing mode
+                        break;
+                        
+                    case 'connecting':
+                        // Connecting: very slow pulse
+                        ring.material.uniforms.pulseSpeed.value = 1.0;
+                        ring.material.uniforms.usePulse.value = 1.0; // Pulsing mode
+                        break;
 
-        websocket.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-          handleMessage(data);
-        };
-
-        websocket.onclose = () => {
-          setTimeout(initWebSocket, 2000);
-        };
-      } catch (e) {
-        setTimeout(initWebSocket, 2000);
-      }
-    }
-
-    document.addEventListener("click", () => {
-      if (currentState === "hidden" && websocket && websocket.readyState === WebSocket.OPEN) {
-        websocket.send(JSON.stringify({ type: "activate_voice_command" }));
-      }
-    });
-
-    setInterval(() => {
-      if (websocket && websocket.readyState === WebSocket.OPEN) {
-        websocket.send(JSON.stringify({ type: "ping" }));
-      }
-    }, 30000);
-
-    changeState("hidden", {});
-    initWebSocket();
-  </script>
+                    case 'success':
+                        // Success: constant brightness, no pulsing
+                        ring.material.uniforms.audioLevel.value = 0.8; // Constant value for brightness
+                        ring.material.uniforms.usePulse.value = 0.0; // No pulsing
+                        break;
+                }
+            }
+        }
+        
+        function changeState(newState, data = {}) {
+            if (currentState === newState) return;
+            
+            console.log(`State change: ${currentState} -> ${newState}`);
+            
+            // Hide all elements before state change
+            if (ring) ring.visible = false;
+            hideErrorText();
+            hideSuccessText();
+            
+            // Only hide response text when going to 'hidden' state
+            if (newState === 'hidden') {
+                hideResponseText();
+            }
+            
+            // Reset audio buffers on state change
+            audioBuffer = [];
+            
+            currentState = newState;
+            
+            // Save error message if available
+            if (newState === 'error' && data.errorMessage) {
+                errorMessage = data.errorMessage;
+            }
+            
+            // Save success/connecting message if available
+            if ((newState === 'success' || newState === 'connecting') && data.successMessage) {
+                successMessage = data.successMessage;
+            }
+            
+            if (newState === 'hidden') {
+                stopAnimation();
+                return;
+            } 
+            
+            // Update visible elements for new state
+            if (ring) {
+                ring.visible = true;
+                if (ring.material.uniforms) {
+                    ring.material.uniforms.color.value.set(stateColors[newState] || stateColors.hidden);
+                }
+            }
+            
+            if (newState === 'error') {
+                showErrorText(errorMessage);
+            } else if (newState === 'success') {
+                showSuccessText(successMessage, '#4caf50');
+            } else if (newState === 'connecting') {
+                showSuccessText(successMessage, '#ffeb3b');
+            }
+            
+            if (!isAnimating) {
+                startAnimation();
+            }
+        }
+        
+        // WebSocket
+        function initWebSocket() {
+            try {
+                websocket = new WebSocket('ws://localhost:8765');
+                
+                websocket.onopen = function(event) {
+                    console.log('Connected to animation server');
+                    isConnected = true;
+                    websocket.send(JSON.stringify({ type: 'ready' }));
+                };
+                
+                websocket.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    handleWebSocketMessage(data);
+                };
+                
+                websocket.onclose = function(event) {
+                    console.log('Animation server connection closed');
+                    isConnected = false;
+                    setTimeout(initWebSocket, 2000);
+                };
+                
+                websocket.onerror = function(error) {
+                    console.error('WebSocket error:', error);
+                };
+                
+            } catch (error) {
+                console.error('WebSocket initialization error:', error);
+                setTimeout(initWebSocket, 2000);
+            }
+        }
+        
+        function handleWebSocketMessage(data) {
+            switch(data.type) {
+                case 'state_change':
+                    changeState(data.state, data);
+                    break;
+                case 'audio_data':
+                    audioData = data.fft || [];
+                    break;
+                case 'response_text':
+                    if (responseTextEnabled) {
+                        showResponseText(data.text);
+                    }
+                    break;
+                case 'pong':
+                    break;
+                default:
+                    console.log('Unknown message:', data);
+            }
+        }
+        
+        document.addEventListener('click', function() {
+            if (currentState === 'hidden' && websocket && websocket.readyState === WebSocket.OPEN) {
+                websocket.send(JSON.stringify({ 
+                    type: 'activate_voice_command' 
+                }));
+            }
+        });
+        
+        window.addEventListener('resize', function() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        function startHeartbeat() {
+            setInterval(() => {
+                if (websocket && websocket.readyState === WebSocket.OPEN) {
+                    websocket.send(JSON.stringify({ type: 'ping' }));
+                }
+            }, 30000);
+        }
+        
+        window.addEventListener('load', function() {
+            console.log('Initializing application with error and success text support...');
+            initThree();
+            initWebSocket();
+            startHeartbeat();
+        });
+    </script>
 </body>
 </html>
