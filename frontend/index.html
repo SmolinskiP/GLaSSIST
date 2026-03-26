@@ -840,6 +840,10 @@
         window.addEventListener('load', function() {
             console.log('Initializing application with error and success text support...');
             initThree();
+            // Start rendering immediately so hidden-state idle glow is visible at startup.
+            if (!isAnimating) {
+                startAnimation();
+            }
             initWebSocket();
             startHeartbeat();
         });
