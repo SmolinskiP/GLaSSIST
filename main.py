@@ -1086,23 +1086,12 @@ class HAAssistApp:
         # Close HA client connection if exists
         if hasattr(self, 'ha_client') and self.ha_client:
             try:
-                # Run close in asyncio loop if one exists
-                loop = None
+                # Use an isolated loop for shutdown to avoid cross-loop Future issues.
+                close_loop = asyncio.new_event_loop()
                 try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    # No running loop, create a new one
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    
-                if loop and not loop.is_closed():
-                    if loop.is_running():
-                        # Schedule close for later
-                        asyncio.create_task(self.ha_client.close())
-                    else:
-                        # Run close synchronously
-                        loop.run_until_complete(self.ha_client.close())
-                        
+                    close_loop.run_until_complete(self.ha_client.close())
+                finally:
+                    close_loop.close()
                 self.ha_client = None
                 logger.info("HA Client connection closed")
                 
@@ -1332,4 +1321,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
