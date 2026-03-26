@@ -27,6 +27,12 @@
             position: relative;
             background: transparent;
         }
+
+        html.fallback-mode,
+        body.fallback-mode,
+        #container.fallback-mode {
+            background: #0f1418;
+        }
         
         #canvas {
             display: block;
@@ -307,6 +313,14 @@
             const canvas = document.getElementById('canvas');
             fallbackCtx = canvas.getContext('2d');
             useCanvasFallback = !!fallbackCtx;
+            if (useCanvasFallback) {
+                document.documentElement.classList.add('fallback-mode');
+                document.body.classList.add('fallback-mode');
+                const container = document.getElementById('container');
+                if (container) {
+                    container.classList.add('fallback-mode');
+                }
+            }
             resizeFallbackCanvas();
             clearFallbackCanvas();
         }
@@ -402,7 +416,9 @@
             
             // Show appropriate elements based on state
             if (currentState !== 'hidden') {
-                ring.visible = true;
+                if (ring) {
+                    ring.visible = true;
+                }
                 
                 // Show error text only in error state
                 if (currentState === 'error') {
@@ -426,7 +442,9 @@
             console.log('Stopping animation');
             
             // Hide all elements
-            ring.visible = false;
+            if (ring) {
+                ring.visible = false;
+            }
             
             // Hide all texts
             hideErrorText();
