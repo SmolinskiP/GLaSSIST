@@ -61,8 +61,6 @@ class HAAssistApp:
         self.qt_tray_retry_timer = None
         self.qt_tray_bridge = None
         self.window_visible = True
-        self._window_visibility_lock = threading.Lock()
-        self._auto_window_restore_pending = False
         self.hotkey_backend = None
         self._pynput_hotkeys = None
         self.wake_word_detector = None
@@ -589,13 +587,6 @@ class HAAssistApp:
         target_volume = None
         
         try:
-            # Timing controls (shorter defaults for snappier desktop UX)
-            error_display_seconds = utils.get_env("HA_ERROR_DISPLAY_SECONDS", 2.0, float)
-            response_hide_delay_seconds = utils.get_env("HA_RESPONSE_HIDE_DELAY_SECONDS", 0.8, float)
-            audio_end_settle_seconds = utils.get_env("HA_AUDIO_END_SETTLE_SECONDS", 0.25, float)
-            pipeline_start_timeout_seconds = utils.get_env("HA_PIPELINE_START_TIMEOUT_SECONDS", 20, int)
-            receive_response_timeout_seconds = utils.get_env("HA_RECEIVE_RESPONSE_TIMEOUT_SECONDS", 25, int)
-
             # Load media player configuration
             entities_config = utils.get_env("HA_MEDIA_PLAYER_ENTITIES", "")
             if entities_config:
@@ -620,7 +611,7 @@ class HAAssistApp:
             if not await ha_client.connect():
                 logger.error("Failed to connect to Home Assistant")
                 self.animation_server.change_state("error", "Cannot connect to Home Assistant")
-                await asyncio.sleep(error_display_seconds)
+                await asyncio.sleep(5)
                 self.animation_server.change_state("hidden")
                 utils.play_feedback_sound("deactivation")
                 return False
@@ -657,10 +648,10 @@ class HAAssistApp:
             while keep_listening:
                 keep_listening = False  # assume one turn unless question detected
 
-                if not await ha_client.start_assist_pipeline(timeout_seconds=pipeline_start_timeout_seconds):
+                if not await ha_client.start_assist_pipeline(timeout_seconds=30):
                     logger.error("Failed to start Assist pipeline")
                     self.animation_server.change_state("error", "Cannot start voice assistant")
-                    await asyncio.sleep(error_display_seconds)
+                    await asyncio.sleep(5)
                     self.animation_server.change_state("hidden")
                     utils.play_feedback_sound("deactivation")
                     return False
@@ -679,7 +670,7 @@ class HAAssistApp:
                 async def on_audio_end():
                     logger.info("=== SWITCHING TO PROCESSING ===")
                     self.animation_server.change_state("processing")
-                    await asyncio.sleep(audio_end_settle_seconds)
+                    await asyncio.sleep(0.8)
                     success = await ha_client.end_audio()
                     if not success:
                         logger.warning("Error ending audio")
@@ -688,7 +679,7 @@ class HAAssistApp:
                     logger.info("Audio sent successfully")
 
                     logger.info("=== RECEIVING RESPONSE ===")
-                    results = await ha_client.receive_response(timeout_seconds=receive_response_timeout_seconds)
+                    results = await ha_client.receive_response(timeout_seconds=45)
 
                     error_found = False
                     for result in results:
@@ -714,7 +705,7 @@ class HAAssistApp:
                                     full_error_message = "No words detected. Try again."
 
                                 self.animation_server.change_state("error", full_error_message)
-                                await asyncio.sleep(error_display_seconds)
+                                await asyncio.sleep(5)
                                 self.animation_server.change_state("hidden")
                                 utils.play_feedback_sound("deactivation")
 
@@ -747,26 +738,26 @@ class HAAssistApp:
                                 utils.play_feedback_sound("activation")
                                 keep_listening = True
                             else:
-                                await asyncio.sleep(response_hide_delay_seconds)
+                                await asyncio.sleep(3)
                                 self.animation_server.change_state("hidden")
                                 utils.play_feedback_sound("deactivation")
                         else:
                             print("\nNo response from assistant or processing error.")
                             self.animation_server.change_state("error", "Assistant did not respond")
-                            await asyncio.sleep(error_display_seconds)
+                            await asyncio.sleep(5)
                             self.animation_server.change_state("hidden")
                             utils.play_feedback_sound("deactivation")
                 else:
                     logger.error("Failed to record and send audio")
                     self.animation_server.change_state("error", "Audio recording error")
-                    await asyncio.sleep(error_display_seconds)
+                    await asyncio.sleep(5)
                     self.animation_server.change_state("hidden")
                     utils.play_feedback_sound("deactivation")
                 
         except asyncio.TimeoutError:
             logger.error("Timeout during voice command processing")
             self.animation_server.change_state("error", "Timeout - assistant not responding")
-            await asyncio.sleep(error_display_seconds)
+            await asyncio.sleep(5)
             self.animation_server.change_state("hidden")
             utils.play_feedback_sound("deactivation")
             
@@ -778,7 +769,7 @@ class HAAssistApp:
                 error_msg = error_msg[:77] + "..."
             
             self.animation_server.change_state("error", f"Error: {error_msg}")
-            await asyncio.sleep(error_display_seconds)
+            await asyncio.sleep(5)
             self.animation_server.change_state("hidden")
             utils.play_feedback_sound("deactivation")
         finally:
@@ -814,7 +805,6 @@ class HAAssistApp:
                 except Exception as e:
                     logger.error(f"Error closing temp HA client: {e}")
             
-            self._auto_restore_window_hidden_state()
             logger.info("Voice command session cleanup completed")
 
     def on_voice_command_trigger(self):
@@ -830,10 +820,6 @@ class HAAssistApp:
             logger.info("Application is busy, ignoring trigger")
             return
 
-        # If the desktop window is currently hidden, temporarily show it for the interaction.
-        # We'll restore hidden state in process_voice_command() finally block.
-        self._auto_show_window_for_interaction()
-
         def run_async():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
@@ -845,51 +831,6 @@ class HAAssistApp:
 
         thread = threading.Thread(target=run_async, daemon=True, name="voice-command")
         thread.start()
-
-    def _auto_show_window_for_interaction(self):
-        """Temporarily show hidden window for active voice interaction."""
-        if not utils.get_env("HA_AUTO_SHOW_WINDOW_ON_LISTEN", True, bool):
-            return
-        with self._window_visibility_lock:
-            if self.window_visible or self._auto_window_restore_pending:
-                return
-            if not (hasattr(webview, 'windows') and webview.windows):
-                return
-            try:
-                window = webview.windows[0]
-                if hasattr(window, "show"):
-                    window.show()
-                elif hasattr(window, "restore"):
-                    window.restore()
-                self.window_visible = True
-                self._auto_window_restore_pending = True
-                logger.info("Window auto-shown for voice interaction")
-            except Exception as e:
-                logger.debug(f"Could not auto-show window for interaction: {e}")
-
-    def _auto_restore_window_hidden_state(self):
-        """Re-hide window only if it was auto-shown for an interaction."""
-        if not utils.get_env("HA_AUTO_SHOW_WINDOW_ON_LISTEN", True, bool):
-            with self._window_visibility_lock:
-                self._auto_window_restore_pending = False
-            return
-        with self._window_visibility_lock:
-            if not self._auto_window_restore_pending:
-                return
-            try:
-                if hasattr(webview, 'windows') and webview.windows:
-                    window = webview.windows[0]
-                    if hasattr(window, "hide"):
-                        window.hide()
-                    elif hasattr(window, "minimize"):
-                        window.minimize()
-                    self.window_visible = False
-                    self.hide_from_taskbar()
-                    logger.info("Window re-hidden after voice interaction")
-            except Exception as e:
-                logger.debug(f"Could not re-hide window after interaction: {e}")
-            finally:
-                self._auto_window_restore_pending = False
     
     def hide_from_taskbar(self):
         """Hide window from taskbar using cross-platform implementation."""
@@ -1006,8 +947,6 @@ class HAAssistApp:
     
     def toggle_window(self, icon=None, item=None):
         """Toggle window visibility."""
-        with self._window_visibility_lock:
-            self._auto_window_restore_pending = False
         if self.window_visible:
             if hasattr(webview, 'windows') and webview.windows:
                 window = webview.windows[0]
@@ -1475,12 +1414,23 @@ class HAAssistApp:
         # Close HA client connection if exists
         if hasattr(self, 'ha_client') and self.ha_client:
             try:
-                # Use a dedicated loop to avoid cross-thread loop contamination during shutdown.
-                close_loop = asyncio.new_event_loop()
+                # Run close in asyncio loop if one exists
+                loop = None
                 try:
-                    close_loop.run_until_complete(self.ha_client.close())
-                finally:
-                    close_loop.close()
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    # No running loop, create a new one
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+
+                if loop and not loop.is_closed():
+                    if loop.is_running():
+                        # Schedule close for later
+                        asyncio.create_task(self.ha_client.close())
+                    else:
+                        # Run close synchronously
+                        loop.run_until_complete(self.ha_client.close())
+
                 self.ha_client = None
                 logger.info("HA Client connection closed")
                 

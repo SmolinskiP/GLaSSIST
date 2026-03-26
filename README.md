@@ -339,7 +339,6 @@ The app plays sounds from `sound/` directory:
 
 ### Interface & Controls
 - `HA_HOTKEY` - Activation hotkey (ctrl+shift+h, ctrl+alt+h, alt+space, etc.)
-- `HA_AUTO_SHOW_WINDOW_ON_LISTEN` - If hidden, show window while listening and re-hide after interaction (true/false)
 - `HA_SOUND_FEEDBACK` - Activation sounds (true/false)
 - `HA_RESPONSE_TEXT_ENABLED` - Show assistant responses as text overlay (true/false)
 - `HA_ANIMATIONS_ENABLED` - Enable visual animations with Three.js (true/false)

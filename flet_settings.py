@@ -17,30 +17,6 @@ from audio import AudioManager
 
 logger = utils.setup_logger()
 
-def _ensure_typing_extensions_sentinel():
-    """Ensure typing_extensions provides Sentinel (required by modern pydantic_core)."""
-    try:
-        from typing_extensions import Sentinel  # noqa: F401
-        return True
-    except Exception:
-        logger.warning("typing_extensions missing Sentinel; attempting self-heal upgrade")
-        try:
-            import sys
-            subprocess.run(
-                [sys.executable, "-m", "pip", "install", "--upgrade", "typing_extensions>=4.14.0,<5"],
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-            from typing_extensions import Sentinel  # noqa: F401
-            logger.info("typing_extensions upgraded successfully")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to upgrade typing_extensions automatically: {e}")
-            return False
-
-
 def _pick_free_local_port() -> int:
     """Pick an available localhost TCP port."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -60,20 +36,6 @@ def _wait_for_port(host: str, port: int, timeout_sec: float = 8.0) -> bool:
             time.sleep(0.12)
     return False
 
-
-def _shutdown_loop_cleanly(loop: asyncio.AbstractEventLoop) -> None:
-    """Best-effort loop shutdown to avoid pending-task warnings."""
-    try:
-        pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
-        for task in pending:
-            task.cancel()
-        if pending:
-            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-        loop.run_until_complete(loop.shutdown_asyncgens())
-    except Exception:
-        pass
-    finally:
-        loop.close()
 
 class FletSettingsApp:
     def __init__(self, animation_server=None):
@@ -151,6 +113,7 @@ class FletSettingsApp:
         
     def _load_current_settings(self):
         """Load current settings from environment"""
+        is_linux = platform_module.system() == "Linux"
         return {
             'HA_HOST': utils.get_env('HA_HOST', 'localhost:8123'),
             'HA_TOKEN': utils.get_env('HA_TOKEN', ''),
@@ -180,17 +143,16 @@ class FletSettingsApp:
             'CONNECTION_MODE': utils.get_env('CONNECTION_MODE', 'websocket'),
             'DEVICE_NAME': utils.get_env('DEVICE_NAME', 'GLaSSIST'),
             'ESPHOME_PORT': utils.get_env('ESPHOME_PORT', '6053'),
-            'HA_ENABLE_LINUX_TRAY': utils.get_env('HA_ENABLE_LINUX_TRAY', 'true'),
-            'HA_ENABLE_LINUX_TRAY_WAYLAND': utils.get_env('HA_ENABLE_LINUX_TRAY_WAYLAND', 'true'),
-            'HA_WEBVIEW_GUI': utils.get_env('HA_WEBVIEW_GUI', 'qt'),
+            'HA_ENABLE_LINUX_TRAY': utils.get_env('HA_ENABLE_LINUX_TRAY', 'true' if is_linux else 'false'),
+            'HA_ENABLE_LINUX_TRAY_WAYLAND': utils.get_env('HA_ENABLE_LINUX_TRAY_WAYLAND', 'false'),
+            'HA_WEBVIEW_GUI': utils.get_env('HA_WEBVIEW_GUI', 'qt' if is_linux else ''),
             'HA_ALLOW_GTK_TRAY': utils.get_env('HA_ALLOW_GTK_TRAY', 'false'),
-            'HA_FORCE_OPAQUE_WINDOW': utils.get_env('HA_FORCE_OPAQUE_WINDOW', 'true'),
-            'WINDOW_TRANSPARENT': utils.get_env('WINDOW_TRANSPARENT', 'false'),
-            'WINDOW_FRAMELESS': utils.get_env('WINDOW_FRAMELESS', 'false'),
+            'HA_FORCE_OPAQUE_WINDOW': utils.get_env('HA_FORCE_OPAQUE_WINDOW', 'true' if is_linux else 'false'),
+            'WINDOW_TRANSPARENT': utils.get_env('WINDOW_TRANSPARENT', 'false' if is_linux else 'true'),
+            'WINDOW_FRAMELESS': utils.get_env('WINDOW_FRAMELESS', 'false' if is_linux else 'true'),
             'HA_ALLOW_LINUX_TRAY_WITH_WEBVIEW': utils.get_env('HA_ALLOW_LINUX_TRAY_WITH_WEBVIEW', 'false'),
-            'HA_HIDE_FROM_TASKBAR': utils.get_env('HA_HIDE_FROM_TASKBAR', 'true'),
-            'HA_SETTINGS_USE_BROWSER': utils.get_env('HA_SETTINGS_USE_BROWSER', 'true'),
-            'HA_AUTO_SHOW_WINDOW_ON_LISTEN': utils.get_env('HA_AUTO_SHOW_WINDOW_ON_LISTEN', 'true'),
+            'HA_HIDE_FROM_TASKBAR': utils.get_env('HA_HIDE_FROM_TASKBAR', 'false' if is_linux else 'true'),
+            'HA_SETTINGS_USE_BROWSER': utils.get_env('HA_SETTINGS_USE_BROWSER', 'true' if is_linux else 'false'),
         }
     
     async def _create_ui(self, current_settings):
@@ -218,48 +180,54 @@ class FletSettingsApp:
         )
         
         # Create tabs with scrollable content
+        tabs_list = [
+            ft.Tab(
+                text="Connection",
+                icon=ft.Icons.WIFI,
+                content=await self._create_connection_tab(current_settings)
+            ),
+            ft.Tab(
+                text="Audio & VAD",
+                icon=ft.Icons.MIC,
+                content=await self._create_audio_tab(current_settings)
+            ),
+            ft.Tab(
+                text="Wake Word",
+                icon=ft.Icons.RECORD_VOICE_OVER,
+                content=await self._create_wake_word_tab(current_settings)
+            ),
+            ft.Tab(
+                text="Media Players",
+                icon=ft.Icons.VOLUME_UP,
+                content=await self._create_media_players_tab(current_settings)
+            ),
+            ft.Tab(
+                text="Advanced",
+                icon=ft.Icons.SETTINGS_APPLICATIONS,
+                content=await self._create_advanced_tab(current_settings)
+            ),
+            ft.Tab(
+                text="About",
+                icon=ft.Icons.INFO_OUTLINE,
+                content=await self._create_about_tab()
+            ),
+        ]
+        if platform_module.system() == "Linux":
+            tabs_list.insert(
+                4,
+                ft.Tab(
+                    text="Desktop",
+                    icon=ft.Icons.DESKTOP_WINDOWS,
+                    content=await self._create_desktop_tab(current_settings)
+                )
+            )
+
         tabs = ft.Tabs(
             selected_index=0,
             animation_duration=300,
             expand=1,
             scrollable=True,
-            tabs=[
-                ft.Tab(
-                    text="Connection",
-                    icon=ft.Icons.WIFI,
-                    content=await self._create_connection_tab(current_settings)
-                ),
-                ft.Tab(
-                    text="Audio & VAD", 
-                    icon=ft.Icons.MIC,
-                    content=await self._create_audio_tab(current_settings)
-                ),
-                ft.Tab(
-                    text="Wake Word",
-                    icon=ft.Icons.RECORD_VOICE_OVER,
-                    content=await self._create_wake_word_tab(current_settings)
-                ),
-                ft.Tab(
-                    text="Media Players",
-                    icon=ft.Icons.VOLUME_UP,
-                    content=await self._create_media_players_tab(current_settings)
-                ),
-                ft.Tab(
-                    text="Desktop",
-                    icon=ft.Icons.DESKTOP_WINDOWS,
-                    content=await self._create_desktop_tab(current_settings)
-                ),
-                ft.Tab(
-                    text="Advanced",
-                    icon=ft.Icons.SETTINGS_APPLICATIONS,
-                    content=await self._create_advanced_tab(current_settings)
-                ),
-                ft.Tab(
-                    text="About",
-                    icon=ft.Icons.INFO_OUTLINE,
-                    content=await self._create_about_tab()
-                )
-            ]
+            tabs=tabs_list
         )
         
         # Action buttons
@@ -1141,11 +1109,6 @@ class FletSettingsApp:
             value=current_settings.get('HA_HIDE_FROM_TASKBAR', 'true') == 'true',
             active_color=ft.Colors.BLUE_600
         )
-        self.auto_show_window_on_listen_switch = ft.Switch(
-            label="Auto-show window when listening, then re-hide when done",
-            value=current_settings.get('HA_AUTO_SHOW_WINDOW_ON_LISTEN', 'true') == 'true',
-            active_color=ft.Colors.BLUE_600
-        )
         self.settings_use_browser_switch = ft.Switch(
             label="Open settings in web browser (Linux stability mode)",
             value=current_settings.get('HA_SETTINGS_USE_BROWSER', 'true') == 'true',
@@ -1202,7 +1165,6 @@ class FletSettingsApp:
                             self.enable_linux_tray_switch,
                             self.enable_linux_tray_wayland_switch,
                             self.hide_from_taskbar_switch,
-                            self.auto_show_window_on_listen_switch,
                             self.settings_use_browser_switch,
                             self.webview_gui_dropdown,
                             ft.Text("Most of these settings require restarting GLaSSIST.",
@@ -1392,11 +1354,7 @@ class FletSettingsApp:
                         else:
                             return False, message, []
                     finally:
-                        try:
-                            loop.run_until_complete(test_client.close())
-                        except Exception:
-                            pass
-                        _shutdown_loop_cleanly(loop)
+                        loop.close()
                         
                 except Exception as ex:
                     return False, str(ex), []
@@ -1880,11 +1838,7 @@ class FletSettingsApp:
                         return True, pipelines
                     return False, []
                 finally:
-                    try:
-                        loop.run_until_complete(test_client.close())
-                    except Exception:
-                        pass
-                    _shutdown_loop_cleanly(loop)
+                    loop.close()
             
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -2173,19 +2127,22 @@ class FletSettingsApp:
                 'DEVICE_NAME': self.device_name_field.value.strip() or 'GLaSSIST',
                 'ESPHOME_PORT': self.esphome_port_field.value.strip() or '6053',
 
-                # Linux desktop/runtime behavior.
-                'HA_ENABLE_LINUX_TRAY': 'true' if self.enable_linux_tray_switch.value else 'false',
-                'HA_ENABLE_LINUX_TRAY_WAYLAND': 'true' if self.enable_linux_tray_wayland_switch.value else 'false',
-                'HA_WEBVIEW_GUI': (self.webview_gui_dropdown.value or 'qt').strip().lower(),
-                'HA_ALLOW_GTK_TRAY': 'true' if self.allow_gtk_tray_switch.value else 'false',
-                'HA_FORCE_OPAQUE_WINDOW': 'true' if self.force_opaque_window_switch.value else 'false',
-                'WINDOW_TRANSPARENT': 'true' if self.window_transparent_switch.value else 'false',
-                'WINDOW_FRAMELESS': 'true' if self.window_frameless_switch.value else 'false',
-                'HA_ALLOW_LINUX_TRAY_WITH_WEBVIEW': 'true' if self.allow_linux_tray_with_webview_switch.value else 'false',
-                'HA_HIDE_FROM_TASKBAR': 'true' if self.hide_from_taskbar_switch.value else 'false',
-                'HA_SETTINGS_USE_BROWSER': 'true' if self.settings_use_browser_switch.value else 'false',
-                'HA_AUTO_SHOW_WINDOW_ON_LISTEN': 'true' if self.auto_show_window_on_listen_switch.value else 'false',
             }
+
+            if platform_module.system() == "Linux":
+                new_settings.update({
+                    # Linux desktop/runtime behavior.
+                    'HA_ENABLE_LINUX_TRAY': 'true' if self.enable_linux_tray_switch.value else 'false',
+                    'HA_ENABLE_LINUX_TRAY_WAYLAND': 'true' if self.enable_linux_tray_wayland_switch.value else 'false',
+                    'HA_WEBVIEW_GUI': (self.webview_gui_dropdown.value or 'qt').strip().lower(),
+                    'HA_ALLOW_GTK_TRAY': 'true' if self.allow_gtk_tray_switch.value else 'false',
+                    'HA_FORCE_OPAQUE_WINDOW': 'true' if self.force_opaque_window_switch.value else 'false',
+                    'WINDOW_TRANSPARENT': 'true' if self.window_transparent_switch.value else 'false',
+                    'WINDOW_FRAMELESS': 'true' if self.window_frameless_switch.value else 'false',
+                    'HA_ALLOW_LINUX_TRAY_WITH_WEBVIEW': 'true' if self.allow_linux_tray_with_webview_switch.value else 'false',
+                    'HA_HIDE_FROM_TASKBAR': 'true' if self.hide_from_taskbar_switch.value else 'false',
+                    'HA_SETTINGS_USE_BROWSER': 'true' if self.settings_use_browser_switch.value else 'false',
+                })
             
             # Save to .env file
             result = self._save_env_file(new_settings)
@@ -2277,18 +2234,18 @@ class FletSettingsApp:
             env_content += f"HA_MEDIA_PLAYER_ENTITIES={settings['HA_MEDIA_PLAYER_ENTITIES']}\n"
             env_content += f"HA_MEDIA_PLAYER_TARGET_VOLUME={settings['HA_MEDIA_PLAYER_TARGET_VOLUME']}\n"
 
-            env_content += "\n# === LINUX TRAY / WEBVIEW (runtime) ===\n"
-            env_content += f"HA_ENABLE_LINUX_TRAY={settings.get('HA_ENABLE_LINUX_TRAY', 'true')}\n"
-            env_content += f"HA_ENABLE_LINUX_TRAY_WAYLAND={settings.get('HA_ENABLE_LINUX_TRAY_WAYLAND', 'true')}\n"
-            env_content += f"HA_WEBVIEW_GUI={settings.get('HA_WEBVIEW_GUI', 'qt')}\n"
-            env_content += f"HA_ALLOW_GTK_TRAY={settings.get('HA_ALLOW_GTK_TRAY', 'false')}\n"
-            env_content += f"HA_FORCE_OPAQUE_WINDOW={settings.get('HA_FORCE_OPAQUE_WINDOW', 'true')}\n"
-            env_content += f"WINDOW_TRANSPARENT={settings.get('WINDOW_TRANSPARENT', 'false')}\n"
-            env_content += f"WINDOW_FRAMELESS={settings.get('WINDOW_FRAMELESS', 'false')}\n"
-            env_content += f"HA_ALLOW_LINUX_TRAY_WITH_WEBVIEW={settings.get('HA_ALLOW_LINUX_TRAY_WITH_WEBVIEW', 'false')}\n"
-            env_content += f"HA_HIDE_FROM_TASKBAR={settings.get('HA_HIDE_FROM_TASKBAR', 'true')}\n"
-            env_content += f"HA_SETTINGS_USE_BROWSER={settings.get('HA_SETTINGS_USE_BROWSER', 'true')}\n"
-            env_content += f"HA_AUTO_SHOW_WINDOW_ON_LISTEN={settings.get('HA_AUTO_SHOW_WINDOW_ON_LISTEN', 'true')}\n"
+            if 'HA_ENABLE_LINUX_TRAY' in settings:
+                env_content += "\n# === LINUX TRAY / WEBVIEW (runtime) ===\n"
+                env_content += f"HA_ENABLE_LINUX_TRAY={settings.get('HA_ENABLE_LINUX_TRAY', 'true')}\n"
+                env_content += f"HA_ENABLE_LINUX_TRAY_WAYLAND={settings.get('HA_ENABLE_LINUX_TRAY_WAYLAND', 'true')}\n"
+                env_content += f"HA_WEBVIEW_GUI={settings.get('HA_WEBVIEW_GUI', 'qt')}\n"
+                env_content += f"HA_ALLOW_GTK_TRAY={settings.get('HA_ALLOW_GTK_TRAY', 'false')}\n"
+                env_content += f"HA_FORCE_OPAQUE_WINDOW={settings.get('HA_FORCE_OPAQUE_WINDOW', 'true')}\n"
+                env_content += f"WINDOW_TRANSPARENT={settings.get('WINDOW_TRANSPARENT', 'false')}\n"
+                env_content += f"WINDOW_FRAMELESS={settings.get('WINDOW_FRAMELESS', 'false')}\n"
+                env_content += f"HA_ALLOW_LINUX_TRAY_WITH_WEBVIEW={settings.get('HA_ALLOW_LINUX_TRAY_WITH_WEBVIEW', 'false')}\n"
+                env_content += f"HA_HIDE_FROM_TASKBAR={settings.get('HA_HIDE_FROM_TASKBAR', 'true')}\n"
+                env_content += f"HA_SETTINGS_USE_BROWSER={settings.get('HA_SETTINGS_USE_BROWSER', 'true')}\n"
             
             env_content += "\n# === DEBUG ===\n"
             env_content += f"DEBUG={settings['DEBUG']}\n"
@@ -2375,10 +2332,6 @@ def show_flet_settings(animation_server=None):
         
         def run_flet():
             try:
-                if not _ensure_typing_extensions_sentinel():
-                    logger.error("Settings cannot start: typing_extensions Sentinel is unavailable")
-                    return
-
                 # Set UTF-8 encoding for Cyrillic support
                 import sys
                 import os

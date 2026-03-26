@@ -223,11 +223,7 @@ def play_audio_from_url(url, host, animation_server=None, done_callback=None):
     
     try:
         import re as _re
-        _is_windows_abs = bool(_re.match(r'^[A-Za-z]:[/\\]', str(url)))
-        _looks_abs = os.path.isabs(url) or _is_windows_abs
-        # Treat as local only if it actually exists on disk.
-        # HA TTS URLs look like "/api/tts_proxy/..." and must be fetched over HTTP.
-        _is_local = _looks_abs and os.path.exists(url)
+        _is_local = os.path.isabs(url) or _re.match(r'^[A-Za-z]:[/\\]', url)
 
         if _is_local:
             local_path = os.path.normpath(url)
