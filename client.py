@@ -646,9 +646,15 @@ class HomeAssistantClient:
         """Close connection."""
         self.connected = False
         if self.websocket:
+            ws = self.websocket
+            self.websocket = None
             try:
-                await self.websocket.close()
-                logger.info("Connection closed")
+                await ws.close()
+                logger.debug("Connection closed")
+            except RuntimeError as e:
+                # During shutdown, the websocket can belong to another event loop/thread.
+                # This is safe to ignore because process teardown is in progress.
+                logger.warning(f"Connection close deferred due to loop mismatch: {e}")
             except Exception as e:
                 logger.error(f"Connection closing error: {e}")
     
