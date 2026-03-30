@@ -37,6 +37,8 @@ class HAAssistApp:
         self.is_running = False
         self.tray_icon = None
         self.window_visible = True
+        self._window_visibility_lock = threading.Lock()
+        self._auto_window_restore_pending = False
         self.wake_word_detector = None
         self.conversation_manager = None
         self.prompt_server = None
@@ -737,7 +739,8 @@ class HAAssistApp:
                     logger.debug("Temp HA client closed")
                 except Exception as e:
                     logger.error(f"Error closing temp HA client: {e}")
-            
+
+            self._auto_restore_window_hidden_state()
             logger.info("Voice command session cleanup completed")
 
     def on_voice_command_trigger(self):
@@ -753,6 +756,9 @@ class HAAssistApp:
             logger.info("Application is busy, ignoring trigger")
             return
 
+        # If window is hidden, temporarily show it during active interaction.
+        self._auto_show_window_for_interaction()
+
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
@@ -761,6 +767,55 @@ class HAAssistApp:
 
         thread = threading.Thread(target=run_async, daemon=True)
         thread.start()
+
+    def _auto_show_window_for_interaction(self):
+        """Temporarily show hidden window for active voice interaction."""
+        if not utils.get_env("HA_AUTO_SHOW_WINDOW_ON_LISTEN", True, bool):
+            return
+
+        with self._window_visibility_lock:
+            if self.window_visible or self._auto_window_restore_pending:
+                return
+            if not (hasattr(webview, 'windows') and webview.windows):
+                return
+
+            try:
+                window = webview.windows[0]
+                if hasattr(window, "show"):
+                    window.show()
+                elif hasattr(window, "restore"):
+                    window.restore()
+                self.window_visible = True
+                self._auto_window_restore_pending = True
+                logger.info("Window auto-shown for voice interaction")
+            except Exception as e:
+                logger.debug(f"Could not auto-show window for interaction: {e}")
+
+    def _auto_restore_window_hidden_state(self):
+        """Re-hide window only if it was auto-shown for an interaction."""
+        if not utils.get_env("HA_AUTO_SHOW_WINDOW_ON_LISTEN", True, bool):
+            with self._window_visibility_lock:
+                self._auto_window_restore_pending = False
+            return
+
+        with self._window_visibility_lock:
+            if not self._auto_window_restore_pending:
+                return
+
+            try:
+                if hasattr(webview, 'windows') and webview.windows:
+                    window = webview.windows[0]
+                    if hasattr(window, "hide"):
+                        window.hide()
+                    elif hasattr(window, "minimize"):
+                        window.minimize()
+                    self.window_visible = False
+                    self.hide_from_taskbar()
+                    logger.info("Window re-hidden after voice interaction")
+            except Exception as e:
+                logger.debug(f"Could not re-hide window after interaction: {e}")
+            finally:
+                self._auto_window_restore_pending = False
     
     def hide_from_taskbar(self):
         """Hide window from taskbar using cross-platform implementation."""
@@ -808,6 +863,9 @@ class HAAssistApp:
     
     def toggle_window(self, icon=None, item=None):
         """Toggle window visibility."""
+        with self._window_visibility_lock:
+            self._auto_window_restore_pending = False
+
         if self.window_visible:
             if hasattr(webview, 'windows') and webview.windows:
                 webview.windows[0].minimize()
@@ -1332,4 +1390,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
