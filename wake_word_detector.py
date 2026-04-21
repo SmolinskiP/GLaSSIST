@@ -116,6 +116,7 @@ class WakeWordDetector:
                                 logger.info("Falling back to default openWakeWord models")
                     elif onnx_paths:
                         model_kwargs['wakeword_models'] = onnx_paths
+                        model_kwargs['inference_framework'] = 'onnx'
                         logger.info(f"Loading ONNX models on Linux: {', '.join(self.selected_models)}")
                     else:
                         logger.info("No custom models found, using defaults")
@@ -123,6 +124,7 @@ class WakeWordDetector:
                     # Windows: prefer ONNX, avoid TFLite due to compatibility issues
                     if onnx_paths:
                         model_kwargs['wakeword_models'] = onnx_paths
+                        model_kwargs['inference_framework'] = 'onnx'
                         logger.info(f"Loading ONNX models on Windows: {', '.join(self.selected_models)}")
                     elif tflite_paths:
                         logger.warning("Found .tflite models but tflite-runtime not reliable on Windows")
