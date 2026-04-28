@@ -18,6 +18,7 @@ Thumbs.db
 *.so
 *.dll
 *.exe
+/inno
 
 *.egg
 *.egg-info/
