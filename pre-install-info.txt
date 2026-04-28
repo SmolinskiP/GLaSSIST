@@ -1,0 +1,39 @@
+GLaSSIST Desktop - Voice Assistant for Home Assistant
+
+Welcome to GLaSSIST Desktop installer!
+
+BEFORE YOU INSTALL:
+
+1. REQUIREMENTS:
+   • Windows 10/11 (64-bit)
+   • Home Assistant server with Assist enabled
+   • Long-lived access token from Home Assistant
+   • Microphone connected to your computer
+
+2. WHAT WILL BE INSTALLED:
+   • GLaSSIST Desktop application
+   • Required system libraries
+   • Sound files for voice feedback
+   • Desktop and Start Menu shortcuts
+
+3. FEATURES:
+   • Voice activation with hotkeys (Ctrl+Shift+H)
+   • Wake word detection (Alexa, Hey Jarvis, etc.)
+   • Real-time voice processing with VAD
+   • Visual animations and feedback
+   • System tray integration
+   • Auto-start with Windows (optional)
+
+4. IMPORTANT NOTES:
+   • First run will require configuration
+   • You'll need your Home Assistant server address and access token
+   • Wake word models will be downloaded on first use
+   • Application will create .env file for your settings
+
+5. NETWORK ACCESS:
+   GLaSSIST needs internet access for:
+   • Connecting to your Home Assistant server
+   • Downloading wake word models (first time only)
+   • Audio processing and voice recognition
+
+Click Next to continue installation.

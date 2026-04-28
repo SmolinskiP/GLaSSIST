@@ -1,0 +1,38 @@
+GLaSSIST Desktop - Installation Complete!
+
+⚠️  IMPORTANT: If settings dialog freezes or stops responding, close GLaSSIST completely and restart it. Maybe even few times - i don't know what's causing it.  ⚠️
+
+CONGRATULATIONS! GLaSSIST has been successfully installed and configured.
+
+WHAT'S NEXT:
+
+1. LAUNCH GLaSSIST:
+   • GLaSSIST should start automatically after installation
+   • If not, launch it from Desktop or Start Menu
+   • Look for the violet icon in your system tray (bottom right)
+
+2. VOICE ACTIVATION:
+   • Default hotkey: Ctrl+Shift+G
+   • Or use wake words: "GLaDOS" or "Computer" (enabled by default)
+   • Models are stored locally - no internet required
+
+4. SETTINGS (IF NEEDED):
+   • Right-click the system tray icon → Settings
+   • Test your connection with "Test Connection" button
+   • Adjust microphone/audio sensitivity if needed
+   • Change hotkey or disable sounds
+
+5. TROUBLESHOOTING:
+   • If connection fails: Check your Home Assistant address and token
+   • If wake words don't work: Check microphone permissions
+   • If settings freeze: Close GLaSSIST completely and restart
+
+6. SUPPORT:
+   • GitHub: https://github.com/SmolinskiP/GLaSSIST
+   • Report bugs: GitHub Issues page
+   • Coffee: https://buymeacoffee.com/smolinskip
+
+ENJOY YOUR VOICE ASSISTANT!
+
+GLaSSIST is now running in your system tray and ready to use.
+Just say "GLaDOS" or "Computer" followed by your Home Assistant command!

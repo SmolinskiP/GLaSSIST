@@ -24,9 +24,6 @@ Thumbs.db
 *.egg-info/
 dist/
 build/
-post-install-info.txt
-pre-install-info.txt
-LICENSE.txt
 *.manifest
 *.spec
 
