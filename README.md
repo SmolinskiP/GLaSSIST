@@ -317,6 +317,9 @@ python main.py --help       # Show all command line options
 The app plays sounds from `sound/` directory:
 - `activation.wav` - Recording start
 - `deactivation.wav` - Session end
+- `processing.wav` - Looped "thinking" sound while waiting for the response (opt-in, great for slow LLM agents)
+
+Drop your own audio files (`.wav`, `.mp3`, `.flac`, `.ogg`) into `sound/` and pick them in Settings → Audio.
 
 ## 🎛️ Configuration Parameters
 
@@ -340,6 +343,8 @@ The app plays sounds from `sound/` directory:
 ### Interface & Controls
 - `HA_HOTKEY` - Activation hotkey (ctrl+shift+h, ctrl+alt+h, alt+space, etc.)
 - `HA_SOUND_FEEDBACK` - Activation sounds (true/false)
+- `HA_PROCESSING_SOUND` - Loop a "thinking" sound while waiting for the response (true/false)
+- `HA_SOUND_ACTIVATION` / `HA_SOUND_DEACTIVATION` / `HA_SOUND_PROCESSING` - Sound filenames from the `sound/` folder
 - `HA_RESPONSE_TEXT_ENABLED` - Show assistant responses as text overlay (true/false)
 - `HA_ANIMATIONS_ENABLED` - Enable visual animations with Three.js (true/false)
 - `ANIMATION_PORT` - Animation server port (default: 8765)

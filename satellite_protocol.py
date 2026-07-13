@@ -266,6 +266,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
             self._speech_end_handled = True
             self._is_streaming_audio = False
             self._set_animation("processing")
+            utils.processing_sound_loop.start()
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END:
             if data.get("continue_conversation") == "1":
@@ -290,6 +291,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
             self._set_animation("responding")
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END:
+            utils.processing_sound_loop.stop()
             self._is_streaming_audio = False
             self._pipeline_active = False
             if not self._tts_played:
@@ -300,6 +302,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
             code = data.get("code", "")
             msg_text = data.get("message", "")
             _LOGGER.error("Pipeline error: %s — %s", code, msg_text)
+            utils.processing_sound_loop.stop()
             self._pipeline_active = False
             self._is_streaming_audio = False
             self._block_wake_words = False
@@ -380,6 +383,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
     def _play_tts(self) -> None:
         if not self._tts_url or self._tts_played:
             return
+        utils.processing_sound_loop.stop()
         self._tts_played = True
         _LOGGER.debug("Playing TTS: %s", self._tts_url)
         self._on_tts_url(self._tts_url, done_callback=self._tts_finished)

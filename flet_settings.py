@@ -99,6 +99,10 @@ class FletSettingsApp:
             'HA_VAD_MODE': utils.get_env('HA_VAD_MODE', 3, int),
             'HA_SILENCE_THRESHOLD_SEC': utils.get_env('HA_SILENCE_THRESHOLD_SEC', 0.8, float),
             'HA_SOUND_FEEDBACK': utils.get_env('HA_SOUND_FEEDBACK', 'true'),
+            'HA_PROCESSING_SOUND': utils.get_env('HA_PROCESSING_SOUND', 'false'),
+            'HA_SOUND_ACTIVATION': utils.get_env('HA_SOUND_ACTIVATION', 'activation.wav'),
+            'HA_SOUND_DEACTIVATION': utils.get_env('HA_SOUND_DEACTIVATION', 'deactivation.wav'),
+            'HA_SOUND_PROCESSING': utils.get_env('HA_SOUND_PROCESSING', 'processing.wav'),
             'HA_MICROPHONE_INDEX': utils.get_env('HA_MICROPHONE_INDEX', -1, int),
             'HA_OUTPUT_DEVICE_INDEX': utils.get_env('HA_OUTPUT_DEVICE_INDEX', -1, int),
             'HA_OUTPUT_SAMPLE_RATE': utils.get_env('HA_OUTPUT_SAMPLE_RATE', '-1'),
@@ -122,6 +126,16 @@ class FletSettingsApp:
             'ESPHOME_PORT': utils.get_env('ESPHOME_PORT', '6053'),
         }
     
+    def _list_sound_files(self):
+        """List audio files available in the bundled 'sound' folder"""
+        try:
+            return sorted(
+                f for f in os.listdir(utils.get_sound_dir())
+                if f.lower().endswith(('.wav', '.mp3', '.flac', '.ogg'))
+            )
+        except OSError:
+            return []
+
     async def _create_ui(self, current_settings):
         """Create the main UI"""
         # Title with icon
@@ -424,6 +438,32 @@ class FletSettingsApp:
             active_color=ft.Colors.GREEN_600
         )
 
+        # Processing sound switch
+        self.processing_sound_switch = ft.Switch(
+            label="Play processing sound while waiting for response",
+            value=current_settings['HA_PROCESSING_SOUND'] == 'true',
+            active_color=ft.Colors.ORANGE_600
+        )
+
+        # Feedback sound file dropdowns
+        def _sound_dropdown(label, current_file):
+            files = self._list_sound_files()
+            if current_file and current_file not in files:
+                files.append(current_file)
+            return ft.Dropdown(
+                label=label,
+                value=current_file,
+                options=[ft.dropdown.Option(f) for f in files],
+                expand=True,
+            )
+
+        self.activation_sound_dropdown = _sound_dropdown(
+            "Activation sound", current_settings['HA_SOUND_ACTIVATION'])
+        self.deactivation_sound_dropdown = _sound_dropdown(
+            "Deactivation sound", current_settings['HA_SOUND_DEACTIVATION'])
+        self.processing_sound_dropdown = _sound_dropdown(
+            "Processing sound", current_settings['HA_SOUND_PROCESSING'])
+
         # Timer sound file picker
         self.timer_sound_field = ft.TextField(
             label="Timer sound file",
@@ -518,10 +558,18 @@ class FletSettingsApp:
                             self.hotkey_dropdown,
                             ft.Container(height=10),
                             self.sound_feedback_switch,
+                            self.processing_sound_switch,
                             ft.Text(
-                                "Plays activation.wav and deactivation.wav from the 'sound' folder",
+                                "Sound files are loaded from the 'sound' folder — "
+                                "drop your own files there and select them below",
                                 color=ft.Colors.GREY_600, size=12
                             ),
+                            ft.Container(height=8),
+                            self.activation_sound_dropdown,
+                            ft.Container(height=8),
+                            self.deactivation_sound_dropdown,
+                            ft.Container(height=8),
+                            self.processing_sound_dropdown,
                             ft.Container(height=8),
                             ft.Row([
                                 self.timer_sound_field,
@@ -1934,6 +1982,10 @@ class FletSettingsApp:
                 'HA_MICROPHONE_INDEX': str(selected_mic_index),
                 'HA_OUTPUT_DEVICE_INDEX': str(selected_output_index),
                 'HA_SOUND_FEEDBACK': 'true' if self.sound_feedback_switch.value else 'false',
+                'HA_PROCESSING_SOUND': 'true' if self.processing_sound_switch.value else 'false',
+                'HA_SOUND_ACTIVATION': self.activation_sound_dropdown.value or 'activation.wav',
+                'HA_SOUND_DEACTIVATION': self.deactivation_sound_dropdown.value or 'deactivation.wav',
+                'HA_SOUND_PROCESSING': self.processing_sound_dropdown.value or 'processing.wav',
                 'DEBUG': 'true' if self.debug_switch.value else 'false',
                 'HA_ANIMATIONS_ENABLED': 'true' if self.animations_switch.value else 'false',
                 'HA_RESPONSE_TEXT_ENABLED': 'true' if self.response_text_switch.value else 'false',
@@ -2042,6 +2094,10 @@ class FletSettingsApp:
             
             env_content += "\n# === AUDIO FEEDBACK ===\n"
             env_content += f"HA_SOUND_FEEDBACK={settings['HA_SOUND_FEEDBACK']}\n"
+            env_content += f"HA_PROCESSING_SOUND={settings['HA_PROCESSING_SOUND']}\n"
+            env_content += f"HA_SOUND_ACTIVATION={settings['HA_SOUND_ACTIVATION']}\n"
+            env_content += f"HA_SOUND_DEACTIVATION={settings['HA_SOUND_DEACTIVATION']}\n"
+            env_content += f"HA_SOUND_PROCESSING={settings['HA_SOUND_PROCESSING']}\n"
             if settings.get('HA_TIMER_SOUND'):
                 env_content += f"HA_TIMER_SOUND={settings['HA_TIMER_SOUND']}\n"
             env_content += f"HA_CONTINUE_ON_QUESTION={settings['HA_CONTINUE_ON_QUESTION']}\n"

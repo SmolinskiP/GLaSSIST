@@ -158,3 +158,82 @@ class TestUtils:
         result = utils.convert_audio_chunk_to_float32(b"")
         assert len(result) == 0
         assert result.dtype == np.float32
+
+
+class TestSoundConfiguration:
+    """Test cases for configurable feedback sound files."""
+
+    def test_get_sound_file_path_defaults(self):
+        """Test default filenames for each sound role."""
+        with patch.dict(os.environ, {}, clear=True):
+            assert utils.get_sound_file_path("activation").endswith("activation.wav")
+            assert utils.get_sound_file_path("deactivation").endswith("deactivation.wav")
+            assert utils.get_sound_file_path("processing").endswith("processing.wav")
+
+    def test_get_sound_file_path_override(self):
+        """Test filename override via environment variable."""
+        with patch.dict(os.environ, {"HA_SOUND_ACTIVATION": "custom.wav"}):
+            path = utils.get_sound_file_path("activation")
+            assert path.endswith("custom.wav")
+            assert os.path.dirname(path) == utils.get_sound_dir()
+
+    def test_get_sound_file_path_empty_falls_back_to_default(self):
+        """Test that empty env value falls back to the default filename."""
+        with patch.dict(os.environ, {"HA_SOUND_DEACTIVATION": ""}):
+            assert utils.get_sound_file_path("deactivation").endswith("deactivation.wav")
+
+    @patch('os.path.exists')
+    def test_play_feedback_sound_uses_configured_file(self, mock_exists):
+        """Test that play_feedback_sound resolves the configured filename."""
+        mock_exists.return_value = False
+
+        with patch.dict(os.environ, {"HA_SOUND_FEEDBACK": "true",
+                                     "HA_SOUND_ACTIVATION": "my_sound.wav"}):
+            result = utils.play_feedback_sound("activation")
+
+        assert result is False
+        checked_path = mock_exists.call_args[0][0]
+        assert checked_path.endswith("my_sound.wav")
+
+
+class TestProcessingSoundLoop:
+    """Test cases for the processing sound loop."""
+
+    def test_start_disabled(self):
+        """Test that start is a no-op when HA_PROCESSING_SOUND is false."""
+        loop = utils.ProcessingSoundLoop()
+        with patch.dict(os.environ, {"HA_PROCESSING_SOUND": "false"}):
+            assert loop.start() is False
+
+    @patch('os.path.exists', return_value=False)
+    def test_start_missing_file(self, mock_exists):
+        """Test that start is a no-op when the sound file is missing."""
+        loop = utils.ProcessingSoundLoop()
+        with patch.dict(os.environ, {"HA_PROCESSING_SOUND": "true"}):
+            assert loop.start() is False
+
+    @patch('utils.sd')
+    @patch('utils.sf')
+    @patch('os.path.exists', return_value=True)
+    def test_start_and_stop(self, mock_exists, mock_sf, mock_sd):
+        """Test loop playback starts and stop is fast and idempotent."""
+        import time
+        import numpy as np
+        mock_sf.read.return_value = (np.zeros(1600), 16000)
+
+        loop = utils.ProcessingSoundLoop()
+        with patch.dict(os.environ, {"HA_PROCESSING_SOUND": "true"}):
+            with patch('utils.get_output_sample_rate', return_value=None), \
+                 patch('utils.get_output_device_index', return_value=None):
+                assert loop.start() is True
+                assert loop.start() is True  # already running -> no-op
+                time.sleep(0.05)
+                loop.stop()
+                loop.stop()  # idempotent
+
+        assert mock_sd.play.called
+
+    def test_stop_without_start(self):
+        """Test that stop before start does not raise."""
+        loop = utils.ProcessingSoundLoop()
+        loop.stop()

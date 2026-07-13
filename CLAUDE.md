@@ -56,7 +56,7 @@ GLaSSIST is a desktop voice assistant for Home Assistant with the following key 
 
 ### Frontend Integration
 - **frontend/index.html** - Three.js-based visual interface with WebGL shaders and FFT audio analysis
-- **sound/** - Audio feedback files (activation.wav, deactivation.wav)
+- **sound/** - Audio feedback files (activation.wav, deactivation.wav, processing.wav); filenames configurable via HA_SOUND_ACTIVATION/HA_SOUND_DEACTIVATION/HA_SOUND_PROCESSING
 - **models/** - OpenWakeWord ONNX model files for wake word detection
 
 ### Key Architectural Patterns

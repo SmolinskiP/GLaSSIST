@@ -603,6 +603,7 @@ class HAAssistApp:
                 async def on_audio_end():
                     logger.info("=== SWITCHING TO PROCESSING ===")
                     self.animation_server.change_state("processing")
+                    utils.processing_sound_loop.start()
                     await asyncio.sleep(0.8)
                     success = await ha_client.end_audio()
                     if not success:
@@ -613,6 +614,7 @@ class HAAssistApp:
 
                     logger.info("=== RECEIVING RESPONSE ===")
                     results = await ha_client.receive_response(timeout_seconds=45)
+                    utils.processing_sound_loop.stop()
 
                     error_found = False
                     for result in results:
@@ -689,6 +691,7 @@ class HAAssistApp:
                 
         except asyncio.TimeoutError:
             logger.error("Timeout during voice command processing")
+            utils.processing_sound_loop.stop()
             self.animation_server.change_state("error", "Timeout - assistant not responding")
             await asyncio.sleep(5)
             self.animation_server.change_state("hidden")
@@ -696,7 +699,8 @@ class HAAssistApp:
             
         except Exception as e:
             logger.exception(f"Error during processing: {str(e)}")
-            
+            utils.processing_sound_loop.stop()
+
             error_msg = str(e)
             if len(error_msg) > 80:
                 error_msg = error_msg[:77] + "..."
@@ -706,6 +710,7 @@ class HAAssistApp:
             self.animation_server.change_state("hidden")
             utils.play_feedback_sound("deactivation")
         finally:
+            utils.processing_sound_loop.stop()
             # Restore original volumes (prefer from HA client if available, fallback to local)
             volumes_to_restore = ha_client.saved_volumes_for_restore if ha_client.saved_volumes_for_restore else saved_volumes
             if volumes_to_restore and media_player_entities and ha_client.volumes_managed:

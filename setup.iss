@@ -222,6 +222,10 @@ begin
       '' + #13#10 +
       '# === AUDIO FEEDBACK ===' + #13#10 +
       'HA_SOUND_FEEDBACK=true' + #13#10 +
+      'HA_PROCESSING_SOUND=false' + #13#10 +
+      'HA_SOUND_ACTIVATION=activation.wav' + #13#10 +
+      'HA_SOUND_DEACTIVATION=deactivation.wav' + #13#10 +
+      'HA_SOUND_PROCESSING=processing.wav' + #13#10 +
       'HA_CONTINUE_ON_QUESTION=false' + #13#10 +
       '' + #13#10 +
       '# === WAKE WORD DETECTION ===' + #13#10 +

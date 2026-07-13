@@ -433,25 +433,48 @@ def validate_audio_format(sample_rate, channels=1):
     
     return True
 
+DEFAULT_SOUND_FILES = {
+    'activation': 'activation.wav',
+    'deactivation': 'deactivation.wav',
+    'processing': 'processing.wav',
+}
+
+def get_sound_dir():
+    """Return path to the bundled 'sound' folder."""
+    return os.path.join(os.path.dirname(__file__), 'sound')
+
+def get_sound_file_path(sound_name):
+    """
+    Resolve the configured file path for a feedback sound role.
+
+    Args:
+        sound_name: Sound role ('activation', 'deactivation' or 'processing')
+    """
+    default = DEFAULT_SOUND_FILES.get(sound_name, f"{sound_name}.wav")
+    filename = get_env(f'HA_SOUND_{sound_name.upper()}', default)
+    if not filename:
+        filename = default
+    return os.path.join(get_sound_dir(), filename)
+
 def play_feedback_sound(sound_name):
     """
-    Play feedback sound (activation.wav, deactivation.wav) from 'sound' folder.
-    
+    Play feedback sound from 'sound' folder.
+
     Args:
-        sound_name: Sound name ('activation' or 'deactivation')
+        sound_name: Sound role ('activation' or 'deactivation'), file
+                    configurable via HA_SOUND_ACTIVATION/HA_SOUND_DEACTIVATION
     """
     sound_enabled = get_env('HA_SOUND_FEEDBACK', 'true')
     if sound_enabled.lower() not in ('true', '1', 'yes', 'y', 't'):
         return False
-    
+
     logger = setup_logger()
     output_device_index = get_output_device_index()
     output_sample_rate = get_output_sample_rate()
-    
+
     try:
-        sound_dir = os.path.join(os.path.dirname(__file__), 'sound')
-        sound_file = os.path.join(sound_dir, f"{sound_name}.wav")
-        
+        sound_file = get_sound_file_path(sound_name)
+
         if not os.path.exists(sound_file):
             logger.warning(f"Sound file not found: {sound_file}")
             return False
@@ -482,6 +505,75 @@ def play_feedback_sound(sound_name):
     except Exception as e:
         logger.error(f"Feedback sound playback error {sound_name}: {e}")
         return False
+
+class ProcessingSoundLoop:
+    """
+    Loops the configured processing sound while waiting for a response.
+
+    Enabled via HA_PROCESSING_SOUND, file configurable via HA_SOUND_PROCESSING.
+    start() is a no-op when disabled or the file is missing; stop() is idempotent.
+    """
+
+    def __init__(self):
+        self._stop_event = threading.Event()
+        self._thread = None
+        self._lock = threading.Lock()
+
+    def start(self):
+        logger = setup_logger()
+
+        enabled = get_env('HA_PROCESSING_SOUND', 'false')
+        if enabled.lower() not in ('true', '1', 'yes', 'y', 't'):
+            return False
+
+        sound_file = get_sound_file_path('processing')
+        if not os.path.exists(sound_file):
+            logger.warning(f"Processing sound file not found: {sound_file}")
+            return False
+
+        with self._lock:
+            if self._thread and self._thread.is_alive():
+                return True
+            self._stop_event.clear()
+            self._thread = threading.Thread(
+                target=self._loop, args=(sound_file,), daemon=True
+            )
+            self._thread.start()
+
+        logger.debug("Processing sound loop started")
+        return True
+
+    def _loop(self, sound_file):
+        logger = setup_logger()
+        try:
+            data, samplerate = sf.read(sound_file)
+            output_sample_rate = get_output_sample_rate()
+            output_device_index = get_output_device_index()
+            if output_sample_rate is not None and output_sample_rate != samplerate:
+                data = _resample_audio(data, samplerate, output_sample_rate)
+                samplerate = output_sample_rate
+            duration = len(data) / float(samplerate)
+
+            while not self._stop_event.is_set():
+                if output_device_index is not None:
+                    sd.play(data, samplerate, device=output_device_index)
+                else:
+                    sd.play(data, samplerate)
+                if self._stop_event.wait(duration):
+                    sd.stop()
+                    break
+        except Exception as e:
+            logger.error(f"Processing sound loop error: {e}")
+
+    def stop(self):
+        with self._lock:
+            self._stop_event.set()
+            thread = self._thread
+            self._thread = None
+        if thread and thread.is_alive():
+            thread.join(timeout=1.0)
+
+processing_sound_loop = ProcessingSoundLoop()
 
 def format_duration(seconds):
     """Format duration in seconds to readable string."""
