@@ -34,6 +34,7 @@ jobs:
           if [ -f python3-modules.json ]; then
             mv python3-modules.json packaging/flatpak/python3-modules.json
           fi
+          git add -f packaging/flatpak/pipgen.log
           git add -A packaging/flatpak/
           git diff --cached --quiet || git commit -m "chore: flatpak pipgen output"
           git push
