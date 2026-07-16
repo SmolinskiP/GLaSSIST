@@ -1,0 +1,32 @@
+name: Flatpak pip modules generation
+# Task 5 of docs/superpowers/plans/2026-07-15-flatpak-packaging.md
+# Generates packaging/flatpak/python3-modules.json and commits it back to the repo.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/flatpak-pipgen.yml'
+      - 'packaging/flatpak/requirements-linux.txt'
+
+permissions:
+  contents: write
+
+jobs:
+  pipgen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install requirements-parser
+        run: pip install requirements-parser
+      - name: Fetch flatpak-pip-generator
+        run: curl -sLo flatpak-pip-generator.py https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/pip/flatpak-pip-generator.py
+      - name: Generate module JSON
+        run: python3 flatpak-pip-generator.py --requirements-file=packaging/flatpak/requirements-linux.txt --output packaging/flatpak/python3-modules
+      - name: Commit generated modules
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packaging/flatpak/python3-modules.json
+          git diff --cached --quiet || git commit -m "chore: regenerate flatpak pip modules"
+          git push
