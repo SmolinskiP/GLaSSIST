@@ -28,7 +28,17 @@ jobs:
       - name: Resolve full dependency tree
         run: pip-compile --strip-extras --no-header --output-file packaging/flatpak/requirements-linux-locked.txt packaging/flatpak/requirements-linux.txt
       - name: Generate module JSON
-        run: req2flatpak --requirements-file packaging/flatpak/requirements-linux-locked.txt --target-platforms 313-x86_64 --outfile packaging/flatpak/python3-modules.json
+        # req2flatpak queries the PyPI API per package; shared runner IPs get
+        # rate-limited now and then, so retry before giving up.
+        run: |
+          for i in 1 2 3; do
+            if req2flatpak --requirements-file packaging/flatpak/requirements-linux-locked.txt --target-platforms 313-x86_64 --outfile packaging/flatpak/python3-modules.json; then
+              exit 0
+            fi
+            echo "attempt $i failed, retrying in 30s"
+            sleep 30
+          done
+          exit 1
       - name: Commit results
         run: |
           git config user.name "github-actions[bot]"
