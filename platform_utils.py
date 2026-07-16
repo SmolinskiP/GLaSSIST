@@ -212,6 +212,26 @@ def open_file_manager(path):
         logger.error(f"Failed to open file manager: {e}")
         return False
 
+def is_flatpak():
+    """Return True when running inside a Flatpak sandbox."""
+    return bool(os.environ.get('FLATPAK_ID'))
+
+def get_config_dir():
+    """
+    Directory holding the .env file. App directory normally;
+    XDG config dir inside Flatpak (where /app is read-only).
+    """
+    if is_flatpak():
+        base = os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config'))
+        path = Path(base) / 'glasssist'
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+    return Path(__file__).parent
+
+def get_env_file_path():
+    """Full path to the .env file."""
+    return get_config_dir() / '.env'
+
 def check_wake_word_noise_suppression():
     """Check if noise suppression is available for wake word detection."""
     if platform.system() == "Windows":

@@ -12,8 +12,9 @@ import sounddevice as sd
 import soundfile as sf
 import numpy as np
 import io
+import platform_utils
 
-load_dotenv()
+load_dotenv(platform_utils.get_env_file_path())
 
 def safe_print(text):
     """
@@ -103,11 +104,11 @@ def get_env(key, default=None, as_type=str):
 def _read_from_env_file(key):
     """Read value directly from .env file."""
     possible_paths = [
-        os.path.join(os.path.dirname(__file__), '.env'),
+        str(platform_utils.get_env_file_path()),
         os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'),
         '.env'
     ]
-    
+
     for path in possible_paths:
         if os.path.exists(path):
             try:

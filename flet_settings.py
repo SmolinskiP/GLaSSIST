@@ -10,6 +10,7 @@ import webbrowser
 import subprocess
 import platform as platform_module
 import utils
+import platform_utils
 from client import HomeAssistantClient
 from audio import AudioManager
 
@@ -2039,21 +2040,7 @@ class FletSettingsApp:
     def _save_env_file(self, settings):
         """Save settings to .env file"""
         try:
-            # Find .env file location
-            possible_paths = [
-                os.path.join(os.path.dirname(__file__), '.env'),
-                os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'),
-                '.env'
-            ]
-            
-            env_path = None
-            for path in possible_paths:
-                if os.path.exists(path):
-                    env_path = path
-                    break
-                    
-            if not env_path:
-                env_path = possible_paths[0]
+            env_path = str(platform_utils.get_env_file_path())
             
             # Generate .env content
             env_content = "# GLaSSIST Desktop Settings\n"
