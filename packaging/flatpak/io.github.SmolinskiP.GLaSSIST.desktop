@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=GLaSSIST
+Comment=Desktop voice assistant for Home Assistant
+Exec=glasssist
+Icon=io.github.SmolinskiP.GLaSSIST
+Terminal=false
+Type=Application
+Categories=Utility;AudioVideo;
+Keywords=home assistant;voice;assistant;wake word;
+StartupNotify=false

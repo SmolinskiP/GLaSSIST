@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.SmolinskiP.GLaSSIST</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>GLaSSIST</name>
+  <summary>Desktop voice assistant for Home Assistant</summary>
+  <description>
+    <p>
+      GLaSSIST is a desktop voice assistant that connects to Home Assistant.
+      It supports wake word activation, voice commands with visual feedback,
+      TTS responses, and an ESPHome satellite mode with timers and
+      conversation follow-up.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.SmolinskiP.GLaSSIST.desktop</launchable>
+  <url type="homepage">https://github.com/SmolinskiP/GLaSSIST</url>
+  <url type="bugtracker">https://github.com/SmolinskiP/GLaSSIST/issues</url>
+  <developer id="io.github.smolinskip">
+    <name>Patryk Smoliński</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="3.1.0" date="2026-07-15"/>
+  </releases>
+</component>
