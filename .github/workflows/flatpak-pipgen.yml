@@ -31,10 +31,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add packaging/flatpak/pipgen.log
-          [ -f packaging/flatpak/python3-modules.json ] && git add packaging/flatpak/python3-modules.json
+          if [ -f python3-modules.json ]; then
+            mv python3-modules.json packaging/flatpak/python3-modules.json
+          fi
+          git add -A packaging/flatpak/
           git diff --cached --quiet || git commit -m "chore: flatpak pipgen output"
-          git pull --rebase origin main
           git push
       - name: Fail if generation failed
         if: steps.gen.outcome == 'failure'
