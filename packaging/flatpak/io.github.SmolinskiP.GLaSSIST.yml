@@ -78,17 +78,6 @@ modules:
         url: https://files.pythonhosted.org/packages/26/1d/8878c7752febb0f6716a7e1a52cb92ac98871c5aa522cba181878091607c/PyAudio-0.2.14.tar.gz
         sha256: 78dfff3879b4994d1f4fc6485646a57755c6ee3c19647a491f790a0895bd2f87
 
-  # No wheels on PyPI at all — pure-python sdist (pywebview runtime dependency).
-  - name: python3-proxy-tools
-    buildsystem: simple
-    build-commands:
-      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}"
-        --prefix=${FLATPAK_DEST} --no-deps --no-build-isolation proxy_tools
-    sources:
-      - type: file
-        url: https://files.pythonhosted.org/packages/f2/cf/77d3e19b7fabd03895caca7857ef51e4c409e0ca6b37ee6e9f7daa50b642/proxy_tools-0.1.0.tar.gz
-        sha256: ccb3751f529c047e2d8a58440d86b205303cf0fe8146f784d1cbcd94f0a28010
-
   # Installed --no-deps: openwakeword declares tflite-runtime on Linux (no py3.12
   # wheels), but GLaSSIST uses the ONNX framework. Its real dependencies
   # (onnxruntime, scipy, scikit-learn, tqdm, requests) are pinned in

@@ -1,0 +1,31 @@
+name: Flatpak build
+# Task 6 of docs/superpowers/plans/2026-07-15-flatpak-packaging.md
+# The push-paths trigger exists for the development iteration loop and will be
+# removed once the build is stable (leaving workflow_dispatch + release tags).
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+    paths:
+      - 'packaging/flatpak/**'
+      - '.github/workflows/flatpak.yml'
+
+jobs:
+  flatpak:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-48
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: GLaSSIST.flatpak
+          manifest-path: packaging/flatpak/io.github.SmolinskiP.GLaSSIST.yml
+          cache-key: flatpak-builder-${{ hashFiles('packaging/flatpak/**') }}
+      - name: Attach bundle to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: GLaSSIST.flatpak
