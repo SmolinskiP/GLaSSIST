@@ -6,10 +6,12 @@ name: Flatpak build
 on:
   workflow_dispatch:
   push:
-    tags: ['v*']
+    branches: ['main']
     paths:
       - 'packaging/flatpak/**'
       - '.github/workflows/flatpak.yml'
+  release:
+    types: [published]
 
 jobs:
   flatpak:
@@ -25,7 +27,7 @@ jobs:
           manifest-path: packaging/flatpak/io.github.SmolinskiP.GLaSSIST.yml
           cache-key: flatpak-builder-${{ hashFiles('packaging/flatpak/**') }}
       - name: Attach bundle to release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: GLaSSIST.flatpak
