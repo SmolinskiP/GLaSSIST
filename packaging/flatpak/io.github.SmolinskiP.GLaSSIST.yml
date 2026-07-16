@@ -1,0 +1,107 @@
+# Flatpak manifest for GLaSSIST
+# Build (on Linux): flatpak-builder --user --install-deps-from=flathub build-dir packaging/flatpak/io.github.SmolinskiP.GLaSSIST.yml
+# CI builds this via .github/workflows/flatpak.yml
+#
+# v1 note: no AppIndicator module yet — pystray falls back to its GTK backend.
+# StatusNotifier tray support (ayatana stack) is planned as a follow-up iteration.
+app-id: io.github.SmolinskiP.GLaSSIST
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+command: glasssist
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=x11
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - '*.la'
+
+modules:
+  - name: portaudio
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://files.portaudio.com/archives/pa_stable_v190700_20210406.tgz
+        sha256: 47efbf42c77c19a05d22e627d42873e991ec0c1357219c0d74ce6a2948cb2def
+
+  - name: libass
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/releases/download/0.17.3/libass-0.17.3.tar.xz
+        sha256: eae425da50f0015c21f7b3a9c7262a910f0218af469e22e2931462fed3c50959
+
+  - name: ffmpeg
+    buildsystem: autotools
+    config-opts:
+      - --enable-shared
+      - --disable-static
+      - --disable-programs
+      - --disable-doc
+    sources:
+      - type: archive
+        url: https://ffmpeg.org/releases/ffmpeg-6.1.2.tar.xz
+        sha256: 3b624649725ecdc565c903ca6643d41f33bd49239922e45c9b1442c63dca4e38
+
+  - name: libmpv
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dmanpage-build=disabled
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.36.0.tar.gz
+        sha256: 29abc44f8ebee013bb2f9fe14d80b30db19b534c679056e4851ceadf5a5e8bf6
+
+  - python3-modules.json
+
+  # Installed --no-deps: openwakeword declares tflite-runtime on Linux (no py3.12
+  # wheels), but GLaSSIST uses the ONNX framework. Its real dependencies
+  # (onnxruntime, scipy, scikit-learn, tqdm, requests) are pinned in
+  # requirements-linux.txt and installed by python3-modules.json above.
+  - name: python3-openwakeword
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}"
+        --prefix=${FLATPAK_DEST} --no-deps --no-build-isolation openwakeword
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/8a/33/dafd6822bebe463a9098951d06a0d88fb4f8c946ce087025bc4fa132e533/openwakeword-0.6.0-py3-none-any.whl
+        sha256: 6f423a4e3ae9dd0e3cd12b50ff8abf69679f687b4ab349d7c82c021c0e2abc9d
+
+  - name: glasssist
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/share/glasssist
+      - cp *.py /app/share/glasssist/
+      - cp -r frontend sound models img /app/share/glasssist/
+      - cp .env.example /app/share/glasssist/
+      - install -Dm755 packaging/flatpak/glasssist.sh /app/bin/glasssist
+      - install -Dm644 packaging/flatpak/io.github.SmolinskiP.GLaSSIST.desktop /app/share/applications/io.github.SmolinskiP.GLaSSIST.desktop
+      - install -Dm644 packaging/flatpak/io.github.SmolinskiP.GLaSSIST.metainfo.xml /app/share/metainfo/io.github.SmolinskiP.GLaSSIST.metainfo.xml
+      - install -Dm644 img/icon.png /app/share/icons/hicolor/256x256/apps/io.github.SmolinskiP.GLaSSIST.png
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - .git
+          - venv
+          - venv.bak
+          - dist
+          - build
+          - inno
+          - logs
+          - old
+          - __pycache__
