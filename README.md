@@ -313,6 +313,21 @@ python main.py --help       # Show all command line options
 - **🔴 Error** - Something fucked up
 - **🟢 Success** - All good
 
+### Flatpak (Linux)
+
+Download `GLaSSIST.flatpak` from the [latest release](https://github.com/SmolinskiP/GLaSSIST/releases), then:
+
+```bash
+flatpak install --user GLaSSIST.flatpak
+flatpak run io.github.SmolinskiP.GLaSSIST
+```
+
+Notes:
+- Configuration lives in `~/.var/app/io.github.SmolinskiP.GLaSSIST/config/glasssist/.env`
+- Custom sounds go to `~/.var/app/io.github.SmolinskiP.GLaSSIST/data/glasssist/sound/`
+- The global hotkey works on X11 only; on Wayland use wake word activation
+- Autostart: create `~/.config/autostart/io.github.SmolinskiP.GLaSSIST.desktop` with `Exec=flatpak run io.github.SmolinskiP.GLaSSIST`
+
 ### Sounds
 The app plays sounds from `sound/` directory:
 - `activation.wav` - Recording start
