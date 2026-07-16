@@ -594,7 +594,7 @@ modules:
         url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.38.0.tar.gz
         sha256: PASTE_FROM_TASK5_STEP5
 
-  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+  - libappindicator-gtk3-12.10.json
 
   - python3-modules.json
 
@@ -614,17 +614,16 @@ modules:
         path: ../..
 ```
 
-The `shared-modules` reference requires Flathub's shared-modules repo as a git
-submodule (this is the standard Flathub pattern for AppIndicator, which pystray
-needs for the tray icon):
+The `libappindicator-gtk3-12.10.json` module (pystray needs AppIndicator for the
+tray icon) is vendored — download the file once and commit it next to the manifest
+(no git submodule, per project owner's preference):
 
-```bash
-git submodule add https://github.com/flathub/shared-modules.git packaging/flatpak/shared-modules
+```powershell
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/flathub/shared-modules/master/libappindicator/libappindicator-gtk3-12.10.json" -OutFile "packaging\flatpak\libappindicator-gtk3-12.10.json"
 ```
 
-and the module line above is then relative to the manifest:
-`shared-modules/libappindicator/libappindicator-gtk3-12.10.json` (verify the exact
-JSON filename inside the submodule — it has changed between revisions).
+(If the URL 404s, browse https://github.com/flathub/shared-modules/tree/master/libappindicator
+for the current filename and adjust both the download and the manifest line.)
 
 Notes for the implementer:
 - Replace the three `PASTE_FROM_...` values with the hashes you computed.
