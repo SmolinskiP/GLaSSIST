@@ -1,0 +1,45 @@
+name: Flatpak spike - runtime WebKit check
+# Task 1 of docs/superpowers/plans/2026-07-15-flatpak-packaging.md
+# Answers are encoded in JOB conclusions (readable via public API without log access):
+#   gtk3 job green    -> GTK3 present in the runtime
+#   webkit41 job green -> WebKit2GTK 4.1 present in the runtime
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/flatpak-spike.yml'
+
+jobs:
+  gtk3:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install flatpak
+        run: sudo apt-get update && sudo apt-get install -y flatpak
+      - name: Add flathub remote
+        run: flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+      - name: Install GNOME runtime 48
+        run: flatpak install --user -y flathub org.gnome.Platform//48
+      - name: List runtime webkit and gtk contents
+        run: |
+          flatpak run --command=sh org.gnome.Platform//48 -c '
+            echo "=== webkit libs ==="
+            ls /usr/lib/x86_64-linux-gnu/ | grep -i webkit || echo "(no webkit libs)"
+            echo "=== typelibs ==="
+            ls /usr/lib/x86_64-linux-gnu/girepository-1.0/ | grep -i -E "webkit|^Gtk" || echo "(no matching typelibs)"
+            echo "=== python ==="
+            python3 --version'
+      - name: GTK3 available
+        run: flatpak run --command=python3 org.gnome.Platform//48 -c "import gi; gi.require_version('Gtk','3.0'); print('GTK3 OK')"
+
+  webkit41:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install flatpak
+        run: sudo apt-get update && sudo apt-get install -y flatpak
+      - name: Add flathub remote
+        run: flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+      - name: Install GNOME runtime 48
+        run: flatpak install --user -y flathub org.gnome.Platform//48
+      - name: WebKit2 4.1 available
+        run: flatpak run --command=python3 org.gnome.Platform//48 -c "import gi; gi.require_version('WebKit2','4.1'); print('WebKit2 4.1 OK')"
