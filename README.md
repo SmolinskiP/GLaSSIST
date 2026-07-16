@@ -37,9 +37,9 @@ Desktop voice application for Home Assistant with visual animations and VAD (Voi
 
 ### For Python Installation (Advanced users)
 - **Home Assistant** with Assist enabled
-- **Python 3.11** (recommended) or **Python 3.12** (Linux: ONNX only)
-  - Python 3.8-3.10 also supported with some limitations
-  - Python 3.13+ not supported due to dependency incompatibilities
+- **Python 3.11–3.13** (3.8–3.10 also work with some limitations)
+  - On Python 3.12+ wake word detection uses ONNX models (tflite-runtime has
+    no wheels there); on 3.11 and older TFLite is also available on Linux
 - **Windows 10/11** or **Linux** (Ubuntu, Debian, Fedora, Arch)
 - **Microphone**
 - **Long-lived access token** for HA
@@ -375,41 +375,32 @@ Drop your own audio files (`.wav`, `.mp3`, `.flac`, `.ogg`) into `sound/` and pi
 
 ## 🐛 Troubleshooting
 
-### Python version incompatibility (Linux)
+### tflite-runtime install error (Linux)
 **Error**: `ERROR: Could not find a version that satisfies the requirement tflite-runtime`
 
-**Cause**: You're using Python 3.12 or 3.13, which don't have tflite-runtime packages available.
+**Cause**: tflite-runtime has no packages for Python 3.12+. It is an optional
+speed-up, not a requirement — GLaSSIST automatically falls back to ONNX models
+for wake word detection (this is also what the Flatpak build ships).
 
 **Solutions**:
-1. **Install Python 3.11** (recommended):
+1. **Nothing to do** — skip tflite-runtime (the installer does this
+   automatically) and wake word detection will use ONNX models.
+
+2. **Optional, for TFLite detection**: install Python 3.11 and recreate the venv:
    ```bash
-   # For Ubuntu 22.04 and older (has Python 3.11 in repos):
+   # Ubuntu 22.04 and older (has Python 3.11 in repos):
    sudo apt install python3.11 python3.11-venv python3.11-dev
 
-   # For Ubuntu 24.04+, Linux Mint 22+ (needs deadsnakes PPA):
+   # Ubuntu 24.04+, Linux Mint 22+ (needs deadsnakes PPA):
    sudo add-apt-repository ppa:deadsnakes/ppa -y
    sudo apt update
    sudo apt install python3.11 python3.11-venv python3.11-dev
 
-   # For Debian 13 (Trixie) - compiled from source:
-   # The installer will do this automatically (takes 5-10 minutes)
-
-   # For Fedora/RHEL:
+   # Fedora/RHEL:
    sudo dnf install python3.11 python3.11-devel
 
    # The installer will do all of this automatically
    ```
-
-2. **Use Python 3.12** with ONNX-only mode:
-   - The installer will automatically skip tflite-runtime
-   - Wake word detection will use ONNX models (slightly slower but works)
-
-3. **Check your Python version**:
-   ```bash
-   python3 --version
-   ```
-
-**Note**: Python 3.13+ is not supported due to multiple dependency incompatibilities (tflite-runtime, numpy versions). Use Python 3.11 for best results.
 
 ### "Cannot connect to Home Assistant"
 - Check `HA_HOST` and `HA_TOKEN`
