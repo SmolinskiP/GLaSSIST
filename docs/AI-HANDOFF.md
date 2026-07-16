@@ -120,8 +120,10 @@ whole CI round-trip for manifest iteration.
 - **`linux-voice-assistant/`** nested repo (clone of mricharz's fork, wake-word/WAV
   tools) sat inside the Windows working copy, untracked. Won't exist on Linux unless
   the owner copies it. If they mention it — that's what it was.
-- `.env` is gitignored — the owner needs to reconfigure on the Linux box (or copy it);
-  settings dialog or `.env.example` are the starting points.
+- `.env` travels: the owner copies the whole directory from disk, and the file is
+  portable anyway (device indices are `-1`/automatic, no absolute Windows paths).
+  Two things from the copied dir that are useless on Linux: `venv/` (Windows
+  binaries — recreate it) and `dist`/`build`/`inno` PyInstaller leftovers.
 
 ## Dev quickstart on Linux
 
