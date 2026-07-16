@@ -17,14 +17,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install req2flatpak
-        run: pip install req2flatpak
-      - name: Generate module JSON
-        id: gen
+      - name: Install req2flatpak and pip-tools
+        run: pip install req2flatpak pip-tools
+      - name: Resolve full dependency tree
+        id: compile
         continue-on-error: true
         run: |
           set -o pipefail
-          req2flatpak --requirements-file packaging/flatpak/requirements-linux.txt --target-platforms 312-x86_64 --outfile packaging/flatpak/python3-modules.json 2>&1 | tee packaging/flatpak/pipgen.log
+          pip-compile --strip-extras --no-header --output-file packaging/flatpak/requirements-linux-locked.txt packaging/flatpak/requirements-linux.txt 2>&1 | tee packaging/flatpak/pipgen.log
+      - name: Generate module JSON
+        id: gen
+        continue-on-error: true
+        if: steps.compile.outcome == 'success'
+        run: |
+          set -o pipefail
+          req2flatpak --requirements-file packaging/flatpak/requirements-linux-locked.txt --target-platforms 312-x86_64 --outfile packaging/flatpak/python3-modules.json 2>&1 | tee -a packaging/flatpak/pipgen.log
       - name: Commit results (modules and log)
         run: |
           git config user.name "github-actions[bot]"
@@ -37,5 +44,5 @@ jobs:
           git diff --cached --quiet || git commit -m "chore: flatpak pipgen output"
           git push
       - name: Fail if generation failed
-        if: steps.gen.outcome == 'failure'
+        if: steps.compile.outcome == 'failure' || steps.gen.outcome != 'success'
         run: exit 1
