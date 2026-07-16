@@ -50,4 +50,4 @@ CODEX_*.md
 .claude/settings.local.json
 
 # External/licensed sound files (user-provided, not bundled)
-sound/*.mp3.claude/settings.local.json
+sound/*.mp3
