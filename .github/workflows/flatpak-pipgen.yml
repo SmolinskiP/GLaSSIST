@@ -17,16 +17,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install requirements-parser
-        run: pip install requirements-parser
-      - name: Fetch flatpak-pip-generator
-        run: curl -sLo flatpak-pip-generator.py https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/pip/flatpak-pip-generator.py
+      - name: Install req2flatpak
+        run: pip install req2flatpak
       - name: Generate module JSON
         id: gen
         continue-on-error: true
         run: |
           set -o pipefail
-          python3 flatpak-pip-generator.py --requirements-file=packaging/flatpak/requirements-linux.txt --output packaging/flatpak/python3-modules 2>&1 | tee packaging/flatpak/pipgen.log
+          req2flatpak --requirements-file packaging/flatpak/requirements-linux.txt --target-platforms 312-x86_64 --outfile packaging/flatpak/python3-modules.json 2>&1 | tee packaging/flatpak/pipgen.log
       - name: Commit results (modules and log)
         run: |
           git config user.name "github-actions[bot]"

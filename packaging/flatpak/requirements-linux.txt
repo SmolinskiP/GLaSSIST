@@ -6,6 +6,8 @@
 #                                        no py3.12 wheels; GLaSSIST uses the ONNX
 #                                        framework, so it is installed --no-deps as
 #                                        a separate module in the manifest)
+#   PyAudio, proxy_tools                (no Linux wheels on PyPI — built from sdist
+#                                        as separate manifest modules)
 aioesphomeapi==44.2.0
 zeroconf==0.148.0
 bottle==0.13.3
@@ -26,8 +28,6 @@ onnxruntime==1.22.0
 packaging==25.0
 pillow==11.2.1
 protobuf==6.31.0
-proxy_tools==0.1.0
-PyAudio==0.2.14
 pycparser==2.22
 pystray==0.19.5
 python-dotenv==1.1.0
