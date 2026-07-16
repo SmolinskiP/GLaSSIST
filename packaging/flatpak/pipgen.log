@@ -46,6 +46,10 @@ flatbuffers==25.2.10
     #   -r packaging/flatpak/requirements-linux.txt
     #   onnxruntime
 flet==0.28.3
+    # via
+    #   -r packaging/flatpak/requirements-linux.txt
+    #   flet-desktop-light
+flet-desktop-light==0.28.3
     # via -r packaging/flatpak/requirements-linux.txt
 h11==0.16.0
     # via httpcore

@@ -2,7 +2,7 @@
     "name": "python3-package-installation",
     "buildsystem": "simple",
     "build-commands": [
-        "pip3 install --verbose --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} --no-build-isolation aioesphomeapi aiohappyeyeballs anyio async-interrupt audioread bottle certifi cffi chacha20poly1305-reuseable charset-normalizer colorama coloredlogs cryptography flatbuffers flet h11 httpcore httpx humanfriendly idna ifaddr joblib keyboard mpmath noiseprotocol numpy oauthlib onnxruntime packaging pillow protobuf proxy-tools pycparser pystray python-dotenv python-xlib pywebview repath requests scikit-learn scipy six sounddevice soundfile sympy threadpoolctl tqdm typing-extensions tzlocal urllib3 webrtcvad-wheels websockets zeroconf"
+        "pip3 install --verbose --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} --no-build-isolation aioesphomeapi aiohappyeyeballs anyio async-interrupt audioread bottle certifi cffi chacha20poly1305-reuseable charset-normalizer colorama coloredlogs cryptography flatbuffers flet flet-desktop-light h11 httpcore httpx humanfriendly idna ifaddr joblib keyboard mpmath noiseprotocol numpy oauthlib onnxruntime packaging pillow protobuf proxy-tools pycparser pystray python-dotenv python-xlib pywebview repath requests scikit-learn scipy six sounddevice soundfile sympy threadpoolctl tqdm typing-extensions tzlocal urllib3 webrtcvad-wheels websockets zeroconf"
     ],
     "sources": [
         {
@@ -91,6 +91,14 @@
             "type": "file",
             "url": "https://files.pythonhosted.org/packages/2f/d0/9ba4ee34972e9e0cf54b1f7d17c695491632421f81301993f2aec8d12105/flet-0.28.3-py3-none-any.whl",
             "sha256": "649bfc4af7933956ecf44963df6c0d997bff9ceeaf89d3c86d96803840cab83e"
+        },
+        {
+            "type": "file",
+            "url": "https://files.pythonhosted.org/packages/c6/06/a21078e117408519e4ea27f18d3826cf067d069d92e684a683261da1ab54/flet_desktop_light-0.28.3-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+            "sha256": "f3dc473aae8d6cf4270e59bbb51e819068c343a49a8836cced2d17fb0359a7f5",
+            "only-arches": [
+                "x86_64"
+            ]
         },
         {
             "type": "file",
