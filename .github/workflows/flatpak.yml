@@ -21,6 +21,20 @@ jobs:
       options: --privileged
     steps:
       - uses: actions/checkout@v4
+      # Safety net: flatpak info reads the version from metainfo.xml, which is
+      # easy to forget when tagging. Injects the release tag if it is missing.
+      # (Flathub builds from the tagged source, so the <release> entry should
+      # still be committed before tagging - this only fixes the GH bundle.)
+      - name: Stamp release version into metainfo
+        if: github.event_name == 'release'
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          FILE=packaging/flatpak/io.github.SmolinskiP.GLaSSIST.metainfo.xml
+          if ! grep -q "version=\"${VERSION}\"" "$FILE"; then
+            sed -i "s|<releases>|<releases>\n    <release version=\"${VERSION}\" date=\"$(date -u +%Y-%m-%d)\"/>|" "$FILE"
+            echo "Stamped ${VERSION} into metainfo"
+          fi
       - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
           bundle: GLaSSIST.flatpak
