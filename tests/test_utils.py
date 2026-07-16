@@ -187,6 +187,25 @@ class TestSoundConfiguration:
         with patch.dict(os.environ, {"HA_SOUND_DEACTIVATION": ""}):
             assert utils.get_sound_file_path("deactivation").endswith("deactivation.wav")
 
+    def test_get_sound_file_path_prefers_user_dir(self, mock_env_file, tmp_path):
+        """Inside Flatpak, a file in the XDG user sound dir wins over bundled."""
+        user_sound_dir = tmp_path / "glasssist" / "sound"
+        user_sound_dir.mkdir(parents=True)
+        user_file = user_sound_dir / "custom.wav"
+        user_file.write_bytes(b"RIFF")
+
+        env = {"FLATPAK_ID": "x", "XDG_DATA_HOME": str(tmp_path),
+               "HA_SOUND_ACTIVATION": "custom.wav"}
+        with patch.dict(os.environ, env):
+            assert utils.get_sound_file_path("activation") == str(user_file)
+
+    def test_get_sound_file_path_falls_back_to_bundled(self, mock_env_file, tmp_path):
+        """Inside Flatpak, a file absent from the user dir resolves to bundled dir."""
+        env = {"FLATPAK_ID": "x", "XDG_DATA_HOME": str(tmp_path)}
+        with patch.dict(os.environ, env):
+            path = utils.get_sound_file_path("activation")
+            assert path == os.path.join(utils.get_sound_dir(), "activation.wav")
+
     @patch('os.path.exists')
     def test_play_feedback_sound_uses_configured_file(self, mock_exists, mock_env_file):
         """Test that play_feedback_sound resolves the configured filename."""

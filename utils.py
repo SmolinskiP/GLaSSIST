@@ -455,6 +455,11 @@ def get_sound_file_path(sound_name):
     filename = get_env(f'HA_SOUND_{sound_name.upper()}', default)
     if not filename:
         filename = default
+    user_dir = platform_utils.get_user_sound_dir()
+    if user_dir is not None:
+        user_path = os.path.join(str(user_dir), filename)
+        if os.path.exists(user_path):
+            return user_path
     return os.path.join(get_sound_dir(), filename)
 
 def play_feedback_sound(sound_name):

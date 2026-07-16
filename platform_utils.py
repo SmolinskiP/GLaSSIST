@@ -232,6 +232,18 @@ def get_env_file_path():
     """Full path to the .env file."""
     return get_config_dir() / '.env'
 
+def get_user_sound_dir():
+    """
+    Writable directory for user-provided sound files inside Flatpak.
+    Returns None outside the sandbox (users edit the app's sound/ folder directly).
+    """
+    if not is_flatpak():
+        return None
+    base = os.environ.get('XDG_DATA_HOME', os.path.expanduser('~/.local/share'))
+    path = Path(base) / 'glasssist' / 'sound'
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
 def check_wake_word_noise_suppression():
     """Check if noise suppression is available for wake word detection."""
     if platform.system() == "Windows":

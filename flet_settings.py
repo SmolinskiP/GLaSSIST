@@ -128,14 +128,21 @@ class FletSettingsApp:
         }
     
     def _list_sound_files(self):
-        """List audio files available in the bundled 'sound' folder"""
-        try:
-            return sorted(
-                f for f in os.listdir(utils.get_sound_dir())
-                if f.lower().endswith(('.wav', '.mp3', '.flac', '.ogg'))
-            )
-        except OSError:
-            return []
+        """List audio files from the bundled and (in Flatpak) user 'sound' folders"""
+        files = set()
+        dirs = [utils.get_sound_dir()]
+        user_dir = platform_utils.get_user_sound_dir()
+        if user_dir is not None:
+            dirs.append(str(user_dir))
+        for d in dirs:
+            try:
+                files.update(
+                    f for f in os.listdir(d)
+                    if f.lower().endswith(('.wav', '.mp3', '.flac', '.ogg'))
+                )
+            except OSError:
+                pass
+        return sorted(files)
 
     async def _create_ui(self, current_settings):
         """Create the main UI"""
