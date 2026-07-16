@@ -22,11 +22,20 @@ jobs:
       - name: Fetch flatpak-pip-generator
         run: curl -sLo flatpak-pip-generator.py https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/pip/flatpak-pip-generator.py
       - name: Generate module JSON
-        run: python3 flatpak-pip-generator.py --requirements-file=packaging/flatpak/requirements-linux.txt --output packaging/flatpak/python3-modules
-      - name: Commit generated modules
+        id: gen
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python3 flatpak-pip-generator.py --requirements-file=packaging/flatpak/requirements-linux.txt --output packaging/flatpak/python3-modules 2>&1 | tee packaging/flatpak/pipgen.log
+      - name: Commit results (modules and log)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add packaging/flatpak/python3-modules.json
-          git diff --cached --quiet || git commit -m "chore: regenerate flatpak pip modules"
+          git add packaging/flatpak/pipgen.log
+          [ -f packaging/flatpak/python3-modules.json ] && git add packaging/flatpak/python3-modules.json
+          git diff --cached --quiet || git commit -m "chore: flatpak pipgen output"
+          git pull --rebase origin main
           git push
+      - name: Fail if generation failed
+        if: steps.gen.outcome == 'failure'
+        run: exit 1
