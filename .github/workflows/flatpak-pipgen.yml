@@ -17,6 +17,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # pip-compile evaluates environment markers against the running Python;
+      # it must match the GNOME 49 runtime (3.13) or the standard-* backports
+      # (aifc/sunau removed from the 3.13 stdlib) get dropped from the lock.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
       - name: Install req2flatpak and pip-tools
         run: pip install req2flatpak pip-tools
       - name: Resolve full dependency tree
@@ -31,7 +37,7 @@ jobs:
         if: steps.compile.outcome == 'success'
         run: |
           set -o pipefail
-          req2flatpak --requirements-file packaging/flatpak/requirements-linux-locked.txt --target-platforms 312-x86_64 --outfile packaging/flatpak/python3-modules.json 2>&1 | tee -a packaging/flatpak/pipgen.log
+          req2flatpak --requirements-file packaging/flatpak/requirements-linux-locked.txt --target-platforms 313-x86_64 --outfile packaging/flatpak/python3-modules.json 2>&1 | tee -a packaging/flatpak/pipgen.log
       - name: Commit results (modules and log)
         run: |
           git config user.name "github-actions[bot]"

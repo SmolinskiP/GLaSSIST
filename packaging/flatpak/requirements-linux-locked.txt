@@ -6,6 +6,10 @@ anyio==4.14.2
     # via httpx
 async-interrupt==1.2.2
     # via aioesphomeapi
+audioop-lts==0.2.2
+    # via
+    #   standard-aifc
+    #   standard-sunau
 audioread==3.1.0
     # via -r packaging/flatpak/requirements-linux.txt
 bottle==0.13.3
@@ -139,6 +143,12 @@ sounddevice==0.5.2
     # via -r packaging/flatpak/requirements-linux.txt
 soundfile==0.13.1
     # via -r packaging/flatpak/requirements-linux.txt
+standard-aifc==3.13.0
+    # via audioread
+standard-chunk==3.13.0
+    # via standard-aifc
+standard-sunau==3.13.0
+    # via audioread
 sympy==1.14.0
     # via
     #   -r packaging/flatpak/requirements-linux.txt
@@ -152,7 +162,6 @@ tqdm==4.67.1
 typing-extensions==4.13.2
     # via
     #   -r packaging/flatpak/requirements-linux.txt
-    #   anyio
     #   pywebview
 tzlocal==5.4.4
     # via aioesphomeapi

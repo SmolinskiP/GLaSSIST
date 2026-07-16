@@ -8,7 +8,7 @@
 # AppIndicator shell extension, preinstalled on Ubuntu).
 app-id: io.github.SmolinskiP.GLaSSIST
 runtime: org.gnome.Platform
-runtime-version: '48'
+runtime-version: '49'
 sdk: org.gnome.Sdk
 command: glasssist
 
@@ -156,7 +156,7 @@ modules:
         --prefix=${FLATPAK_DEST} --no-deps --no-build-isolation openwakeword
       # The wheel ships no models; normally download_models() fetches these into
       # site-packages at first run, which is read-only inside the sandbox.
-      - install -Dm644 -t ${FLATPAK_DEST}/lib/python3.12/site-packages/openwakeword/resources/models
+      - install -Dm644 -t ${FLATPAK_DEST}/lib/python3.13/site-packages/openwakeword/resources/models
         melspectrogram.onnx embedding_model.onnx silero_vad.onnx
     sources:
       - type: file
