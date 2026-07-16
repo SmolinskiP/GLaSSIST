@@ -13,6 +13,10 @@ on:
   release:
     types: [published]
 
+# The release job uploads GLaSSIST.flatpak as a release asset
+permissions:
+  contents: write
+
 jobs:
   flatpak:
     runs-on: ubuntu-latest

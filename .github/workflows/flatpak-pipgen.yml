@@ -26,29 +26,28 @@ jobs:
       - name: Install req2flatpak and pip-tools
         run: pip install req2flatpak pip-tools
       - name: Resolve full dependency tree
-        id: compile
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          pip-compile --strip-extras --no-header --output-file packaging/flatpak/requirements-linux-locked.txt packaging/flatpak/requirements-linux.txt 2>&1 | tee packaging/flatpak/pipgen.log
+        run: pip-compile --strip-extras --no-header --output-file packaging/flatpak/requirements-linux-locked.txt packaging/flatpak/requirements-linux.txt
       - name: Generate module JSON
-        id: gen
-        continue-on-error: true
-        if: steps.compile.outcome == 'success'
+        # req2flatpak queries the PyPI API per package; shared runner IPs get
+        # rate-limited now and then, so retry before giving up.
         run: |
-          set -o pipefail
-          req2flatpak --requirements-file packaging/flatpak/requirements-linux-locked.txt --target-platforms 313-x86_64 --outfile packaging/flatpak/python3-modules.json 2>&1 | tee -a packaging/flatpak/pipgen.log
-      - name: Commit results (modules and log)
+          for i in 1 2 3; do
+            if req2flatpak --requirements-file packaging/flatpak/requirements-linux-locked.txt --target-platforms 313-x86_64 --outfile packaging/flatpak/python3-modules.json; then
+              exit 0
+            fi
+            echo "attempt $i failed, retrying in 30s"
+            sleep 30
+          done
+          exit 1
+      - name: Commit results
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if [ -f python3-modules.json ]; then
-            mv python3-modules.json packaging/flatpak/python3-modules.json
+          git add packaging/flatpak/requirements-linux-locked.txt packaging/flatpak/python3-modules.json
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
           fi
-          git add -f packaging/flatpak/pipgen.log
-          git add -A packaging/flatpak/
-          git diff --cached --quiet || git commit -m "chore: flatpak pipgen output"
-          git push
-      - name: Fail if generation failed
-        if: steps.compile.outcome == 'failure' || steps.gen.outcome != 'success'
-        run: exit 1
+          git commit -m "chore: regenerate flatpak python modules"
+          # Retry with rebase - a concurrent push to main must not fail the run
+          git push || (git pull --rebase origin main && git push)
