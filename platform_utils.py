@@ -155,7 +155,9 @@ def _hide_from_taskbar_windows(window_title):
         return False
 
 def _hide_from_taskbar_linux(window_title):
-    """Linux-specific taskbar hiding using wmctrl or xdotool."""
+    """Linux-specific taskbar hiding + click-through, GTK first (works in Flatpak)."""
+    if _setup_gtk_overlay_window_linux(window_title):
+        return True
     try:
         # Try wmctrl first
         result = subprocess.run(
@@ -188,6 +190,98 @@ def _hide_from_taskbar_linux(window_title):
             logger.info("Install with: sudo apt install wmctrl xdotool")
     
     return False
+
+def _apply_overlay_hints(win):
+    """Overlay hints for the animation window: skip taskbar/pager, keep above,
+    bottom-center placement (like Windows) and click-through input region."""
+    import cairo
+
+    win.set_skip_taskbar_hint(True)
+    win.set_skip_pager_hint(True)
+    win.set_keep_above(True)
+    # Bottom-center, like the Windows overlay placement
+    display = win.get_display()
+    monitor = display.get_primary_monitor() or display.get_monitor(0)
+    if monitor is not None:
+        geo = monitor.get_geometry()
+        w, h = win.get_size()
+        win.move(geo.x + (geo.width - w) // 2,
+                 geo.y + geo.height - h - 40)
+    gdk_win = win.get_window()
+    if gdk_win is not None:
+        # Empty input region -> clicks fall through to windows below
+        gdk_win.input_shape_combine_region(cairo.Region(), 0, 0)
+
+def _setup_gtk_overlay_window_linux(window_title):
+    """
+    Make the pywebview GTK window behave like the Windows overlay:
+    skip taskbar/pager and let mouse clicks pass through (empty input region).
+    Runs on the GTK main loop; no wmctrl/xdotool needed, so it works in Flatpak.
+    """
+    try:
+        import threading
+        import gi
+        gi.require_version('Gtk', '3.0')
+        from gi.repository import Gtk, GLib
+    except (ImportError, ValueError) as e:
+        logger.debug(f"GTK not available for overlay setup: {e}")
+        return False
+
+    done = threading.Event()
+    applied = []
+
+    def apply():
+        try:
+            for win in Gtk.Window.list_toplevels():
+                if win.get_title() == window_title:
+                    _apply_overlay_hints(win)
+                    applied.append(win.get_title())
+        except Exception as e:
+            logger.error(f"GTK overlay setup failed: {e}")
+        finally:
+            done.set()
+        return False
+
+    GLib.idle_add(apply)
+    done.wait(timeout=5)
+    if applied:
+        logger.info("Window hidden from taskbar and set click-through (GTK)")
+        return True
+    return False
+
+def set_overlay_window_visible(window_title, visible):
+    """
+    Map/unmap the overlay window on state changes (Linux only).
+
+    WebKitGTK suspends JS event dispatch for an unfocused, click-through
+    window, so the frontend cannot be trusted to clear its own last frame -
+    hiding the whole window on the 'hidden' state is the reliable way to make
+    the overlay disappear.
+    """
+    if platform.system() != "Linux":
+        return False
+    try:
+        import gi
+        gi.require_version('Gtk', '3.0')
+        from gi.repository import Gtk, GLib
+    except (ImportError, ValueError):
+        return False
+
+    def apply():
+        try:
+            for win in Gtk.Window.list_toplevels():
+                if win.get_title() == window_title:
+                    if visible:
+                        win.show()
+                        _apply_overlay_hints(win)
+                    else:
+                        win.hide()
+        except Exception as e:
+            logger.error(f"Overlay visibility change failed: {e}")
+        return False
+
+    GLib.idle_add(apply)
+    return True
 
 def open_file_manager(path):
     """Open file manager at specified path - cross-platform."""

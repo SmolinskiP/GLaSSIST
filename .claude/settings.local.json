@@ -28,7 +28,8 @@
       "PowerShell($env:HA_PROCESSING_SOUND='true'; $env:HA_SOUND_PROCESSING='processing2.wav'; python -c \"import utils, time; print\\('started:', utils.processing_sound_loop.start\\(\\)\\); time.sleep\\(2.5\\); utils.processing_sound_loop.stop\\(\\); print\\('stopped OK'\\)\")",
       "PowerShell(git add utils.py main.py satellite_protocol.py flet_settings.py tests/test_utils.py .env.example README.md install-linux.sh setup.iss setup_debug.iss CLAUDE.md sound/processing.wav sound/processing2.wav)",
       "PowerShell(gh issue list --repo SmolinskiP/GLaSSIST --search \"processing sound\" --state all --limit 5)",
-      "PowerShell(git branch -a -v; git log --oneline -5 linux-voice-assistant 2>$null; git merge-base --is-ancestor linux-voice-assistant main 2>$null; \"merged into main: $?\")"
+      "PowerShell(git branch -a -v; git log --oneline -5 linux-voice-assistant 2>$null; git merge-base --is-ancestor linux-voice-assistant main 2>$null; \"merged into main: $?\")",
+      "WebFetch(domain:api.github.com)"
     ],
     "deny": []
   }

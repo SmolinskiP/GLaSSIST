@@ -24,6 +24,8 @@ Thumbs.db
 *.egg-info/
 dist/
 build/
+.flatpak-builder/
+*.flatpak
 *.manifest
 *.spec
 

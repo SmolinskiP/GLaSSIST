@@ -316,9 +316,26 @@
             scene.add(ring);
         }
         
+        let hiddenSince = null;
+
         function animate() {
             if (!isAnimating) return;
-            
+
+            // Linux/WebKitGTK: after 'hidden' keep rendering (transparent)
+            // frames for a grace period so the cleared frame is actually
+            // presented, then stop the loop for real.
+            if (hiddenSince !== null) {
+                if (currentState !== 'hidden') {
+                    hiddenSince = null;
+                } else if (performance.now() - hiddenSince > 1500) {
+                    hiddenSince = null;
+                    isAnimating = false;
+                    animationFrameId = null;
+                    renderer.render(scene, camera);
+                    return;
+                }
+            }
+
             animationFrameId = requestAnimationFrame(animate);
             updateAnimation();
             renderer.render(scene, camera);
@@ -351,22 +368,32 @@
         
         function stopAnimation() {
             if (!isAnimating) return;
-            
-            isAnimating = false;
+
             console.log('Stopping animation');
-            
+
             // Hide all elements
             ring.visible = false;
-            
+
             // Hide all texts
             hideErrorText();
             hideSuccessText();
-            
+
+            // Linux/WebKitGTK never presents a frame rendered synchronously
+            // after cancelAnimationFrame - the previous state stays frozen on
+            // screen. Keep the loop alive for a grace period instead (see
+            // animate()); it renders transparent frames and stops itself.
+            if (navigator.userAgent.includes('Linux')) {
+                hiddenSince = performance.now();
+                return;
+            }
+
+            isAnimating = false;
+
             if (animationFrameId) {
                 cancelAnimationFrame(animationFrameId);
                 animationFrameId = null;
             }
-            
+
             renderer.render(scene, camera);
         }
         

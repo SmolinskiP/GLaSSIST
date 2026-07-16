@@ -12,6 +12,14 @@ from platform_utils import check_wake_word_noise_suppression
 
 logger = utils.setup_logger()
 
+def _tflite_runtime_available():
+    """True when the tflite runtime is importable (absent e.g. on py3.12/Flatpak)."""
+    try:
+        import tflite_runtime  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
 class WakeWordDetector:
     """Wake word detector using openWakeWord library."""
     
@@ -101,25 +109,18 @@ class WakeWordDetector:
                 
                 # Platform-specific model preference
                 if platform.system() == "Linux":
-                    # Linux: prefer .tflite models (better performance)
-                    if tflite_paths:
-                        try:
-                            import tflite_runtime
-                            model_kwargs['wakeword_models'] = tflite_paths
-                            logger.info(f"Loading TFLite models on Linux: {', '.join(self.selected_models)}")
-                        except ImportError:
-                            logger.warning("TFLite runtime not available, trying ONNX...")
-                            if onnx_paths:
-                                model_kwargs['wakeword_models'] = onnx_paths
-                                logger.info(f"Loading ONNX models as fallback: {', '.join(self.selected_models)}")
-                            else:
-                                logger.info("Falling back to default openWakeWord models")
+                    # Linux: prefer .tflite models when the runtime exists (better performance)
+                    if tflite_paths and _tflite_runtime_available():
+                        model_kwargs['wakeword_models'] = tflite_paths
+                        logger.info(f"Loading TFLite models on Linux: {', '.join(self.selected_models)}")
                     elif onnx_paths:
                         model_kwargs['wakeword_models'] = onnx_paths
                         model_kwargs['inference_framework'] = 'onnx'
                         logger.info(f"Loading ONNX models on Linux: {', '.join(self.selected_models)}")
                     else:
-                        logger.info("No custom models found, using defaults")
+                        logger.info("No usable custom models found, using defaults")
+                        if not _tflite_runtime_available():
+                            model_kwargs['inference_framework'] = 'onnx'
                 else:
                     # Windows: prefer ONNX, avoid TFLite due to compatibility issues
                     if onnx_paths:
@@ -133,7 +134,9 @@ class WakeWordDetector:
                         logger.info("Using default openWakeWord models")
             else:
                 logger.info("Using default openWakeWord models")
-            
+                if platform.system() == "Linux" and not _tflite_runtime_available():
+                    model_kwargs['inference_framework'] = 'onnx'
+
             print(f"DEBUG: About to create Model with kwargs: {model_kwargs}")
             
             try:
@@ -179,8 +182,8 @@ class WakeWordDetector:
         for model_name in self.selected_models:
             model_found = False
             
-            # On Linux, prefer .tflite first
-            if platform.system() == "Linux":
+            # On Linux, prefer .tflite first (only when the runtime is importable)
+            if platform.system() == "Linux" and _tflite_runtime_available():
                 extensions = ['.tflite', '.onnx']
             else:
                 extensions = ['.onnx', '.tflite']

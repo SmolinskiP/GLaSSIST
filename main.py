@@ -7,7 +7,17 @@ import webview
 import sys
 import os
 import argparse
-import pystray
+import platform
+try:
+    import pystray
+except Exception:
+    if platform.system() == "Linux":
+        # gi raises ValueError (not ImportError) when AppIndicator typelibs are
+        # missing and pystray's backend probing only catches ImportError.
+        os.environ["PYSTRAY_BACKEND"] = "gtk"
+        import pystray
+    else:
+        raise
 from PIL import Image, ImageDraw
 from pystray import MenuItem as item
 import utils
@@ -16,7 +26,7 @@ from audio import AudioManager
 from animation_server import AnimationServer
 from wake_word_detector import WakeWordDetector, validate_wake_word_config
 import platform
-from platform_utils import check_linux_dependencies, hide_window_from_taskbar, get_icon_path
+from platform_utils import check_linux_dependencies, hide_window_from_taskbar, get_icon_path, is_flatpak, set_overlay_window_visible
 from dummy_animation_server import DummyAnimationServer
 from conversation_manager import ConversationManager
 from prompt_server import PromptServer
@@ -110,8 +120,11 @@ class HAAssistApp:
             logger.info("Wake word detection stopped")
 
     def create_tray_icon(self):
-        if platform.system() == "Linux":
-            logger.info("System tray disabled on Linux - use hotkey ctrl+shift+h")
+        if platform.system() == "Linux" and 'appindicator' not in pystray.Icon.__module__:
+            # Plain GTK StatusIcon is dead on GNOME/KDE Wayland - only try the
+            # tray when pystray picked the AppIndicator (SNI) backend.
+            logger.info("System tray unavailable on Linux without AppIndicator - use hotkey %s"
+                        % utils.get_env("HA_HOTKEY", "ctrl+shift+h"))
             return
         """Create system tray icon with cross-platform support."""
         icon_path = get_icon_path()
@@ -136,7 +149,18 @@ class HAAssistApp:
             "GLaSSIST Desktop",
             menu
         )
-        
+
+        if is_flatpak() and hasattr(self.tray_icon, '_appindicator'):
+            # AppIndicator hands the host an icon *path*, but pystray writes it
+            # to the sandbox-private /tmp - pass the exported theme icon name
+            # (flatpak exports /app/share/icons to the host theme) instead.
+            def _use_theme_icon(icon_self=self.tray_icon):
+                icon_self._icon_path = 'io.github.SmolinskiP.GLaSSIST'
+                icon_self._icon_valid = True
+            self.tray_icon._remove_fs_icon = lambda: None
+            self.tray_icon._update_fs_icon = _use_theme_icon
+            _use_theme_icon()
+
         logger.info("System tray icon created")
 
     def _show_wake_word_status(self, icon=None, item=None):
@@ -389,6 +413,12 @@ class HAAssistApp:
             from animation_server import AnimationServer
             self.animation_server = AnimationServer()
             logger.info("Real animation server created")
+            if self.is_linux:
+                # WebKitGTK suspends JS for the unfocused click-through window,
+                # so the page cannot reliably clear its last frame - map/unmap
+                # the whole window on state changes instead.
+                self.animation_server.set_window_visibility_callback(
+                    lambda visible: set_overlay_window_visible('GLaSSIST', visible))
         else:
             self.animation_server = DummyAnimationServer()
             logger.info("Dummy animation server created (animations disabled)")
@@ -859,12 +889,24 @@ class HAAssistApp:
     
     def run_tray(self):
         """Run tray icon in separate thread."""
+        if not self.tray_icon:
+            return
+        if platform.system() == "Linux":
+            # webview's GTK main loop (main thread) dispatches the AppIndicator;
+            # pystray's own loop in a thread would fight over the main context
+            # ("g_application_run() cannot acquire the default main context").
+            try:
+                self.tray_icon.run_detached()
+                logger.info("System tray started (detached, GTK loop)")
+            except Exception as e:
+                logger.exception(f"Tray icon error: {e}")
+            return
         def tray_thread():
             try:
                 self.tray_icon.run()
             except Exception as e:
                 logger.exception(f"Tray icon error: {e}")
-        
+
         threading.Thread(target=tray_thread, daemon=True).start()
         logger.info("System tray started")
     

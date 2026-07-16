@@ -21,6 +21,11 @@ class AnimationServer:
         self.current_state = "hidden"
         self.current_state_message = ""
         self.audio_data_buffer = []
+        self.window_visibility_callback = None
+
+    def set_window_visibility_callback(self, callback):
+        """Callback(visible: bool) fired on state changes (Linux overlay map/unmap)."""
+        self.window_visibility_callback = callback
         
     def start(self):
         self.thread = threading.Thread(target=self._run_server, daemon=True)
@@ -151,6 +156,12 @@ class AnimationServer:
             message["successMessage"] = success_message
 
         self._safe_broadcast(message)
+
+        if self.window_visibility_callback:
+            try:
+                self.window_visibility_callback(new_state != "hidden")
+            except Exception as e:
+                logger.error(f"Window visibility callback failed: {e}")
     
     def show_success(self, message: str = "Success", duration: float = 3.0):
         """Show success animation for specified time."""
