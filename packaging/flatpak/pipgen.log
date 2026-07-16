@@ -1,131 +1,392 @@
-Collecting aioesphomeapi==44.2.0 (from -r /tmp/requirements.dd19ddlb (line 5))
+Collecting aioesphomeapi==44.2.0 (from -r /tmp/requirements.4rcoro34 (line 9))
   Downloading aioesphomeapi-44.2.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (6.1 kB)
-Collecting zeroconf==0.148.0 (from -r /tmp/requirements.dd19ddlb (line 6))
+Collecting zeroconf==0.148.0 (from -r /tmp/requirements.4rcoro34 (line 10))
   Downloading zeroconf-0.148.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (6.3 kB)
-Collecting bottle==0.13.3 (from -r /tmp/requirements.dd19ddlb (line 7))
+Collecting bottle==0.13.3 (from -r /tmp/requirements.4rcoro34 (line 11))
   Downloading bottle-0.13.3-py2.py3-none-any.whl.metadata (2.1 kB)
-Collecting certifi==2025.4.26 (from -r /tmp/requirements.dd19ddlb (line 8))
+Collecting certifi==2025.4.26 (from -r /tmp/requirements.4rcoro34 (line 12))
   Downloading certifi-2025.4.26-py3-none-any.whl.metadata (2.5 kB)
-Collecting cffi==1.17.1 (from -r /tmp/requirements.dd19ddlb (line 9))
+Collecting cffi==1.17.1 (from -r /tmp/requirements.4rcoro34 (line 13))
   Downloading cffi-1.17.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (1.5 kB)
-Collecting charset-normalizer==3.4.2 (from -r /tmp/requirements.dd19ddlb (line 10))
+Collecting charset-normalizer==3.4.2 (from -r /tmp/requirements.4rcoro34 (line 14))
   Downloading charset_normalizer-3.4.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (35 kB)
-Collecting colorama==0.4.6 (from -r /tmp/requirements.dd19ddlb (line 11))
+Collecting colorama==0.4.6 (from -r /tmp/requirements.4rcoro34 (line 15))
   Downloading colorama-0.4.6-py2.py3-none-any.whl.metadata (17 kB)
-Collecting flet==0.28.3 (from -r /tmp/requirements.dd19ddlb (line 12))
+Collecting flet==0.28.3 (from -r /tmp/requirements.4rcoro34 (line 16))
   Downloading flet-0.28.3-py3-none-any.whl.metadata (3.6 kB)
-Collecting coloredlogs==15.0.1 (from -r /tmp/requirements.dd19ddlb (line 13))
+Collecting coloredlogs==15.0.1 (from -r /tmp/requirements.4rcoro34 (line 17))
   Downloading coloredlogs-15.0.1-py2.py3-none-any.whl.metadata (12 kB)
-Collecting flatbuffers==25.2.10 (from -r /tmp/requirements.dd19ddlb (line 14))
+Collecting flatbuffers==25.2.10 (from -r /tmp/requirements.4rcoro34 (line 18))
   Downloading flatbuffers-25.2.10-py2.py3-none-any.whl.metadata (875 bytes)
-Collecting humanfriendly==10.0 (from -r /tmp/requirements.dd19ddlb (line 15))
+Collecting humanfriendly==10.0 (from -r /tmp/requirements.4rcoro34 (line 19))
   Downloading humanfriendly-10.0-py2.py3-none-any.whl.metadata (9.2 kB)
-Collecting idna==3.10 (from -r /tmp/requirements.dd19ddlb (line 16))
+Collecting idna==3.10 (from -r /tmp/requirements.4rcoro34 (line 20))
   Downloading idna-3.10-py3-none-any.whl.metadata (10 kB)
-Collecting joblib==1.5.1 (from -r /tmp/requirements.dd19ddlb (line 17))
+Collecting joblib==1.5.1 (from -r /tmp/requirements.4rcoro34 (line 21))
   Downloading joblib-1.5.1-py3-none-any.whl.metadata (5.6 kB)
-Collecting keyboard==0.13.5 (from -r /tmp/requirements.dd19ddlb (line 18))
+Collecting keyboard==0.13.5 (from -r /tmp/requirements.4rcoro34 (line 22))
   Downloading keyboard-0.13.5-py3-none-any.whl.metadata (4.0 kB)
-Collecting mpmath==1.3.0 (from -r /tmp/requirements.dd19ddlb (line 19))
+Collecting mpmath==1.3.0 (from -r /tmp/requirements.4rcoro34 (line 23))
   Downloading mpmath-1.3.0-py3-none-any.whl.metadata (8.6 kB)
-Collecting numpy==2.2.6 (from -r /tmp/requirements.dd19ddlb (line 20))
+Collecting numpy==2.2.6 (from -r /tmp/requirements.4rcoro34 (line 24))
   Downloading numpy-2.2.6-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (62 kB)
-     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 62.0/62.0 kB 18.8 MB/s eta 0:00:00
-Collecting onnxruntime==1.22.0 (from -r /tmp/requirements.dd19ddlb (line 21))
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 62.0/62.0 kB 18.5 MB/s eta 0:00:00
+Collecting onnxruntime==1.22.0 (from -r /tmp/requirements.4rcoro34 (line 25))
   Downloading onnxruntime-1.22.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (4.8 kB)
-Collecting openwakeword==0.6.0 (from -r /tmp/requirements.dd19ddlb (line 22))
-  Downloading openwakeword-0.6.0-py3-none-any.whl.metadata (29 kB)
-Collecting packaging==25.0 (from -r /tmp/requirements.dd19ddlb (line 23))
+Collecting packaging==25.0 (from -r /tmp/requirements.4rcoro34 (line 26))
   Downloading packaging-25.0-py3-none-any.whl.metadata (3.3 kB)
-Collecting pillow==11.2.1 (from -r /tmp/requirements.dd19ddlb (line 24))
+Collecting pillow==11.2.1 (from -r /tmp/requirements.4rcoro34 (line 27))
   Downloading pillow-11.2.1-cp312-cp312-manylinux_2_28_x86_64.whl.metadata (8.9 kB)
-Collecting protobuf==6.31.0 (from -r /tmp/requirements.dd19ddlb (line 25))
+Collecting protobuf==6.31.0 (from -r /tmp/requirements.4rcoro34 (line 28))
   Downloading protobuf-6.31.0-cp39-abi3-manylinux2014_x86_64.whl.metadata (593 bytes)
-Collecting proxy_tools==0.1.0 (from -r /tmp/requirements.dd19ddlb (line 26))
+Collecting proxy_tools==0.1.0 (from -r /tmp/requirements.4rcoro34 (line 29))
   Downloading proxy_tools-0.1.0.tar.gz (3.0 kB)
   Preparing metadata (setup.py): started
   Preparing metadata (setup.py): finished with status 'done'
-Collecting PyAudio==0.2.14 (from -r /tmp/requirements.dd19ddlb (line 27))
+Collecting PyAudio==0.2.14 (from -r /tmp/requirements.4rcoro34 (line 30))
   Downloading PyAudio-0.2.14.tar.gz (47 kB)
-     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 47.1/47.1 kB 16.8 MB/s eta 0:00:00
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 47.1/47.1 kB 16.0 MB/s eta 0:00:00
   Installing build dependencies: started
   Installing build dependencies: finished with status 'done'
   Getting requirements to build wheel: started
   Getting requirements to build wheel: finished with status 'done'
   Preparing metadata (pyproject.toml): started
   Preparing metadata (pyproject.toml): finished with status 'done'
-Collecting pycparser==2.22 (from -r /tmp/requirements.dd19ddlb (line 28))
+Collecting pycparser==2.22 (from -r /tmp/requirements.4rcoro34 (line 31))
   Downloading pycparser-2.22-py3-none-any.whl.metadata (943 bytes)
-Collecting pystray==0.19.5 (from -r /tmp/requirements.dd19ddlb (line 29))
+Collecting pystray==0.19.5 (from -r /tmp/requirements.4rcoro34 (line 32))
   Downloading pystray-0.19.5-py2.py3-none-any.whl.metadata (9.4 kB)
-Collecting python-dotenv==1.1.0 (from -r /tmp/requirements.dd19ddlb (line 30))
+Collecting python-dotenv==1.1.0 (from -r /tmp/requirements.4rcoro34 (line 33))
   Downloading python_dotenv-1.1.0-py3-none-any.whl.metadata (24 kB)
-Collecting pywebview==5.4 (from -r /tmp/requirements.dd19ddlb (line 31))
+Collecting pywebview==5.4 (from -r /tmp/requirements.4rcoro34 (line 34))
   Downloading pywebview-5.4-py3-none-any.whl.metadata (4.5 kB)
-Collecting requests==2.32.3 (from -r /tmp/requirements.dd19ddlb (line 32))
+Collecting requests==2.32.3 (from -r /tmp/requirements.4rcoro34 (line 35))
   Downloading requests-2.32.3-py3-none-any.whl.metadata (4.6 kB)
-Collecting scikit-learn==1.6.1 (from -r /tmp/requirements.dd19ddlb (line 33))
+Collecting scikit-learn==1.6.1 (from -r /tmp/requirements.4rcoro34 (line 36))
   Downloading scikit_learn-1.6.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (18 kB)
-Collecting scipy==1.15.3 (from -r /tmp/requirements.dd19ddlb (line 34))
+Collecting scipy==1.15.3 (from -r /tmp/requirements.4rcoro34 (line 37))
   Downloading scipy-1.15.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (61 kB)
-     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 62.0/62.0 kB 21.9 MB/s eta 0:00:00
-Collecting six==1.17.0 (from -r /tmp/requirements.dd19ddlb (line 35))
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 62.0/62.0 kB 20.4 MB/s eta 0:00:00
+Collecting six==1.17.0 (from -r /tmp/requirements.4rcoro34 (line 38))
   Downloading six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
-Collecting sounddevice==0.5.2 (from -r /tmp/requirements.dd19ddlb (line 36))
+Collecting sounddevice==0.5.2 (from -r /tmp/requirements.4rcoro34 (line 39))
   Downloading sounddevice-0.5.2-py3-none-any.whl.metadata (1.6 kB)
-Collecting soundfile==0.13.1 (from -r /tmp/requirements.dd19ddlb (line 37))
+Collecting soundfile==0.13.1 (from -r /tmp/requirements.4rcoro34 (line 40))
   Downloading soundfile-0.13.1-py2.py3-none-manylinux_2_28_x86_64.whl.metadata (16 kB)
-Collecting audioread==3.1.0 (from -r /tmp/requirements.dd19ddlb (line 38))
+Collecting audioread==3.1.0 (from -r /tmp/requirements.4rcoro34 (line 41))
   Downloading audioread-3.1.0-py3-none-any.whl.metadata (9.0 kB)
-Collecting sympy==1.14.0 (from -r /tmp/requirements.dd19ddlb (line 39))
+Collecting sympy==1.14.0 (from -r /tmp/requirements.4rcoro34 (line 42))
   Downloading sympy-1.14.0-py3-none-any.whl.metadata (12 kB)
-Collecting threadpoolctl==3.6.0 (from -r /tmp/requirements.dd19ddlb (line 40))
+Collecting threadpoolctl==3.6.0 (from -r /tmp/requirements.4rcoro34 (line 43))
   Downloading threadpoolctl-3.6.0-py3-none-any.whl.metadata (13 kB)
-Collecting tqdm==4.67.1 (from -r /tmp/requirements.dd19ddlb (line 41))
+Collecting tqdm==4.67.1 (from -r /tmp/requirements.4rcoro34 (line 44))
   Downloading tqdm-4.67.1-py3-none-any.whl.metadata (57 kB)
-     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 57.7/57.7 kB 18.7 MB/s eta 0:00:00
-Collecting typing_extensions==4.13.2 (from -r /tmp/requirements.dd19ddlb (line 42))
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 57.7/57.7 kB 20.9 MB/s eta 0:00:00
+Collecting typing_extensions==4.13.2 (from -r /tmp/requirements.4rcoro34 (line 45))
   Downloading typing_extensions-4.13.2-py3-none-any.whl.metadata (3.0 kB)
-Collecting urllib3==2.4.0 (from -r /tmp/requirements.dd19ddlb (line 43))
+Collecting urllib3==2.4.0 (from -r /tmp/requirements.4rcoro34 (line 46))
   Downloading urllib3-2.4.0-py3-none-any.whl.metadata (6.5 kB)
-Collecting webrtcvad-wheels==2.0.14 (from -r /tmp/requirements.dd19ddlb (line 44))
+Collecting webrtcvad-wheels==2.0.14 (from -r /tmp/requirements.4rcoro34 (line 47))
   Downloading webrtcvad_wheels-2.0.14-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (5.5 kB)
-Collecting websockets==15.0.1 (from -r /tmp/requirements.dd19ddlb (line 45))
+Collecting websockets==15.0.1 (from -r /tmp/requirements.4rcoro34 (line 48))
   Downloading websockets-15.0.1-cp312-cp312-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.8 kB)
-Collecting aiohappyeyeballs>=2.3.0 (from aioesphomeapi==44.2.0->-r /tmp/requirements.dd19ddlb (line 5))
+Collecting aiohappyeyeballs>=2.3.0 (from aioesphomeapi==44.2.0->-r /tmp/requirements.4rcoro34 (line 9))
   Downloading aiohappyeyeballs-2.7.1-py3-none-any.whl.metadata (5.9 kB)
-Collecting async-interrupt>=1.2.0 (from aioesphomeapi==44.2.0->-r /tmp/requirements.dd19ddlb (line 5))
+Collecting async-interrupt>=1.2.0 (from aioesphomeapi==44.2.0->-r /tmp/requirements.4rcoro34 (line 9))
   Downloading async_interrupt-1.2.2-py3-none-any.whl.metadata (4.9 kB)
-Collecting tzlocal<6,>=5.0 (from aioesphomeapi==44.2.0->-r /tmp/requirements.dd19ddlb (line 5))
+Collecting tzlocal<6,>=5.0 (from aioesphomeapi==44.2.0->-r /tmp/requirements.4rcoro34 (line 9))
   Downloading tzlocal-5.4.4-py3-none-any.whl.metadata (7.7 kB)
-Collecting chacha20poly1305-reuseable>=0.13.2 (from aioesphomeapi==44.2.0->-r /tmp/requirements.dd19ddlb (line 5))
+Collecting chacha20poly1305-reuseable>=0.13.2 (from aioesphomeapi==44.2.0->-r /tmp/requirements.4rcoro34 (line 9))
   Downloading chacha20poly1305_reuseable-0.13.2-py3-none-any.whl.metadata (5.3 kB)
-Collecting cryptography>=43.0.0 (from aioesphomeapi==44.2.0->-r /tmp/requirements.dd19ddlb (line 5))
+Collecting cryptography>=43.0.0 (from aioesphomeapi==44.2.0->-r /tmp/requirements.4rcoro34 (line 9))
   Downloading cryptography-49.0.0-cp311-abi3-manylinux_2_34_x86_64.whl.metadata (4.3 kB)
-Collecting noiseprotocol<1.0,>=0.3.1 (from aioesphomeapi==44.2.0->-r /tmp/requirements.dd19ddlb (line 5))
+Collecting noiseprotocol<1.0,>=0.3.1 (from aioesphomeapi==44.2.0->-r /tmp/requirements.4rcoro34 (line 9))
   Downloading noiseprotocol-0.3.1-py3-none-any.whl.metadata (1.0 kB)
-Collecting ifaddr>=0.1.7 (from zeroconf==0.148.0->-r /tmp/requirements.dd19ddlb (line 6))
+Collecting ifaddr>=0.1.7 (from zeroconf==0.148.0->-r /tmp/requirements.4rcoro34 (line 10))
   Downloading ifaddr-0.2.0-py3-none-any.whl.metadata (4.9 kB)
-Collecting httpx (from flet==0.28.3->-r /tmp/requirements.dd19ddlb (line 12))
+Collecting httpx (from flet==0.28.3->-r /tmp/requirements.4rcoro34 (line 16))
   Downloading httpx-0.28.1-py3-none-any.whl.metadata (7.1 kB)
-Collecting oauthlib<4.0.0,>=3.2.2 (from flet==0.28.3->-r /tmp/requirements.dd19ddlb (line 12))
+Collecting oauthlib<4.0.0,>=3.2.2 (from flet==0.28.3->-r /tmp/requirements.4rcoro34 (line 16))
   Downloading oauthlib-3.3.1-py3-none-any.whl.metadata (7.9 kB)
-Collecting repath<0.10.0,>=0.9.0 (from flet==0.28.3->-r /tmp/requirements.dd19ddlb (line 12))
+Collecting repath<0.10.0,>=0.9.0 (from flet==0.28.3->-r /tmp/requirements.4rcoro34 (line 16))
   Downloading repath-0.9.0-py3-none-any.whl.metadata (899 bytes)
-INFO: pip is looking at multiple versions of openwakeword to determine which version is compatible with other requirements. This could take a while.
-ERROR: Ignored the following versions that require a different python version: 1.10.0 Requires-Python <3.12,>=3.8; 1.10.0rc1 Requires-Python <3.12,>=3.8; 1.10.0rc2 Requires-Python <3.12,>=3.8; 1.10.1 Requires-Python <3.12,>=3.8; 1.21.2 Requires-Python >=3.7,<3.11; 1.21.3 Requires-Python >=3.7,<3.11; 1.21.4 Requires-Python >=3.7,<3.11; 1.21.5 Requires-Python >=3.7,<3.11; 1.21.6 Requires-Python >=3.7,<3.11; 1.6.2 Requires-Python >=3.7,<3.10; 1.6.3 Requires-Python >=3.7,<3.10; 1.7.0 Requires-Python >=3.7,<3.10; 1.7.1 Requires-Python >=3.7,<3.10; 1.7.2 Requires-Python >=3.7,<3.11; 1.7.3 Requires-Python >=3.7,<3.11; 1.8.0 Requires-Python >=3.8,<3.11; 1.8.0rc1 Requires-Python >=3.8,<3.11; 1.8.0rc2 Requires-Python >=3.8,<3.11; 1.8.0rc3 Requires-Python >=3.8,<3.11; 1.8.0rc4 Requires-Python >=3.8,<3.11; 1.8.1 Requires-Python >=3.8,<3.11; 1.9.0 Requires-Python >=3.8,<3.12; 1.9.0rc1 Requires-Python >=3.8,<3.12; 1.9.0rc2 Requires-Python >=3.8,<3.12; 1.9.0rc3 Requires-Python >=3.8,<3.12; 1.9.1 Requires-Python >=3.8,<3.12
-ERROR: Could not find a version that satisfies the requirement tflite-runtime<3,>=2.8.0; platform_system == "Linux" (from openwakeword) (from versions: none)
-ERROR: No matching distribution found for tflite-runtime<3,>=2.8.0; platform_system == "Linux"
+Collecting python-xlib>=0.17 (from pystray==0.19.5->-r /tmp/requirements.4rcoro34 (line 32))
+  Downloading python_xlib-0.33-py2.py3-none-any.whl.metadata (6.2 kB)
+INFO: pip is looking at multiple versions of cryptography to determine which version is compatible with other requirements. This could take a while.
+Collecting cryptography>=43.0.0 (from aioesphomeapi==44.2.0->-r /tmp/requirements.4rcoro34 (line 9))
+  Downloading cryptography-48.0.1-cp311-abi3-manylinux_2_34_x86_64.whl.metadata (4.3 kB)
+  Downloading cryptography-48.0.0-cp311-abi3-manylinux_2_34_x86_64.whl.metadata (4.3 kB)
+  Downloading cryptography-47.0.0-cp311-abi3-manylinux_2_34_x86_64.whl.metadata (4.5 kB)
+  Downloading cryptography-46.0.7-cp311-abi3-manylinux_2_34_x86_64.whl.metadata (5.7 kB)
+  Downloading cryptography-46.0.6-cp311-abi3-manylinux_2_34_x86_64.whl.metadata (5.7 kB)
+  Downloading cryptography-46.0.5-cp311-abi3-manylinux_2_34_x86_64.whl.metadata (5.7 kB)
+  Downloading cryptography-46.0.4-cp311-abi3-manylinux_2_34_x86_64.whl.metadata (5.7 kB)
+INFO: pip is still looking at multiple versions of cryptography to determine which version is compatible with other requirements. This could take a while.
+  Downloading cryptography-46.0.3-cp311-abi3-manylinux_2_34_x86_64.whl.metadata (5.7 kB)
+  Downloading cryptography-46.0.2-cp311-abi3-manylinux_2_34_x86_64.whl.metadata (5.7 kB)
+  Downloading cryptography-46.0.1-cp311-abi3-manylinux_2_34_x86_64.whl.metadata (5.7 kB)
+  Downloading cryptography-46.0.0-cp311-abi3-manylinux_2_34_x86_64.whl.metadata (5.7 kB)
+Collecting anyio (from httpx->flet==0.28.3->-r /tmp/requirements.4rcoro34 (line 16))
+  Downloading anyio-4.14.2-py3-none-any.whl.metadata (4.6 kB)
+Collecting httpcore==1.* (from httpx->flet==0.28.3->-r /tmp/requirements.4rcoro34 (line 16))
+  Downloading httpcore-1.0.9-py3-none-any.whl.metadata (21 kB)
+Collecting h11>=0.16 (from httpcore==1.*->httpx->flet==0.28.3->-r /tmp/requirements.4rcoro34 (line 16))
+  Downloading h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
+Downloading aioesphomeapi-44.2.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (627 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 627.1/627.1 kB 70.1 MB/s eta 0:00:00
+Downloading zeroconf-0.148.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (2.2 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.2/2.2 MB 138.7 MB/s eta 0:00:00
+Downloading bottle-0.13.3-py2.py3-none-any.whl (104 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 104.2/104.2 kB 39.4 MB/s eta 0:00:00
+Downloading certifi-2025.4.26-py3-none-any.whl (159 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 159.6/159.6 kB 52.2 MB/s eta 0:00:00
+Downloading cffi-1.17.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (479 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 479.4/479.4 kB 109.6 MB/s eta 0:00:00
+Downloading charset_normalizer-3.4.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (148 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 148.6/148.6 kB 49.7 MB/s eta 0:00:00
+Downloading colorama-0.4.6-py2.py3-none-any.whl (25 kB)
+Downloading flet-0.28.3-py3-none-any.whl (463 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 463.0/463.0 kB 108.6 MB/s eta 0:00:00
+Downloading coloredlogs-15.0.1-py2.py3-none-any.whl (46 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 46.0/46.0 kB 17.1 MB/s eta 0:00:00
+Downloading flatbuffers-25.2.10-py2.py3-none-any.whl (30 kB)
+Downloading humanfriendly-10.0-py2.py3-none-any.whl (86 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 86.8/86.8 kB 32.9 MB/s eta 0:00:00
+Downloading idna-3.10-py3-none-any.whl (70 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 70.4/70.4 kB 26.1 MB/s eta 0:00:00
+Downloading joblib-1.5.1-py3-none-any.whl (307 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 307.7/307.7 kB 83.9 MB/s eta 0:00:00
+Downloading keyboard-0.13.5-py3-none-any.whl (58 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 58.1/58.1 kB 21.9 MB/s eta 0:00:00
+Downloading mpmath-1.3.0-py3-none-any.whl (536 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 536.2/536.2 kB 118.5 MB/s eta 0:00:00
+Downloading numpy-2.2.6-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (16.5 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 16.5/16.5 MB 109.8 MB/s eta 0:00:00
+Downloading onnxruntime-1.22.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (16.4 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 16.4/16.4 MB 139.8 MB/s eta 0:00:00
+Downloading packaging-25.0-py3-none-any.whl (66 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 66.5/66.5 kB 23.1 MB/s eta 0:00:00
+Downloading pillow-11.2.1-cp312-cp312-manylinux_2_28_x86_64.whl (4.6 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.6/4.6 MB 165.7 MB/s eta 0:00:00
+Downloading protobuf-6.31.0-cp39-abi3-manylinux2014_x86_64.whl (320 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 320.9/320.9 kB 90.8 MB/s eta 0:00:00
+Downloading pycparser-2.22-py3-none-any.whl (117 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 117.6/117.6 kB 43.2 MB/s eta 0:00:00
+Downloading pystray-0.19.5-py2.py3-none-any.whl (49 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 49.1/49.1 kB 18.1 MB/s eta 0:00:00
+Downloading python_dotenv-1.1.0-py3-none-any.whl (20 kB)
+Downloading pywebview-5.4-py3-none-any.whl (475 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 475.5/475.5 kB 113.1 MB/s eta 0:00:00
+Downloading requests-2.32.3-py3-none-any.whl (64 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 64.9/64.9 kB 25.1 MB/s eta 0:00:00
+Downloading scikit_learn-1.6.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (13.1 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 13.1/13.1 MB 162.6 MB/s eta 0:00:00
+Downloading scipy-1.15.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (37.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 37.3/37.3 MB 107.5 MB/s eta 0:00:00
+Downloading six-1.17.0-py2.py3-none-any.whl (11 kB)
+Downloading sounddevice-0.5.2-py3-none-any.whl (32 kB)
+Downloading soundfile-0.13.1-py2.py3-none-manylinux_2_28_x86_64.whl (1.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.3/1.3 MB 143.7 MB/s eta 0:00:00
+Downloading audioread-3.1.0-py3-none-any.whl (23 kB)
+Downloading sympy-1.14.0-py3-none-any.whl (6.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.3/6.3 MB 191.7 MB/s eta 0:00:00
+Downloading threadpoolctl-3.6.0-py3-none-any.whl (18 kB)
+Downloading tqdm-4.67.1-py3-none-any.whl (78 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 78.5/78.5 kB 30.2 MB/s eta 0:00:00
+Downloading typing_extensions-4.13.2-py3-none-any.whl (45 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 45.8/45.8 kB 16.6 MB/s eta 0:00:00
+Downloading urllib3-2.4.0-py3-none-any.whl (128 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 128.7/128.7 kB 41.2 MB/s eta 0:00:00
+Downloading webrtcvad_wheels-2.0.14-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (82 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 82.9/82.9 kB 27.7 MB/s eta 0:00:00
+Downloading websockets-15.0.1-cp312-cp312-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl (182 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 182.5/182.5 kB 58.2 MB/s eta 0:00:00
+Downloading aiohappyeyeballs-2.7.1-py3-none-any.whl (15 kB)
+Downloading async_interrupt-1.2.2-py3-none-any.whl (8.9 kB)
+Downloading chacha20poly1305_reuseable-0.13.2-py3-none-any.whl (8.6 kB)
+Downloading cryptography-46.0.0-cp311-abi3-manylinux_2_34_x86_64.whl (4.6 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.6/4.6 MB 173.4 MB/s eta 0:00:00
+Downloading ifaddr-0.2.0-py3-none-any.whl (12 kB)
+Downloading noiseprotocol-0.3.1-py3-none-any.whl (20 kB)
+Downloading oauthlib-3.3.1-py3-none-any.whl (160 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 160.1/160.1 kB 59.4 MB/s eta 0:00:00
+Downloading python_xlib-0.33-py2.py3-none-any.whl (182 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 182.2/182.2 kB 51.9 MB/s eta 0:00:00
+Downloading repath-0.9.0-py3-none-any.whl (4.7 kB)
+Downloading tzlocal-5.4.4-py3-none-any.whl (18 kB)
+Downloading httpx-0.28.1-py3-none-any.whl (73 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 73.5/73.5 kB 29.1 MB/s eta 0:00:00
+Downloading httpcore-1.0.9-py3-none-any.whl (78 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 78.8/78.8 kB 28.7 MB/s eta 0:00:00
+Downloading anyio-4.14.2-py3-none-any.whl (125 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 125.8/125.8 kB 45.6 MB/s eta 0:00:00
+Downloading h11-0.16.0-py3-none-any.whl (37 kB)
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/aioesphomeapi-44.2.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/zeroconf-0.148.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/bottle-0.13.3-py2.py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/certifi-2025.4.26-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/cffi-1.17.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/charset_normalizer-3.4.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/colorama-0.4.6-py2.py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/flet-0.28.3-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/coloredlogs-15.0.1-py2.py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/flatbuffers-25.2.10-py2.py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/humanfriendly-10.0-py2.py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/idna-3.10-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/joblib-1.5.1-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/keyboard-0.13.5-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/mpmath-1.3.0-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/numpy-2.2.6-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/onnxruntime-1.22.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/packaging-25.0-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/pillow-11.2.1-cp312-cp312-manylinux_2_28_x86_64.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/protobuf-6.31.0-cp39-abi3-manylinux2014_x86_64.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/proxy_tools-0.1.0.tar.gz
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/PyAudio-0.2.14.tar.gz
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/pycparser-2.22-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/pystray-0.19.5-py2.py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/python_dotenv-1.1.0-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/pywebview-5.4-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/requests-2.32.3-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/scikit_learn-1.6.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/scipy-1.15.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/six-1.17.0-py2.py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/sounddevice-0.5.2-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/soundfile-0.13.1-py2.py3-none-manylinux_2_28_x86_64.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/audioread-3.1.0-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/sympy-1.14.0-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/threadpoolctl-3.6.0-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/tqdm-4.67.1-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/typing_extensions-4.13.2-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/urllib3-2.4.0-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/webrtcvad_wheels-2.0.14-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/websockets-15.0.1-cp312-cp312-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/aiohappyeyeballs-2.7.1-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/async_interrupt-1.2.2-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/chacha20poly1305_reuseable-0.13.2-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/cryptography-46.0.0-cp311-abi3-manylinux_2_34_x86_64.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/ifaddr-0.2.0-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/noiseprotocol-0.3.1-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/oauthlib-3.3.1-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/python_xlib-0.33-py2.py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/repath-0.9.0-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/tzlocal-5.4.4-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/httpx-0.28.1-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/httpcore-1.0.9-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/anyio-4.14.2-py3-none-any.whl
+Saved /tmp/pip-generator-python3-modulesycmg6_hx/h11-0.16.0-py3-none-any.whl
+Successfully downloaded aioesphomeapi zeroconf bottle certifi cffi charset-normalizer colorama flet coloredlogs flatbuffers humanfriendly idna joblib keyboard mpmath numpy onnxruntime packaging pillow protobuf proxy_tools PyAudio pycparser pystray python-dotenv pywebview requests scikit-learn scipy six sounddevice soundfile audioread sympy threadpoolctl tqdm typing_extensions urllib3 webrtcvad-wheels websockets aiohappyeyeballs async-interrupt chacha20poly1305-reuseable cryptography ifaddr noiseprotocol oauthlib python-xlib repath tzlocal httpx httpcore anyio h11
+
+Only platform wheels are available for: onnxruntime. Use '--runtime $RUNTIME_ID//$RUNTIME_BRANCH --prefer-wheels=onnxruntime'
+
 ========================================================================
 Downloading sources
 ========================================================================
-Running: "pip3 --no-input --disable-pip-version-check download --exists-action=i --dest /tmp/pip-generator-python3-modulesbcuxa8c7 -r /tmp/requirements.dd19ddlb"
-Failed to download
-Please fix the module manually in the generated file
-Ignore the error by passing --ignore-errors
+Running: "pip3 --no-input --disable-pip-version-check download --exists-action=i --dest /tmp/pip-generator-python3-modulesycmg6_hx -r /tmp/requirements.4rcoro34"
+========================================================================
+Obtaining hashes and urls
+========================================================================
+Fetching PyPI metadata for scipy==1.15.3
+Fetching PyPI metadata for mpmath==1.3.0
+Fetching PyPI metadata for soundfile==0.13.1
+Fetching PyPI metadata for idna==3.10
+Fetching PyPI metadata for keyboard==0.13.5
+Fetching PyPI metadata for packaging==25.0
+Fetching PyPI metadata for python-dotenv==1.1.0
+Fetching PyPI metadata for httpcore==1.0.9
+Fetching PyPI metadata for humanfriendly==10.0
+Fetching PyPI metadata for flet==0.28.3
+Fetching PyPI metadata for colorama==0.4.6
+Fetching PyPI metadata for sympy==1.14.0
+Fetching PyPI metadata for ifaddr==0.2.0
+Fetching PyPI metadata for cryptography==46.0.0
+Fetching PyPI metadata for threadpoolctl==3.6.0
+Fetching PyPI metadata for repath==0.9.0
+Fetching PyPI metadata for anyio==4.14.2
+Fetching PyPI metadata for bottle==0.13.3
+Fetching PyPI metadata for chacha20poly1305-reuseable==0.13.2
+Fetching PyPI metadata for tqdm==4.67.1
+Fetching PyPI metadata for noiseprotocol==0.3.1
+Fetching PyPI metadata for python-xlib==0.33
+Fetching PyPI metadata for pycparser==2.22
+Fetching PyPI metadata for pywebview==5.4
+Fetching PyPI metadata for numpy==2.2.6
+Fetching PyPI metadata for webrtcvad-wheels==2.0.14
+Fetching PyPI metadata for websockets==15.0.1
+Fetching PyPI metadata for zeroconf==0.148.0
+Fetching PyPI metadata for charset-normalizer==3.4.2
+Fetching PyPI metadata for async-interrupt==1.2.2
+Fetching PyPI metadata for onnxruntime==1.22.0
+Fetching PyPI metadata for tzlocal==5.4.4
+Fetching PyPI metadata for requests==2.32.3
+Fetching PyPI metadata for h11==0.16.0
+Fetching PyPI metadata for sounddevice==0.5.2
+Fetching PyPI metadata for pillow==11.2.1
+Fetching PyPI metadata for typing-extensions==4.13.2
+Fetching PyPI metadata for aiohappyeyeballs==2.7.1
+Fetching PyPI metadata for six==1.17.0
+Fetching PyPI metadata for protobuf==6.31.0
+Fetching PyPI metadata for joblib==1.5.1
+Fetching PyPI metadata for oauthlib==3.3.1
+Fetching PyPI metadata for certifi==2025.4.26
+Fetching PyPI metadata for httpx==0.28.1
+Fetching PyPI metadata for pystray==0.19.5
+Fetching PyPI metadata for pyaudio==0.2.14
+Fetching PyPI metadata for proxy-tools==0.1.0
+Fetching PyPI metadata for urllib3==2.4.0
+Fetching PyPI metadata for aioesphomeapi==44.2.0
+Fetching PyPI metadata for cffi==1.17.1
+Fetching PyPI metadata for flatbuffers==25.2.10
+Fetching PyPI metadata for scikit-learn==1.6.1
+Fetching PyPI metadata for coloredlogs==15.0.1
+Fetching PyPI metadata for audioread==3.1.0
+========================================================================
+Generating dependencies
+========================================================================
+Generating dependencies for aioesphomeapi
+Generating dependencies for zeroconf
+Generating dependencies for bottle
+Generating dependencies for certifi
+Generating dependencies for cffi
+Generating dependencies for charset-normalizer
+Generating dependencies for colorama
+Generating dependencies for flet
+Generating dependencies for coloredlogs
+Generating dependencies for flatbuffers
+Generating dependencies for humanfriendly
+Generating dependencies for idna
+Generating dependencies for joblib
+Generating dependencies for keyboard
+Generating dependencies for mpmath
+Generating dependencies for numpy
+Generating dependencies for onnxruntime
+packaging is in system_packages. Skipping.
+Generating dependencies for pillow
+Generating dependencies for protobuf
+Generating dependencies for proxy_tools
+Generating dependencies for PyAudio
+Generating dependencies for pycparser
+Generating dependencies for pystray
+Generating dependencies for python-dotenv
+Generating dependencies for pywebview
+Generating dependencies for requests
+Generating dependencies for scikit-learn
+Generating dependencies for scipy
+Generating dependencies for six
+Generating dependencies for sounddevice
+Generating dependencies for soundfile
+Generating dependencies for audioread
+Generating dependencies for sympy
+Generating dependencies for threadpoolctl
+Generating dependencies for tqdm
+Generating dependencies for typing_extensions
+Generating dependencies for urllib3
+Generating dependencies for webrtcvad-wheels
+Generating dependencies for websockets
+
+Output saved to packaging/flatpak/python3-modules.json
+- ERROR: Only platform wheels are available for: onnxruntime
 Traceback (most recent call last):
-  File "/home/runner/work/GLaSSIST/GLaSSIST/flatpak-pip-generator.py", line 1133, in <module>
-    subprocess.run(pip_download, check=True)
-  File "/usr/lib/python3.12/subprocess.py", line 571, in run
-    raise CalledProcessError(retcode, process.args,
-subprocess.CalledProcessError: Command '['pip3', '--no-input', '--disable-pip-version-check', 'download', '--exists-action=i', '--dest', '/tmp/pip-generator-python3-modulesbcuxa8c7', '-r', '/tmp/requirements.dd19ddlb']' returned non-zero exit status 1.
+  File "/home/runner/work/GLaSSIST/GLaSSIST/flatpak-pip-generator.py", line 1424, in <module>
+    raise Exception("Unresolved dependencies. Handle them manually")
+Exception: Unresolved dependencies. Handle them manually
