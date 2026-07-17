@@ -20,7 +20,18 @@
     <name>Patryk Smoliński</name>
   </developer>
   <content_rating type="oars-1.1"/>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/SmolinskiP/GLaSSIST/main/docs/screenshots/settings.png</image>
+      <caption>Settings window with wake word configuration</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/SmolinskiP/GLaSSIST/main/docs/screenshots/overlay.png</image>
+      <caption>Voice response overlay animation</caption>
+    </screenshot>
+  </screenshots>
   <releases>
+    <release version="3.5.1" date="2026-07-17"/>
     <release version="3.5.0" date="2026-07-16"/>
     <release version="3.1.0" date="2026-07-15"/>
   </releases>
