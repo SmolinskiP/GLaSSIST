@@ -5,6 +5,11 @@ name: Flatpak build
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Attach the bundle to this existing release tag (leave empty to just build)'
+        required: false
+        default: ''
   push:
     branches: ['main']
     paths:
@@ -45,7 +50,8 @@ jobs:
           manifest-path: packaging/flatpak/io.github.SmolinskiP.GLaSSIST.yml
           cache-key: flatpak-builder-${{ hashFiles('packaging/flatpak/**') }}
       - name: Attach bundle to release
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
         uses: softprops/action-gh-release@v2
         with:
           files: GLaSSIST.flatpak
+          tag_name: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}
