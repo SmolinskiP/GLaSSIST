@@ -12,7 +12,9 @@ main manifest changes, port the change here too.
    matching `<release>` entry. Validate it first:
    `flatpak run org.freedesktop.appstream.cli validate packaging/flatpak/io.github.SmolinskiP.GLaSSIST.metainfo.xml`
 2. Fork `https://github.com/flathub/flathub`, branch off `new-pr`.
-3. Copy into the fork root: this manifest + `../python3-modules.json`.
+3. Copy into the fork root: this manifest + `../python3-modules.json` +
+   `flathub.json` (restricts the build to x86_64 — the python wheels are
+   generated per-arch and flet-desktop has no aarch64 wheels anyway).
 4. Open a PR against the `new-pr` branch of `flathub/flathub`. The bot builds
    it; a reviewer will ask about permissions (network, pulseaudio, dri and the
    StatusNotifierWatcher tray are all justified for a voice assistant).
