@@ -114,6 +114,22 @@ The overlay indicates when GLaSSIST is listening, processing, responding, or rep
 Wake-word detection can be paused from the tray. Audio devices, wake-word models, sounds, visual
 effects, and media-player volume reduction are configured in Settings.
 
+### Wake-word models
+
+GLaSSIST bundles more than 100 models from the
+[Home Assistant Wake Words Collection](https://github.com/fwartner/home-assistant-wakewords-collection),
+including Alexa, Jarvis, GLaDOS, Computer, Scarlett, and plenty of names your family will question.
+
+Want your own wake word? [openWakeWord](https://github.com/dscripka/openWakeWord) provides two
+Google Colab notebooks:
+
+- [Basic training](https://colab.research.google.com/drive/1q1oe2zOyZp7UsB3jJiQ1IFn8z5YfjwEb?usp=sharing) — the beginner-friendly route
+- [Advanced training](https://colab.research.google.com/drive/1yyFH-fpguX2BTAW8wSQxTrJnJTM-0QAd?usp=sharing) — more control for better-tuned models
+
+Place the resulting `.onnx` or `.tflite` model in the `models/` directory, then select its filename
+without the extension in **Settings → Wake Word**. Test it properly before trusting it — custom wake
+words have a special talent for working perfectly until somebody is watching.
+
 ### Interactive prompts
 
 In WebSocket mode, Home Assistant or another local application can send a spoken prompt to
@@ -209,6 +225,10 @@ See [`tests/README.md`](tests/README.md) for the complete test-runner reference.
 - `flet_settings.py` — the settings interface and configuration persistence
 - `conversation_manager.py`, `prompt_server.py` — local interactive prompts in WebSocket mode
 
+## 📈 Star History
+
+[![Star History Chart](https://api.star-history.com/image?repos=SmolinskiP/GLaSSIST&type=Date)](https://www.star-history.com/SmolinskiP/GLaSSIST)
+
 ## 📄 License
 
 GLaSSIST is available under the [MIT License](LICENSE).
@@ -217,3 +237,7 @@ GLaSSIST is available under the [MIT License](LICENSE).
 
 If GLaSSIST helped you and you want to support its development:
 [☕ Buy me a coffee](https://buymeacoffee.com/smolinskip)
+
+---
+
+*Made with ❤️ and occasional frustration by [Patryk Smoliński](https://github.com/SmolinskiP)*
