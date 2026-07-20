@@ -5,6 +5,10 @@ GLaSSIST turns a Windows or Linux computer into a desktop voice satellite for
 sends requests to Home Assistant Assist, plays spoken responses, and shows the conversation state in
 an optional animated desktop overlay.
 
+GLaSSIST works with any conversation agent available through a Home Assistant Assist pipeline. That
+includes local models such as Ollama as well as cloud-based agents powered by Claude, GPT, and other
+providers supported by Home Assistant.
+
 For the full local feature set, use the recommended **ESPHome Satellite** mode. Home Assistant
 discovers GLaSSIST on your network and can use it for voice commands, timers, and conversation
 follow-up. The legacy **WebSocket** mode connects from GLaSSIST with a Home Assistant address and
@@ -13,6 +17,7 @@ long-lived token; it supports remote addresses but has fewer satellite features.
 ## 🚀 Key Features
 
 - Home Assistant Assist voice pipeline with local microphone capture and speaker playback
+- Any Home Assistant conversation agent, including local Ollama and cloud-based Claude or GPT setups
 - ESPHome Satellite mode with timers and conversation follow-up
 - Wake-word, configurable hotkey, and system-tray activation
 - WebRTC voice activity detection with selectable input and output devices
