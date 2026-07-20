@@ -1,9 +1,13 @@
 # ![blur](https://capsule-render.vercel.app/api?type=blur&height=300&color=gradient&text=GLaSSIST&strokeWidth=2&section=footer&reversal=true&fontAlign=50&stroke=E0E0E0&fontSize=55&textBg=false)
 
 GLaSSIST turns a Windows or Linux computer into a desktop voice satellite for
-[Home Assistant](https://www.home-assistant.io/voice_control/). It listens through your microphone,
-sends requests to Home Assistant Assist, plays spoken responses, and shows the conversation state in
-an optional animated desktop overlay. It includes more than 100 ready-to-use wake-word models.
+[Home Assistant](https://www.home-assistant.io/voice_control/) — because clicking through six
+dashboards to turn off a lamp gets old surprisingly fast. It listens through your microphone, sends
+requests to Home Assistant Assist, plays spoken responses, and shows the conversation state in an
+optional animated desktop overlay.
+
+More than 100 ready-to-use wake-word models are included, from Alexa and Jarvis to GLaDOS, because
+your computer deserves a name before you start talking to it.
 
 GLaSSIST works with any conversation agent available through a Home Assistant Assist pipeline. That
 includes local models such as Ollama as well as cloud-based agents powered by Claude, GPT, and other
@@ -16,13 +20,13 @@ long-lived token; it supports remote addresses but has fewer satellite features.
 
 ## 🚀 Key Features
 
-- Home Assistant Assist voice pipeline with local microphone capture and speaker playback
-- Any Home Assistant conversation agent, including local Ollama and cloud-based Claude or GPT setups
-- ESPHome Satellite mode with timers and conversation follow-up
-- Wake-word, configurable hotkey, and system-tray activation
-- WebRTC voice activity detection with selectable input and output devices
-- Three.js visual overlay with audio animation and optional response text
-- Configurable Assist pipelines, feedback sounds, and media-player volume management
+- **Home Assistant Assist** — local microphone capture and speaker playback, without dedicated hardware
+- **Any Assist conversation agent** — local Ollama, cloud-based Claude or GPT, and whatever HA supports next
+- **ESPHome Satellite mode** — timers and conversation follow-up instead of one command and awkward silence
+- **Flexible activation** — wake word, configurable hotkey, or system tray
+- **WebRTC VAD** — detects when you stop speaking without reacting to every fridge beep
+- **Three.js overlay** — animated audio feedback and optional response text, because a static circle was too easy
+- **Practical controls** — selectable audio devices, feedback sounds, pipelines, and media-player volume management
 
 <div align="center">
   <img src="https://github.com/user-attachments/assets/23c012ed-11c0-4f3b-9eef-b9fa16071e13" alt="Alt text" width="300">
