@@ -1,497 +1,210 @@
 # ![blur](https://capsule-render.vercel.app/api?type=blur&height=300&color=gradient&text=GLaSSIST&strokeWidth=2&section=footer&reversal=true&fontAlign=50&stroke=E0E0E0&fontSize=55&textBg=false)
 
-Desktop voice application for Home Assistant with visual animations and VAD (Voice Activity Detection). Because who has time to click through interfaces when you can just talk to your computer like it's a broken microphone?
+GLaSSIST turns a Windows or Linux computer into a desktop voice satellite for
+[Home Assistant](https://www.home-assistant.io/voice_control/). It listens through your microphone,
+sends requests to Home Assistant Assist, plays spoken responses, and shows the conversation state in
+an optional animated desktop overlay.
+
+For the full local feature set, use the recommended **ESPHome Satellite** mode. Home Assistant
+discovers GLaSSIST on your network and can use it for voice commands, timers, and conversation
+follow-up. The legacy **WebSocket** mode connects from GLaSSIST with a Home Assistant address and
+long-lived token; it supports remote addresses but has fewer satellite features.
 
 ## 🚀 Key Features
 
-- **Voice activation** - Hotkey or click to activate
-- **Wake word detection** - Over 100 pre-trained models (alexa, jarvis, glados etc.)
-- **WebRTC VAD** - Smart speech detection (doesn't react to every fridge beep)
-- **Visual animations** - Three.js with shaders and FFT audio analysis (because a simple circle is not enough)
-- **Response text display** - Visually show assistant responses on screen
-- **Modern Flet UI** - Beautiful, responsive settings interface (no more Tkinter!)
-- **Tray integration** - Lives in system tray like a proper application
-- **Pause wake word** - Quickly pause or resume detection from tray
-- **Pipeline selection** - Choose your preferred assistant pipeline
-- **Microphone selection** - Pick specific microphone or use automatic detection
-- **Transparent window** - Doesn't block your desktop (finally, someone thought about it)
-- **Animation toggle** - Disable visual effects to save CPU/memory resources
-- **Cross-platform** - Windows and Linux support with native feel
-- **Thread-safe** - No more hanging settings dialogs or crashes
-- **Debug logging** - File logging when debug mode is enabled
-- **Interactive Prompts API** - Home Assistant can ask questions and get voice responses
-- **HTTP API Server** - External applications can trigger voice prompts via REST API
-- **Media Player Volume Management** - Automatic volume control during voice interactions
+- Home Assistant Assist voice pipeline with local microphone capture and speaker playback
+- ESPHome Satellite mode with timers and conversation follow-up
+- Wake-word, configurable hotkey, and system-tray activation
+- WebRTC voice activity detection with selectable input and output devices
+- Three.js visual overlay with audio animation and optional response text
+- Configurable Assist pipelines, feedback sounds, and media-player volume management
 
 <div align="center">
   <img src="https://github.com/user-attachments/assets/23c012ed-11c0-4f3b-9eef-b9fa16071e13" alt="Alt text" width="300">
 </div>
 
-## 📋 Requirements
+## For users
 
-### For .exe Installation (Recommended)
-- **Home Assistant** with Assist enabled
-- **Windows 10/11** (64-bit)
-- **Microphone** (obviously)
-- **Long-lived access token** for HA
+You need a microphone and a Home Assistant installation with Assist configured. ESPHome Satellite
+mode also requires Home Assistant 2024.6 or newer and both devices on the same local network.
 
-### For Python Installation (Advanced users)
-- **Home Assistant** with Assist enabled
-- **Python 3.11–3.13** (3.8–3.10 also work with some limitations)
-  - On Python 3.12+ wake word detection uses ONNX models (tflite-runtime has
-    no wheels there); on 3.11 and older TFLite is also available on Linux
-- **Windows 10/11** or **Linux** (Ubuntu, Debian, Fedora, Arch)
-- **Microphone**
-- **Long-lived access token** for HA
-- **Flet 0.21+** (for modern settings UI)
+### Windows installer
 
-## 🛠️ Installation
+Windows 10 or 11, 64-bit:
 
-### Option 1: Windows Installer (Easy)
-1. **Download** [GLaSSIST-Setup.exe](https://github.com/SmolinskiP/GLaSSIST/releases/latest/download/GLaSSIST-Setup.exe) from releases
-2. **Run installer** and follow setup wizard
-3. **Enter your HA details** during installation
-4. **Launch** and start talking to your smart home
+1. Download [`GLaSSIST-Setup.exe`](https://github.com/SmolinskiP/GLaSSIST/releases/latest/download/GLaSSIST-Setup.exe).
+2. Run the installer and choose a connection mode.
+3. Launch GLaSSIST and finish configuring audio, wake words, and the Assist pipeline in Settings.
 
-No Python knowledge required. Everything is bundled and configured automatically.
+The installer includes the application and its Python dependencies.
 
-### Option 2: Linux (Beta)
-```bash
-wget https://raw.githubusercontent.com/SmolinskiP/GLaSSIST/main/install-linux.sh && chmod +x install-linux.sh && ./install-linux.sh
-```
+### Linux — Flatpak
 
-## 🧹 Uninstall (Linux)
-1. Download the uninstall script:
-   ```bash
-   wget https://raw.githubusercontent.com/SmolinskiP/GLaSSIST/main/uninstall-linux.sh
-   chmod +x uninstall-linux.sh
-   ```
-2. Run it as a regular user in the terminal:
-   ```bash
-   ./uninstall-linux.sh
-   ```
-3. The script stops the systemd user service (if enabled), removes the desktop entry, and
-   asks whether to delete the `~/GLaSSIST` directory. System packages installed by the
-   installer remain; remove them with your package manager if you don't need them.
-
-### Option 3: From Source (For developers)
-
-### 1. Clone repository
-```bash
-git clone https://github.com/SmolinskiP/GLaSSIST.git
-cd GLaSSIST
-```
-
-### 2. Install dependencies
-```bash
-pip install -r requirements.txt
-
-# For modern settings UI (Flet-based)
-pip install flet>=0.21.0
-```
-
-### 3. Configuration
-Create `.env` file:
-```env
-# === CONNECTION ===
-HA_HOST=your-homeassistant.local:8123
-HA_TOKEN=your_long_lived_access_token_here
-
-# === WAKE WORD ===
-HA_WAKE_WORD_ENABLED=true
-HA_WAKE_WORD_MODELS=alexa,hey_jarvis
-HA_WAKE_WORD_THRESHOLD=0.5
-
-# === ACTIVATION ===
-HA_HOTKEY=ctrl+shift+h
-
-# === AUDIO ===
-HA_VAD_MODE=3
-HA_SILENCE_THRESHOLD_SEC=0.8
-HA_SOUND_FEEDBACK=true
-
-# === VISUAL ===
-HA_RESPONSE_TEXT_ENABLED=true
-
-# === OPTIONAL ===
-HA_PIPELINE_ID=your_pipeline_id
-DEBUG=false
-```
-
-**Pro tip:** Use the modern "Settings" interface in the app instead of manually creating the file. Features beautiful Flet-based UI with real-time validation and auto-complete. This isn't 1995, we have proper GUIs now.
-
-### 4. Run
-```bash
-# Run application normally
-python main.py
-
-# Or open settings directly
-python main.py --settings
-```
-
-**Command line options:**
-- `--settings` - Opens settings window without starting the full application (useful for quick configuration)
-- `--help` - Shows all available command line options
-
-**Pro tip:** Use the installer unless you want to modify the code. It's way fucking easier.
-
-## ⚙️ Home Assistant Configuration
-
-### Access Token
-1. Go to `Profile` → `Long-Lived Access Tokens`
-2. Click `Create Token`
-3. Copy token to `.env`
-
-Without this, the app will be as useful as a calculator without batteries.
-
-### Pipelines (optional)
-The app automatically fetches available pipelines. If you have more than one, select it in settings.
-
-## 🔄 Interactive Prompts Integration
-
-GLaSSIST v2.0 introduces **Interactive Prompts** - allowing Home Assistant to ask questions and receive voice responses. Perfect for confirmations, choices, and interactive automations.
-
-### HTTP API Server
-
-GLaSSIST runs an HTTP server (default port `8766`) that accepts prompt requests:
-
-**Endpoint**: `POST http://YOUR_GLASSIST_IP:8766/prompt`
-
-**Request format**:
-```json
-{
-  "message": "Question to ask the user",
-  "context": "Context for the assistant to understand the situation",
-  "timeout": 15,
-  "wait_for_response": true
-}
-```
-
-**Response**: `{"status": "accepted", "message": "Prompt will be processed"}`
-
-### Home Assistant Integration
-
-Add this to your `configuration.yaml`:
-
-```yaml
-rest_command:
-  glassist_prompt:
-    url: "http://YOUR_GLASSIST_IP:8766/prompt"
-    method: POST
-    headers:
-      Content-Type: "application/json"
-    payload: |
-      {
-        "message": "{{ message }}",
-        "context": "{{ context }}",
-        "timeout": {{ timeout | default(15) }},
-        "wait_for_response": {{ wait_for_response | default(true) | lower }},
-        "use_ai_message": {{ use_ai_message | default(false) | lower }}
-      }
-
-automation:
-  - alias: "Ask before turning on lights"
-    trigger:
-      - platform: state
-        entity_id: light.living_room_light
-        to: "on"
-    action:
-      - service: rest_command.glassist_prompt
-        data:
-          message: "Turn on the living room lights?"
-          context: "User wants to control living room lighting"
-          timeout: 15,
-          wait_for_response: false
-```
-
-### Manual Testing
-
-Test the API directly with curl:
-
-```bash
-curl -X POST http://192.168.1.100:8766/prompt \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "Turn on the lights in the living room?",
-    "context": "You ask user if they want to turn on lights in living room",
-    "timeout": 15,
-    "wait_for_response": true
-  }'
-```
-
-Or via Home Assistant Developer Tools:
-- **Service**: `rest_command.glassist_prompt`
-- **Service Data**:
-```yaml
-message: "Turn on the lights in the living room?"
-context: "You ask user if they want to turn on lights in living room" 
-timeout: 15
-wait_for_response: true
-```
-
-### How It Works
-
-1. **HA sends prompt** → GLaSSIST receives HTTP request
-2. **GLaSSIST asks user** → Plays TTS question
-3. **User responds via voice**
-4. **GLaSSIST processes response** → Uses context to understand what user is responding to
-5. **Action executed** → Based on user's voice response (yes/no/specific action)
-
-### Use Cases
-
-- **Confirmation dialogs**: "Turn on bedroom lights?" → User: "Yes"
-- **Security prompts**: "Someone at the door. Turn on porch light?" → User: "Yes please"  
-- **Energy management**: "High electricity usage detected. Turn off unnecessary devices?" → User: "Turn off the TV"
-- **Schedule conflicts**: "Meeting in 10 minutes. Should I dim the lights?" → User: "Yes, set to 30%"
-
-
-### 📖 Complete Setup Guide
-
-For detailed configuration with advanced examples, automations, and use cases, see:  
-**[📋 INTERACTIVE_PROMPTS_SETUP.md](INTERACTIVE_PROMPTS_SETUP.md)**
-
-### Security Notes
-
-- **Local network only** - The API server binds to all interfaces for LAN access
-- **No authentication** - Intended for trusted local network use only  
-- **Firewall considerations** - Port 8766 needs to be accessible from HA server
-
-## 🤖 Wake Word Models
-GLaSSIST includes over **100 pre-trained wake word models** converted to ONNX format for Windows compatibility. Models are sourced from the [Home Assistant Wakewords Collection](https://github.com/fwartner/home-assistant-wakewords-collection/tree/main) and optimized for desktop use.
-
-Available wake words include:
-- **Standard**: `Alexa`, `Hey Jarvis`, `Hey Mycroft`
-- **Creative**: `Computer`, `Scarlett`, `Glados`, `Mr. Anderson`, `Scooby`
-
-### Custom Wake Word Training
-
-Want to create your own wake words? Thanks to the brilliant work by [dscripka/openWakeWord](https://github.com/dscripka/openWakeWord), you can train custom models using Google Colab.
-
-#### Training Options
-
-**Basic Training (Recommended for beginners):**
-[🔗 Google Colab - Basic Training](https://colab.research.google.com/drive/1q1oe2zOyZp7UsB3jJiQ1IFn8z5YfjwEb?usp=sharing)
-
-**Advanced Training (For experienced users):**
-[🔗 Google Colab - Advanced Training](https://colab.research.google.com/drive/1yyFH-fpguX2BTAW8wSQxTrJnJTM-0QAd?usp=sharing)
-
-#### Model Conversion for Windows
-
-After training your model in Colab (which outputs `.tflite` format), you need to convert it to ONNX for Windows compatibility:
-
-```bash
-# Install conversion tools
-pip install tf2onnx tensorflow
-
-# Convert TFLite to ONNX (one command)
-python -m tf2onnx.convert --tflite your_model.tflite --output your_model.onnx
-```
-
-Once converted, place your `your_model.onnx` file in the `models/` directory and add the model name (without extension) to your wake word configuration.
-
-**Pro tip:** Test your custom model thoroughly before relying on it. Custom models can be finicky as fuck and might not work as well as the pre-trained ones.
-
-## 🎯 Usage
-
-### Command Line Options
-```bash
-python main.py              # Run application normally
-python main.py --settings   # Open settings only (quick configuration)
-python main.py --help       # Show all command line options
-```
-
-### Voice activation
-- **Hotkey**: `Ctrl+Shift+H` (default)
-- **Wake word**: Say "Alexa" or other configured wake words
-- **Tray menu**: Right click on tray icon
-- **Settings shortcut**: Run with `--settings` flag
-
-### Application states
-- **🔵 Listening** - Listening to your speech
-- **🟠 Processing** - Processing in HA
-- **🟣 Responding** - Playing response
-- **🔴 Error** - Something fucked up
-- **🟢 Success** - All good
-
-### Flatpak (Linux)
-
-Download `GLaSSIST.flatpak` from the [latest release](https://github.com/SmolinskiP/GLaSSIST/releases), then:
+Download `GLaSSIST.flatpak` from the
+[latest release](https://github.com/SmolinskiP/GLaSSIST/releases), then run:
 
 ```bash
 flatpak install --user GLaSSIST.flatpak
 flatpak run io.github.SmolinskiP.GLaSSIST
 ```
 
-Notes:
-- Configuration lives in `~/.var/app/io.github.SmolinskiP.GLaSSIST/config/glasssist/.env`
-- Custom sounds go to `~/.var/app/io.github.SmolinskiP.GLaSSIST/data/glasssist/sound/`
-- The global hotkey works on X11 only; on Wayland use wake word activation
-- Autostart: create `~/.config/autostart/io.github.SmolinskiP.GLaSSIST.desktop` with `Exec=flatpak run io.github.SmolinskiP.GLaSSIST`
+Flatpak data locations:
 
-### Sounds
-The app plays sounds from `sound/` directory:
-- `activation.wav` - Recording start
-- `deactivation.wav` - Session end
-- `processing.wav` - Looped "thinking" sound while waiting for the response (opt-in, great for slow LLM agents)
+- Configuration: `~/.var/app/io.github.SmolinskiP.GLaSSIST/config/glasssist/.env`
+- Custom sounds: `~/.var/app/io.github.SmolinskiP.GLaSSIST/data/glasssist/sound/`
 
-Drop your own audio files (`.wav`, `.mp3`, `.flac`, `.ogg`) into `sound/` and pick them in Settings → Audio.
+The global hotkey works on X11. On Wayland, use wake-word or tray activation.
 
-## 🎛️ Configuration Parameters
+### Linux — install script
 
-### Connection
-- `HA_HOST` - HA server address
-- `HA_TOKEN` - Access token
-- `HA_PIPELINE_ID` - Pipeline ID (optional)
+The installer supports Debian/Ubuntu, Fedora/RHEL, Arch Linux, and openSUSE. Run it as a regular
+user; it will request `sudo` only when installing system packages.
 
-### Audio and VAD
-- `HA_VAD_MODE` - VAD sensitivity (0-3, 3=most sensitive)
-- `HA_SILENCE_THRESHOLD_SEC` - Silence time to end recording
-- `HA_SAMPLE_RATE` - Sample rate (8000/16000/32000)
-- `HA_FRAME_DURATION_MS` - VAD frame length (10/20/30ms)
+```bash
+wget https://raw.githubusercontent.com/SmolinskiP/GLaSSIST/main/install-linux.sh
+chmod +x install-linux.sh
+./install-linux.sh
+```
 
-### Wake Word Detection
-- `HA_WAKE_WORD_ENABLED` - Enable wake word detection (true/false)
-- `HA_WAKE_WORD_MODELS` - Comma-separated list of wake word models
-- `HA_WAKE_WORD_THRESHOLD` - Detection sensitivity (0.0-1.0)
-- `HA_WAKE_WORD_VAD_THRESHOLD` - Voice activity threshold (0.0-1.0)
+To uninstall:
 
-### Interface & Controls
-- `HA_HOTKEY` - Activation hotkey (ctrl+shift+h, ctrl+alt+h, alt+space, etc.)
-- `HA_SOUND_FEEDBACK` - Activation sounds (true/false)
-- `HA_PROCESSING_SOUND` - Loop a "thinking" sound while waiting for the response (true/false)
-- `HA_SOUND_ACTIVATION` / `HA_SOUND_DEACTIVATION` / `HA_SOUND_PROCESSING` - Sound filenames from the `sound/` folder
-- `HA_RESPONSE_TEXT_ENABLED` - Show assistant responses as text overlay (true/false)
-- `HA_ANIMATIONS_ENABLED` - Enable visual animations with Three.js (true/false)
-- `ANIMATION_PORT` - Animation server port (default: 8765)
+```bash
+wget https://raw.githubusercontent.com/SmolinskiP/GLaSSIST/main/uninstall-linux.sh
+chmod +x uninstall-linux.sh
+./uninstall-linux.sh
+```
 
-### Device Selection
-- `HA_MICROPHONE_INDEX` - Specific microphone ID (-1 for automatic)
-- `HA_OUTPUT_DEVICE_INDEX` - Specific output device ID (-1 for automatic)
-- `HA_OUTPUT_SAMPLE_RATE` - Output sample rate for playback (-1 for automatic)
+The uninstaller can remove the user service, desktop entry, and application directory. System
+packages installed by the setup script remain managed by your distribution.
 
+### First-time setup
 
-### Debug & Logging
-- `DEBUG` - Debug mode with detailed file logging (true/false)
+Open **Settings** from the tray icon or start the application with `--settings`.
 
-## 🐛 Troubleshooting
+For **ESPHome Satellite** mode:
 
-### tflite-runtime install error (Linux)
-**Error**: `ERROR: Could not find a version that satisfies the requirement tflite-runtime`
+1. Select ESPHome Satellite and choose a device name.
+2. Keep GLaSSIST and Home Assistant on the same network.
+3. In Home Assistant, open **Settings → Devices & services** and add the discovered ESPHome device.
 
-**Cause**: tflite-runtime has no packages for Python 3.12+. It is an optional
-speed-up, not a requirement — GLaSSIST automatically falls back to ONNX models
-for wake word detection (this is also what the Flatpak build ships).
+For legacy **WebSocket** mode:
 
-**Solutions**:
-1. **Nothing to do** — skip tflite-runtime (the installer does this
-   automatically) and wake word detection will use ONNX models.
+1. Enter your Home Assistant address without `http://` or `https://`.
+2. Create a long-lived access token in your Home Assistant profile and enter it in Settings.
+3. Test the connection and select an Assist pipeline if you do not want the default.
 
-2. **Optional, for TFLite detection**: install Python 3.11 and recreate the venv:
-   ```bash
-   # Ubuntu 22.04 and older (has Python 3.11 in repos):
-   sudo apt install python3.11 python3.11-venv python3.11-dev
+### Using GLaSSIST
 
-   # Ubuntu 24.04+, Linux Mint 22+ (needs deadsnakes PPA):
-   sudo add-apt-repository ppa:deadsnakes/ppa -y
-   sudo apt update
-   sudo apt install python3.11 python3.11-venv python3.11-dev
+Start a voice interaction in any configured way:
 
-   # Fedora/RHEL:
-   sudo dnf install python3.11 python3.11-devel
+- say a selected wake word;
+- press the configured global hotkey;
+- choose voice activation from the system-tray menu.
 
-   # The installer will do all of this automatically
-   ```
+The overlay indicates when GLaSSIST is listening, processing, responding, or reporting an error.
+Wake-word detection can be paused from the tray. Audio devices, wake-word models, sounds, visual
+effects, and media-player volume reduction are configured in Settings.
 
-### "Cannot connect to Home Assistant"
-- Check `HA_HOST` and `HA_TOKEN`
-- Make sure HA is accessible
-- Verify Assist is enabled
+### Interactive prompts
 
-### "No microphone found"
-- Check if microphone is connected
-- Restart application
-- Check microphone permissions
+In WebSocket mode, Home Assistant or another local application can send a spoken prompt to
+GLaSSIST's HTTP endpoint and optionally wait for a voice response. The endpoint has no
+authentication and should only be exposed on a trusted local network. See
+[Interactive Prompts Setup](INTERACTIVE_PROMPTS_SETUP.md) for the request format, Home Assistant
+configuration, and examples.
 
-### "Pipeline not found"
-- Remove `HA_PIPELINE_ID` from `.env` (will use default)
-- Check available pipelines in settings
+## For developers
 
-### Application hangs
-- Enable `DEBUG=true` in settings
-- Check console logs or log files in `logs/` directory
-- Close and restart application (classic IT solution that actually works)
+### Requirements and source installation
 
-### Thread-related crashes (legacy)
-- **Fixed in v1.3+** - Replaced problematic Tkinter with modern Flet UI
-- All threading issues resolved with proper async/await patterns
+- Windows 10/11 or a supported Linux desktop
+- Python 3.11–3.13
+- Home Assistant with Assist configured
+- A working microphone and output device
 
-### Interactive Prompts not working
-- Verify port 8766 is accessible from Home Assistant server
-- Test API directly with curl command
-- Check GLaSSIST logs for HTTP server startup messages
-- Make sure conversation manager is enabled in GLaSSIST
+Clone the repository and create a virtual environment:
 
-### Context not clearing between conversations
-- **Fixed in v2.0** - Conversation context properly cleaned after each interaction
-- If issues persist, restart GLaSSIST application
+```bash
+git clone https://github.com/SmolinskiP/GLaSSIST.git
+cd GLaSSIST
+python -m venv .venv
+```
 
-## 📚 FAQ
+Activate it on Windows:
 
-**Q: What Python version should I use?**
-A: Python 3.11 is recommended for full compatibility. Python 3.12 works but uses ONNX-only mode. Python 3.13+ is not supported due to dependency issues (tflite-runtime, numpy). For Linux, install Python 3.11 for best results.
+```powershell
+.venv\Scripts\Activate.ps1
+```
 
-**Q: Does it work on Linux/Mac?**
-A: Linux support added in v1.1.0 (beta). Use the install script. Mac support not planned.
+Or on Linux:
 
-**Q: Can I change the animation?**  
-A: Yes, edit `frontend/index.html`. Shaders are in GLSL, so you need to know what you're doing.
+```bash
+source .venv/bin/activate
+```
 
-**Q: Why Flet instead of Tkinter?**  
-A: Tkinter had threading issues that caused hangs and crashes. Flet provides modern UI, proper async support, and cross-platform consistency. Plus it looks way better.
+Install dependencies and create a local configuration file:
 
-**Q: Can I use the old Tkinter settings?**  
-A: Legacy support exists in `improved_settings_dialog.py` but it's not recommended. Flet version is more stable and feature-rich.
+```bash
+python -m pip install -r requirements.txt
+cp .env.example .env
+```
 
-**Q: Why WebRTC VAD?**  
-A: Because it works better than homemade algorithms. Tested by Google, so probably good.
+On PowerShell, use `Copy-Item .env.example .env` instead of `cp`. You can edit `.env` directly or
+configure the application through its Settings window.
 
-**Q: Settings window is too big/small?**  
-A: Flet UI is responsive and auto-maximizes. Use Escape key to close or resize the window.
+Run GLaSSIST:
 
-**Q: App uses too much CPU/memory?**  
-A: Disable animations in Settings > Advanced > Interface & Performance. This removes Three.js rendering and WebSocket server while keeping full voice functionality.
+```bash
+python main.py
+```
 
-**Q: How do I set up interactive prompts?**  
-A: Add the rest_command to your HA configuration.yaml, restart HA, then test with Developer Tools or curl. Interactive prompts are enabled by default in GLaSSIST v2.0.
+Open Settings automatically on startup:
 
-**Q: Can external apps use the API?**  
-A: Yes! Any application that can make HTTP POST requests can trigger GLaSSIST prompts. Perfect for integration with other home automation systems, scripts, or custom applications.
+```bash
+python main.py --settings
+```
 
-**Q: What's the difference between regular wake word and interactive prompts?**  
-A: Regular wake word is user-initiated ("Hey Jarvis, turn on lights"). Interactive prompts are system-initiated (HA asks "Turn on lights?" and waits for voice response).
+### Configuration
 
-**Q: How does media player volume management work?**  
-A: GLaSSIST automatically saves current volume levels, reduces them to a target level during voice interactions, then restores the original levels afterward. This ensures GLaSSIST is clearly audible without permanently changing your media volumes.
+The complete set of supported settings and defaults is documented in [`.env.example`](.env.example).
+The application stores user configuration outside the installation directory for packaged builds;
+use the Settings UI unless you specifically need to edit the environment file.
 
-**Q: Can I use wait_for_response: false for announcements?**  
-A: Yes! Set wait_for_response to false for TTS-only announcements that don't need user input. Perfect for notifications, status updates, and confirmations.
+### Tests
 
-**Q: I'm trying to get the latest version but when I download the latest setup exe it wants me to enter my server config and API token again. Is there a way to upgrade without doing all this again?**  
-A: Sure. Just don't type anything in installer, then it won't replace the .env file with configuration ;)
+Install the test dependencies and use the bundled test runner:
 
-## 📈 Star History
+```bash
+python -m pip install -r tests/requirements-test.txt
+python tests/run_tests.py
+```
 
-[![Star History Chart](https://api.star-history.com/svg?repos=SmolinskiP/GLASSIST&type=Date)](https://star-history.com/#SmolinskiP/GLASSIST&Date)
+Useful variants:
+
+```bash
+python tests/run_tests.py --unit-only
+python tests/run_tests.py --integration-only
+python tests/run_tests.py --coverage
+python -m pytest tests/test_client.py -v
+```
+
+See [`tests/README.md`](tests/README.md) for the complete test-runner reference.
+
+### Project structure
+
+- `main.py` — application lifecycle, tray integration, activation, and component orchestration
+- `client.py` — Home Assistant WebSocket API and Assist pipeline communication
+- `satellite_protocol.py` — ESPHome voice-satellite protocol, timers, and conversation follow-up
+- `audio.py`, `vad.py`, `wake_word_detector.py` — capture, speech detection, and wake words
+- `animation_server.py`, `frontend/` — overlay state, audio data, and Three.js visualization
+- `flet_settings.py` — the settings interface and configuration persistence
+- `conversation_manager.py`, `prompt_server.py` — local interactive prompts in WebSocket mode
 
 ## 📄 License
 
-MIT License. Do whatever you want, just don't blame me when something doesn't work.
+GLaSSIST is available under the [MIT License](LICENSE).
 
 ## ☕ Support
 
-If the app helped you and you want to buy me a coffee:
+If GLaSSIST helped you and you want to support its development:
 [☕ Buy me a coffee](https://buymeacoffee.com/smolinskip)
-
----
-
-*Made with ❤️ and occasional frustration by [Patryk Smoliński](https://github.com/SmolinskiP)*
