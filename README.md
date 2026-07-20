@@ -3,7 +3,7 @@
 GLaSSIST turns a Windows or Linux computer into a desktop voice satellite for
 [Home Assistant](https://www.home-assistant.io/voice_control/). It listens through your microphone,
 sends requests to Home Assistant Assist, plays spoken responses, and shows the conversation state in
-an optional animated desktop overlay.
+an optional animated desktop overlay. It includes more than 100 ready-to-use wake-word models.
 
 GLaSSIST works with any conversation agent available through a Home Assistant Assist pipeline. That
 includes local models such as Ollama as well as cloud-based agents powered by Claude, GPT, and other
