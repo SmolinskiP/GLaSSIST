@@ -45,6 +45,7 @@ linux-voice-assistant/
 
 # Codex / internal planning docs
 CODEX_*.md
+AGENTS.md
 
 # Local Claude Code settings
 .claude/settings.local.json
