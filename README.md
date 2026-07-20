@@ -120,15 +120,9 @@ GLaSSIST bundles more than 100 models from the
 [Home Assistant Wake Words Collection](https://github.com/fwartner/home-assistant-wakewords-collection),
 including Alexa, Jarvis, GLaDOS, Computer, Scarlett, and plenty of names your family will question.
 
-Want your own wake word? [openWakeWord](https://github.com/dscripka/openWakeWord) provides two
-Google Colab notebooks:
-
-- [Basic training](https://colab.research.google.com/drive/1q1oe2zOyZp7UsB3jJiQ1IFn8z5YfjwEb?usp=sharing) — the beginner-friendly route
-- [Advanced training](https://colab.research.google.com/drive/1yyFH-fpguX2BTAW8wSQxTrJnJTM-0QAd?usp=sharing) — more control for better-tuned models
-
-Place the resulting `.onnx` or `.tflite` model in the `models/` directory, then select its filename
-without the extension in **Settings → Wake Word**. Test it properly before trusting it — custom wake
-words have a special talent for working perfectly until somebody is watching.
+Want your own wake word? [openWakeWord](https://github.com/dscripka/openWakeWord) provides two Google
+Colab notebooks. Follow the [custom wake-word guide](docs/CUSTOM_WAKE_WORDS.md) to train, convert,
+install, and test your model.
 
 ### Interactive prompts
 
