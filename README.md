@@ -221,7 +221,15 @@ See [`tests/README.md`](tests/README.md) for the complete test-runner reference.
 
 ## 📈 Star History
 
-[![Star History Chart](https://api.star-history.com/image?repos=SmolinskiP/GLaSSIST&type=Date)](https://www.star-history.com/SmolinskiP/GLaSSIST)
+## Star History
+
+<a href="https://www.star-history.com/?repos=SmolinskiP%2FGLaSSIST&type=date&legend=bottom-right">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=SmolinskiP/GLaSSIST&type=date&theme=dark&legend=bottom-right&sealed_token=801EqtcIdZUXFju0IV2Hvq9ukc0aMGv7tZXc-67bkWC_1tJwnC2Jg6CUg4h0DJUFympWdiSWcFMux_2y1tYFIV83ov4EQzhLfzTwDt7DxNHnxlX8E31T27_jXUybAqr0vG32Nj_8njCWXFx1QFYS7fDAjnCFbBq2quTvnE7rw2nh9gLOb8r083NI8iU-" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=SmolinskiP/GLaSSIST&type=date&legend=bottom-right&sealed_token=801EqtcIdZUXFju0IV2Hvq9ukc0aMGv7tZXc-67bkWC_1tJwnC2Jg6CUg4h0DJUFympWdiSWcFMux_2y1tYFIV83ov4EQzhLfzTwDt7DxNHnxlX8E31T27_jXUybAqr0vG32Nj_8njCWXFx1QFYS7fDAjnCFbBq2quTvnE7rw2nh9gLOb8r083NI8iU-" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=SmolinskiP/GLaSSIST&type=date&legend=bottom-right&sealed_token=801EqtcIdZUXFju0IV2Hvq9ukc0aMGv7tZXc-67bkWC_1tJwnC2Jg6CUg4h0DJUFympWdiSWcFMux_2y1tYFIV83ov4EQzhLfzTwDt7DxNHnxlX8E31T27_jXUybAqr0vG32Nj_8njCWXFx1QFYS7fDAjnCFbBq2quTvnE7rw2nh9gLOb8r083NI8iU-" />
+ </picture>
+</a>
 
 ## 📄 License
 
