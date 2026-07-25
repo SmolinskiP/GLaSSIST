@@ -44,6 +44,19 @@ jobs:
             sed -i "s|<releases>|<releases>\n    <release version=\"${VERSION}\" date=\"$(date -u +%Y-%m-%d)\"/>|" "$FILE"
             echo "Stamped ${VERSION} into metainfo"
           fi
+      # Cloud runners hit transient egress failures on upstream source hosts
+      # (launchpad.net, ffmpeg.org, …) — a different one fails on almost every run.
+      # Pre-fetch all sources with retries into the flatpak-builder cache first;
+      # the build step below then reads them from .flatpak-builder/ without network.
+      - name: Pre-download sources (retry flaky upstreams)
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 25
+          max_attempts: 4
+          retry_wait_seconds: 20
+          command: >
+            flatpak-builder --download-only --state-dir .flatpak-builder
+            /tmp/flatpak-nobuild packaging/flatpak/io.github.SmolinskiP.GLaSSIST.yml
       - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
           bundle: GLaSSIST.flatpak
