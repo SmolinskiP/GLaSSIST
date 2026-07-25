@@ -53,6 +53,7 @@ Download `GLaSSIST.flatpak` from the
 [latest release](https://github.com/SmolinskiP/GLaSSIST/releases), then run:
 
 ```bash
+wget https://github.com/SmolinskiP/GLaSSIST/releases/latest/download/GLaSSIST.flatpak
 flatpak install --user GLaSSIST.flatpak
 flatpak run io.github.SmolinskiP.GLaSSIST
 ```
