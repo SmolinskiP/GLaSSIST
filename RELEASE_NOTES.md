@@ -1,9 +1,13 @@
-## 🩹 GLaSSIST 3.5.2 — Flatpak wake word fix
+## ✨ GLaSSIST 3.6.0 — Conversation memory & update checks
 
-A small patch release fixing wake word detection on the Flatpak build.
+### ✨ Features
+- **Conversation history carries over between commands** (#48). Follow-ups like *"turn it off again"*
+  now work instead of getting a *"which device?"* clarification. New `HA_CONVERSATION_TIMEOUT` setting
+  (slider in Settings) controls how long context is kept — default **300 s**, `0` disables it. Only
+  matters with an LLM conversation agent.
+- **Automatic update checks.** On startup GLaSSIST checks GitHub for a newer release and shows a brief
+  cyan *"Update available"* animation. Current version and a one-click **Update** link now sit in a bar
+  at the top of Settings. Set `HA_UPDATE_CHECK=false` to disable it.
 
-### 🐛 Fixes
-- **Wake word detection now works out of the box on Flatpak** (#47). openWakeWord downloads its default models (`alexa`, `hey_mycroft`, `hey_jarvis`, `hey_rhasspy`, `timer`, `weather`) on first run — impossible inside the read-only Flatpak sandbox, so a fresh install with the default `alexa` configuration crashed on startup with `alexa_v0.1.onnx: File doesn't exist`. These models are now bundled in the package, so wake word detection works immediately after install.
-
-### 🪟 Windows
-Nothing changes — the fix is Flatpak-only, the Windows build behaves exactly like 3.5.x.
+### 🖥️ Platforms
+Cross-platform — Windows and Flatpak/Linux.

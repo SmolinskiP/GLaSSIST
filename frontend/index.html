@@ -169,7 +169,8 @@
             responding: 0x9c27b0,
             error: 0xf44336,
             success: 0x4caf50,
-            connecting: 0xffeb3b
+            connecting: 0xffeb3b,
+            update: 0x00e5ff
         };
         
         // SHADER WITH GRADIENT AND EFFECTS
@@ -249,6 +250,8 @@
                     glowColor = vec3(1.0, 0.3, 0.1);
                 } else if (color.r > 0.7 && color.g > 0.5) {  // Orange (processing)
                     glowColor = vec3(1.0, 0.7, 0.2);
+                } else if (color.r < 0.2 && color.g > 0.8 && color.b > 0.9) {  // Cyan (update)
+                    glowColor = vec3(0.2, 0.9, 1.0);
                 } else if (color.b > 0.7) {  // Blue (listening)
                     glowColor = vec3(0.2, 0.6, 1.0);
                 } else if (color.g > 0.7 && color.r < 0.5) {  // Green (success)
@@ -605,6 +608,12 @@
                         ring.material.uniforms.audioLevel.value = 0.8; // Constant value for brightness
                         ring.material.uniforms.usePulse.value = 0.0; // No pulsing
                         break;
+
+                    case 'update':
+                        // Update available: snappy fast pulse to grab attention
+                        ring.material.uniforms.pulseSpeed.value = 4.5;
+                        ring.material.uniforms.usePulse.value = 1.0; // Pulsing mode
+                        break;
                 }
             }
         }
@@ -635,7 +644,7 @@
             }
             
             // Save success/connecting message if available
-            if ((newState === 'success' || newState === 'connecting') && data.successMessage) {
+            if ((newState === 'success' || newState === 'connecting' || newState === 'update') && data.successMessage) {
                 successMessage = data.successMessage;
             }
             
@@ -658,6 +667,8 @@
                 showSuccessText(successMessage, '#4caf50');
             } else if (newState === 'connecting') {
                 showSuccessText(successMessage, '#ffeb3b');
+            } else if (newState === 'update') {
+                showSuccessText(successMessage, '#00e5ff');
             }
             
             if (!isAnimating) {

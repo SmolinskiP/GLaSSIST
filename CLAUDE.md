@@ -92,6 +92,7 @@ GLaSSIST is a desktop voice assistant for Home Assistant with the following key 
 - Automatic pipeline discovery and caching
 - Support for custom pipeline selection via HA_PIPELINE_ID
 - Real-time STT/TTS streaming with binary audio handling
+- Conversation history round-tripping: the real HA `conversation_id` is captured from pipeline events and re-sent on the next command within `HA_CONVERSATION_TIMEOUT` seconds (default 300, `0` disables), so LLM-agent follow-ups keep context
 
 ### Build System
 - PyInstaller-based builds for Windows distribution

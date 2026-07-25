@@ -48,6 +48,18 @@ class DummyAnimationServer:
         
         threading.Thread(target=hide_after_delay, daemon=True).start()
     
+    def show_update(self, message="Update available", duration=5.0):
+        """Log update message and auto-hide after duration."""
+        logger.info(f"{message}")
+        self.change_state("update")
+
+        def hide_after_delay():
+            time.sleep(duration)
+            if self.current_state == "update":
+                self.change_state("hidden")
+
+        threading.Thread(target=hide_after_delay, daemon=True).start()
+
     def show_error(self, message="Error", duration=5.0):
         """Log error message and auto-hide after duration."""
         logger.error(f"{message}")

@@ -3,6 +3,7 @@ Enhanced HomeAssistantClient with dynamic pipeline list support
 """
 import json
 import asyncio
+import time
 import websockets
 import utils
 
@@ -27,6 +28,8 @@ class HomeAssistantClient:
         self.stt_binary_handler_id = None
         self.connected = False
         self.audio_url = None
+        self._last_conversation_id = None
+        self._last_conversation_ts = 0
         self.available_pipelines = []
         self.conversation_manager = None
         self.volumes_managed = False  # Flag to track if we're managing volumes
@@ -224,15 +227,16 @@ class HomeAssistantClient:
             "timeout": timeout_seconds
         }
         
-        # Add context to conversation metadata if available
-        if hasattr(self, '_conversation_context') and self._conversation_context:
-            # Try adding context as conversation metadata
-            original_question = getattr(self, '_original_question', 'Unknown question')
-            context_info = f"CONTEXT: {self._conversation_context} QUESTION: {original_question}"
-            
-            pipeline_params["conversation_id"] = context_info[:100]  # Limit length
-            logger.info(f"🔖 Adding context as conversation_id: '{context_info[:100]}'")
-        
+        # Reuse the previous conversation_id so Home Assistant keeps the history,
+        # as long as the last turn was recent enough. timeout <= 0 disables this.
+        conv_timeout = utils.get_env("HA_CONVERSATION_TIMEOUT", 300, int)
+        if (conv_timeout > 0 and self._last_conversation_id
+                and time.time() - self._last_conversation_ts < conv_timeout):
+            pipeline_params["conversation_id"] = self._last_conversation_id
+            logger.info(f"🔗 Reusing conversation_id: {self._last_conversation_id}")
+        else:
+            self._last_conversation_id = None
+
         if self.pipeline_id:
             pipeline_params["pipeline"] = self.pipeline_id
             logger.info(f"Using pipeline ID: {self.pipeline_id}")
@@ -560,8 +564,20 @@ class HomeAssistantClient:
                     results.append(response_json)
                     
                     event_type = response_json.get("event", {}).get("type")
-                    
-                    if (response_json.get("type") == "event" and 
+
+                    # Capture the real conversation_id so the next turn keeps the history.
+                    # Shape differs between HA versions: intent-start carries it directly,
+                    # intent-end nests it under intent_output. Read both; intent-end wins.
+                    if response_json.get("type") == "event":
+                        event_data = response_json.get("event", {}).get("data", {}) or {}
+                        conv_id = (event_data.get("conversation_id")
+                                   or (event_data.get("intent_output") or {}).get("conversation_id"))
+                        if conv_id:
+                            self._last_conversation_id = conv_id
+                            self._last_conversation_ts = time.time()
+                            logger.info(f"🔗 Captured conversation_id: {conv_id}")
+
+                    if (response_json.get("type") == "event" and
                         event_type in ["intent-end", "run-end", "error", "tts-end"]):
                         logger.info(f"Ending reception on event: {event_type}")
                         break

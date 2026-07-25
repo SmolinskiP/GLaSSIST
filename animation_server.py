@@ -181,6 +181,20 @@ class AnimationServer:
         """Show connecting animation (persistent, no auto-hide)."""
         self.change_state("connecting", success_message=message)
 
+    def show_update(self, message: str = "Update available", duration: float = 5.0):
+        """Show the 'update available' animation for a specified time."""
+        self.change_state("update", success_message=message)
+
+        import threading
+        import time
+
+        def hide_after_delay():
+            time.sleep(duration)
+            if self.current_state == "update":
+                self.change_state("hidden")
+
+        threading.Thread(target=hide_after_delay, daemon=True).start()
+
     def show_error(self, message: str = "Error", duration: float = 5.0):
         """Show error animation for specified time."""
         self.change_state("error", error_message=message)

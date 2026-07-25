@@ -31,6 +31,7 @@ from dummy_animation_server import DummyAnimationServer
 from conversation_manager import ConversationManager
 from prompt_server import PromptServer
 from satellite_protocol import SatelliteServer
+import update_checker
 
 logger = utils.setup_logger()
 
@@ -978,6 +979,41 @@ class HAAssistApp:
         threading.Thread(target=_audio_stream_thread, daemon=True, name="esphome-audio").start()
         logger.info(f"ESPHome mode active - device '{device_name}', port {port}")
 
+    def _check_updates_and_notify(self):
+        """Check GitHub for a newer release and briefly show the 'update available' animation.
+
+        ESPHome mode keeps a persistent connection (HA connects to our satellite), so we
+        wait for that connection before showing the notice. WebSocket mode has no persistent
+        connection, so we just show it shortly after startup once the overlay is ready.
+        """
+        import time
+        try:
+            latest = update_checker.check_for_update()
+            if not latest:
+                return
+
+            # Let the overlay/webview connect before we try to animate.
+            time.sleep(6)
+
+            # In ESPHome mode, wait until Home Assistant actually connects to the satellite.
+            if self.connection_mode == "esphome":
+                waited = 0.0
+                while waited < 90:
+                    if self.satellite_server and self.satellite_server.is_connected:
+                        logger.info("Update notice: HA connected to satellite")
+                        break
+                    time.sleep(0.5)
+                    waited += 0.5
+
+            # Don't interrupt an active interaction; only surface when idle.
+            if self.animation_server and self.animation_server.current_state == "hidden":
+                logger.info(f"Showing update-available animation for {latest}")
+                self.animation_server.show_update(f"✨ Update available — {latest}", duration=5.0)
+            else:
+                logger.info("Update available but overlay busy — skipping animation")
+        except Exception as e:
+            logger.info(f"Update notification skipped: {e}")
+
     def run(self):
         """Main run method."""
         try:
@@ -1053,7 +1089,11 @@ class HAAssistApp:
                     self.open_settings()
 
             threading.Thread(target=on_window_loaded, daemon=True).start()
-            
+
+            # Background update check + "update available" animation (both modes)
+            if utils.get_env("HA_UPDATE_CHECK", True, bool):
+                threading.Thread(target=self._check_updates_and_notify, daemon=True).start()
+
             if self.animations_enabled:
                 webview.start(debug=utils.get_env("DEBUG", False, bool))
             else:

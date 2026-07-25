@@ -13,6 +13,8 @@ import utils
 import platform_utils
 from client import HomeAssistantClient
 from audio import AudioManager
+from version import __version__
+import update_checker
 
 logger = utils.setup_logger()
 
@@ -122,6 +124,7 @@ class FletSettingsApp:
             'HA_MEDIA_PLAYER_TARGET_VOLUME': utils.get_env('HA_MEDIA_PLAYER_TARGET_VOLUME', 0.3, float),
             'HA_TIMER_SOUND': utils.get_env('HA_TIMER_SOUND', ''),
             'HA_CONTINUE_ON_QUESTION': utils.get_env('HA_CONTINUE_ON_QUESTION', 'false'),
+            'HA_CONVERSATION_TIMEOUT': utils.get_env('HA_CONVERSATION_TIMEOUT', 300, int),
             'CONNECTION_MODE': utils.get_env('CONNECTION_MODE', 'websocket'),
             'DEVICE_NAME': utils.get_env('DEVICE_NAME', 'GLaSSIST'),
             'ESPHOME_PORT': utils.get_env('ESPHOME_PORT', '6053'),
@@ -225,18 +228,41 @@ class FletSettingsApp:
         spacing=10
         )
         
-        # Main layout with scroll - fixed buttons at bottom
+        # Top version bar (always visible, above the tabs)
+        self.update_status_text = ft.Text("Checking for updates…", size=12, color=ft.Colors.GREY_500)
+        self.update_link_button = ft.OutlinedButton(
+            "⬇️ Update",
+            icon=ft.Icons.SYSTEM_UPDATE,
+            visible=False,
+            style=ft.ButtonStyle(color=ft.Colors.CYAN_400),
+            on_click=lambda _: webbrowser.open(update_checker.LATEST_RELEASE_URL),
+        )
+        version_bar = ft.Container(
+            content=ft.Row([
+                ft.Row([
+                    ft.Icon(ft.Icons.INFO_OUTLINE, size=16, color=ft.Colors.GREY_500),
+                    ft.Text(f"GLaSSIST v{__version__}", size=13, weight=ft.FontWeight.W_500,
+                           color=ft.Colors.GREY_400),
+                ], spacing=6),
+                ft.Row([self.update_status_text, self.update_link_button],
+                       spacing=12, alignment=ft.MainAxisAlignment.END),
+            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+            padding=ft.padding.symmetric(horizontal=30, vertical=8),
+        )
+
+        # Main layout with scroll - fixed version bar on top, fixed buttons at bottom
         main_container = ft.Column([
+            version_bar,
             ft.Container(
                 content=ft.Column([
                     title,
                     ft.Divider(height=2),
                     tabs,
-                ], 
+                ],
                 spacing=10,
                 scroll=ft.ScrollMode.AUTO
                 ),
-                padding=ft.padding.only(left=30, right=30, top=30),
+                padding=ft.padding.only(left=30, right=30, top=10),
                 expand=True
             ),
             ft.Container(
@@ -250,6 +276,9 @@ class FletSettingsApp:
         
         self.page.overlay.append(self.timer_sound_picker)
         self.page.add(main_container)
+
+        # Kick off the background update check now that the version bar exists
+        self._start_update_check()
         
         # Auto-refresh wake word models after all UI is created
         try:
@@ -499,6 +528,17 @@ class FletSettingsApp:
             active_color=ft.Colors.PURPLE_400,
         )
 
+        # Conversation timeout slider (how long the next command keeps the previous context)
+        self.conversation_timeout_slider = ft.Slider(
+            min=0, max=600, divisions=40,
+            value=current_settings['HA_CONVERSATION_TIMEOUT'],
+            label="Timeout: {value}s",
+            on_change=self._on_conversation_timeout_change,
+            active_color=ft.Colors.PURPLE_400
+        )
+        self.conversation_timeout_value_text = ft.Text(
+            self._format_conversation_timeout(current_settings['HA_CONVERSATION_TIMEOUT']), size=14)
+
         # VAD sensitivity slider
         self.vad_slider = ft.Slider(
             min=0, max=3, divisions=3,
@@ -604,6 +644,16 @@ class FletSettingsApp:
                             ft.Text(
                                 "Works in both WebSocket and ESPHome mode. Workaround for integrations that don't "
                                 "send continue_conversation=1 (e.g. Claude/Anthropic).",
+                                color=ft.Colors.GREY_600, size=12
+                            ),
+                            ft.Container(height=15),
+                            ft.Text("Conversation memory timeout:", size=14, weight=ft.FontWeight.W_500),
+                            self.conversation_timeout_slider,
+                            self.conversation_timeout_value_text,
+                            ft.Text(
+                                "How long a new command keeps the previous conversation's context "
+                                "(so follow-ups like 'turn it off again' work). 0 = off, each command starts fresh. "
+                                "Only useful with an LLM conversation agent.",
                                 color=ft.Colors.GREY_600, size=12
                             ),
                         ]),
@@ -1108,13 +1158,8 @@ class FletSettingsApp:
         """Create about tab"""
         return ft.Container(
             content=ft.Column([
-                ft.Container(height=40),
-                ft.Text("🎤 GLaSSIST Desktop", size=32, weight=ft.FontWeight.BOLD,
-                       text_align=ft.TextAlign.CENTER),
-                ft.Text("Voice Assistant for Home Assistant", size=18, color=ft.Colors.GREY_600,
-                       text_align=ft.TextAlign.CENTER),
-                ft.Container(height=40),
-                
+                ft.Container(height=20),
+
                 # Creator card
                 ft.Card(
                     content=ft.Container(
@@ -1161,6 +1206,32 @@ class FletSettingsApp:
             padding=20
         )
     
+    def _start_update_check(self):
+        """Run the GitHub update check in the background and update the top version bar."""
+        def worker():
+            try:
+                latest = update_checker.check_for_update()
+            except Exception as e:
+                logger.info(f"Update check failed: {e}")
+                latest = None
+
+            if latest:
+                self.update_status_text.value = "Update available"
+                self.update_status_text.color = ft.Colors.CYAN_400
+                self.update_link_button.text = f"⬇️ Update to {latest}"
+                self.update_link_button.visible = True
+            else:
+                self.update_status_text.value = "✓ Latest version"
+                self.update_status_text.color = ft.Colors.GREY_500
+                self.update_link_button.visible = False
+
+            try:
+                self.page.update()
+            except Exception:
+                pass  # Page may be closed; ignore
+
+        threading.Thread(target=worker, daemon=True).start()
+
     # Event handlers
     def _on_vad_change(self, e):
         self.vad_value_text.value = f"Current: {int(e.control.value)}"
@@ -1169,7 +1240,17 @@ class FletSettingsApp:
     def _on_silence_change(self, e):
         self.silence_value_text.value = f"Current: {e.control.value:.1f}s"
         self.page.update()
-    
+
+    def _format_conversation_timeout(self, value):
+        value = int(value)
+        if value <= 0:
+            return "Current: Off (each command starts fresh)"
+        return f"Current: {value}s"
+
+    def _on_conversation_timeout_change(self, e):
+        self.conversation_timeout_value_text.value = self._format_conversation_timeout(e.control.value)
+        self.page.update()
+
     def _on_wake_threshold_change(self, e):
         self.wake_threshold_text.value = f"Current: {e.control.value:.2f}"
         self.page.update()
@@ -2020,6 +2101,7 @@ class FletSettingsApp:
                 # Audio / conversation
                 'HA_TIMER_SOUND': self._copy_timer_sound(self.timer_sound_field.value.strip()),
                 'HA_CONTINUE_ON_QUESTION': 'true' if self.continue_on_question_switch.value else 'false',
+                'HA_CONVERSATION_TIMEOUT': str(int(self.conversation_timeout_slider.value)),
 
                 # Connection mode
                 'CONNECTION_MODE': self.connection_mode_dropdown.value or 'websocket',
@@ -2095,6 +2177,7 @@ class FletSettingsApp:
             if settings.get('HA_TIMER_SOUND'):
                 env_content += f"HA_TIMER_SOUND={settings['HA_TIMER_SOUND']}\n"
             env_content += f"HA_CONTINUE_ON_QUESTION={settings['HA_CONTINUE_ON_QUESTION']}\n"
+            env_content += f"HA_CONVERSATION_TIMEOUT={settings['HA_CONVERSATION_TIMEOUT']}\n"
 
             env_content += "\n# === WAKE WORD DETECTION ===\n"
             env_content += f"HA_WAKE_WORD_ENABLED={settings['HA_WAKE_WORD_ENABLED']}\n"
