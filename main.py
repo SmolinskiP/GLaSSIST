@@ -560,7 +560,13 @@ class HAAssistApp:
             
             self.animation_server.change_state("listening")
             utils.play_feedback_sound("activation")
-            
+
+            # Timing instrumentation: measure the dead window between the activation
+            # beep and the mic actually recording (issue #49 input delay).
+            import time as _timing
+            _t0 = _timing.monotonic()
+            logger.info("⏱️ TIMING beep +0ms (activation)")
+
             # Use existing instances or create temporary ones
             ha_client = self.ha_client if self.ha_client else HomeAssistantClient()
             audio_manager = self.audio_manager if self.audio_manager else AudioManager()
@@ -581,6 +587,7 @@ class HAAssistApp:
                 return False
             
             logger.info("Connected to Home Assistant")
+            logger.info(f"⏱️ TIMING connected +{(_timing.monotonic() - _t0) * 1000:.0f}ms")
             
             # Save current volumes and set target volume immediately
             if media_player_entities and not ha_client.volumes_managed:
@@ -621,6 +628,7 @@ class HAAssistApp:
                     return False
 
                 logger.info("Assist pipeline started successfully")
+                logger.info(f"⏱️ TIMING pipeline-ready +{(_timing.monotonic() - _t0) * 1000:.0f}ms")
 
                 print("\n=== LISTENING ===")
                 print("(Waiting for voice, speak to microphone...)")
@@ -640,6 +648,7 @@ class HAAssistApp:
                     if not success:
                         logger.warning("Error ending audio")
 
+                logger.info(f"⏱️ TIMING record-start +{(_timing.monotonic() - _t0) * 1000:.0f}ms (dead window before mic)")
                 if await audio_manager.record_audio(on_audio_chunk, on_audio_end):
                     logger.info("Audio sent successfully")
 

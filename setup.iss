@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "GLaSSIST"
-#define MyAppVersion "3.6.0"
+#define MyAppVersion "3.6.1"
 #define MyAppPublisher "Patryk Smoliński"
 #define MyAppURL "https://github.com/SmolinskiP/GLaSSIST"
 #define MyAppExeName "GLaSSIST.exe"

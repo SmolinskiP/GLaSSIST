@@ -164,10 +164,36 @@ class AudioManager:
         except Exception as e:
             logger.error(f"Audio closing error: {e}")
     
+    def _flush_input_buffer(self):
+        """Discard mic audio the OS buffered while we weren't recording.
+
+        The input stream is opened once and left running, but in WebSocket mode
+        nothing drains it between activations, so PortAudio accumulates a backlog.
+        Reading it would replay 1-2s of stale audio (captured before the trigger)
+        and stay that far behind real time, cutting off the end of the utterance.
+        Flushing here starts recording at the live edge. See issue #49.
+        """
+        if not self.stream:
+            return
+        try:
+            flushed_frames = 0
+            available = self.stream.get_read_available()
+            while available >= self.chunk_size:
+                self.stream.read(self.chunk_size, exception_on_overflow=False)
+                flushed_frames += self.chunk_size
+                available = self.stream.get_read_available()
+            if flushed_frames:
+                logger.info(
+                    f"Flushed {flushed_frames / self.sample_rate * 1000:.0f} ms "
+                    f"of stale mic buffer before recording"
+                )
+        except Exception as e:
+            logger.warning(f"Could not flush input buffer: {e}")
+
     async def record_audio(self, on_chunk_callback, on_end_callback=None):
         """
         Record audio with voice activity detection.
-        
+
         Args:
             on_chunk_callback: Function called for each audio chunk
             on_end_callback: Optional function called at end of recording
@@ -175,10 +201,11 @@ class AudioManager:
         if not self.stream:
             logger.error("Audio stream not initialized")
             return False
-        
+
         logger.info("Starting recording with VAD detection")
-        
+
         self.vad.reset()
+        self._flush_input_buffer()
         
         start_time = time.time()
         chunks_processed = 0
@@ -288,7 +315,8 @@ class AudioManager:
             self.vad.silence_threshold_sec = silence_threshold
         
         self.vad.reset()
-        
+        self._flush_input_buffer()
+
         start_time = time.time()
         audio_chunks = []
         chunks_processed = 0
