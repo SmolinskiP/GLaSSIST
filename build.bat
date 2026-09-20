@@ -12,6 +12,16 @@ if not defined VIRTUAL_ENV (
     exit /b 1
 )
 
+:: Verify the offline settings client before removing existing builds.
+python packaging\check_flet_bundle.py
+if errorlevel 1 (
+    echo ERROR: Install requirements.txt with the matching flet-desktop package.
+    pause
+    exit /b 1
+)
+python packaging\check_release_version.py
+if errorlevel 1 exit /b 1
+
 :: Step 1: Clean up old builds
 echo [1/5] Cleaning up old builds...
 if exist "dist" (
@@ -60,11 +70,18 @@ pyinstaller --name "GLaSSIST" ^
     --hidden-import "websockets" ^
     --hidden-import "keyboard" ^
     --collect-all "openwakeword" ^
+    --collect-all "flet_desktop" ^
     --noconfirm ^
     main.py
 
 if %ERRORLEVEL% neq 0 (
     echo   PyInstaller build failed!
+    pause
+    exit /b 1
+)
+python packaging\check_flet_bundle.py "dist\GLaSSIST\_internal\flet_desktop\app\flet"
+if errorlevel 1 (
+    echo ERROR: The built application is missing the offline Flet client.
     pause
     exit /b 1
 )

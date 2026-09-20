@@ -31,43 +31,14 @@ def safe_print(text):
         print(safe_text)
 
 def setup_logger():
-    """Configure and return logger with optional file logging when DEBUG=true."""
-    import sys
-    
-    class FlushHandler(logging.StreamHandler):
-        def emit(self, record):
-            super().emit(record)
-            self.flush()
-    
-    handlers = [FlushHandler(sys.stdout)]
-    
-    # Add file handler if DEBUG mode is enabled
-    debug_enabled = get_env_bool('DEBUG', False)
-    if debug_enabled:
-        try:
-            log_dir = os.path.join(os.path.dirname(__file__), 'logs')
-            os.makedirs(log_dir, exist_ok=True)
-            
-            log_file = os.path.join(log_dir, f'glasssist_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
-            file_handler = logging.FileHandler(log_file, encoding='utf-8')
-            file_handler.setFormatter(logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-            ))
-            handlers.append(file_handler)
-            
-            print(f"Debug logging enabled - logs saved to: {log_file}")
-            
-        except Exception as e:
-            print(f"Warning: Could not setup file logging: {e}")
-    
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=handlers,
-        force=True  # Override any existing configuration
+    """Return the shared logger; repeated calls do not recreate files/handlers."""
+    from logging_config import configure_logging
+    configure_logging(
+        get_env_bool('DEBUG', False),
+        platform_utils.get_config_dir() / 'logs',
     )
-    
     return logging.getLogger('haassist')
+
 
 def get_env_bool(key, default=False):
     """Get environment variable as boolean with safe parsing."""
@@ -140,6 +111,30 @@ def get_output_sample_rate():
         return None
     return output_rate
 
+def normalize_audio_device_name(value):
+    """Repair PortAudio UTF-8 names misdecoded by Windows legacy code pages.
+
+    Strict round trips leave correctly decoded Unicode intact. Normalize only
+    after repair: decomposing the mojibake first destroys reversible bytes.
+    """
+    import unicodedata
+    if isinstance(value, bytes):
+        try:
+            value = value.decode('utf-8')
+        except UnicodeDecodeError:
+            value = value.decode('mbcs' if os.name == 'nt' else 'cp1252', errors='replace')
+    value = str(value).replace('\x00', '').strip()
+    for encoding in ('cp1250', 'cp1252', 'latin1'):
+        try:
+            repaired = value.encode(encoding).decode('utf-8')
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            continue
+        if repaired != value:
+            value = repaired
+            break
+    return unicodedata.normalize('NFC', value)
+
+
 def get_available_output_devices():
     """Return a list of available output devices."""
     devices = []
@@ -147,9 +142,7 @@ def get_available_output_devices():
         for index, device_info in enumerate(sd.query_devices()):
             if device_info.get('max_output_channels', 0) > 0:
                 device_name = device_info.get('name', f"Output {index}")
-                if isinstance(device_name, bytes):
-                    device_name = device_name.decode('utf-8', errors='replace')
-                device_name = str(device_name).replace('\x00', '').strip()
+                device_name = normalize_audio_device_name(device_name)
                 if not device_name:
                     device_name = f"Output {index}"
                 
@@ -210,7 +203,8 @@ def get_datetime_string():
     """Return formatted date and time string."""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-def play_audio_from_url(url, host, animation_server=None, done_callback=None):
+def play_audio_from_url(url, host, animation_server=None, done_callback=None,
+                        output_device_index=None):
     """
     Play audio from given URL using sounddevice and soundfile.
     Optionally send FFT data to animation server during playback.
@@ -287,7 +281,9 @@ def play_audio_from_url(url, host, animation_server=None, done_callback=None):
                 logger.warning(f"audioread failed, falling back to soundfile: {e}")
                 audio_buffer.seek(0)
                 data, samplerate = sf.read(audio_buffer)
-        output_device_index = get_output_device_index()
+        explicit_output = output_device_index is not None
+        if not explicit_output:
+            output_device_index = get_output_device_index()
         output_sample_rate = get_output_sample_rate()
         if output_device_index is not None:
             logger.debug(f"Using output device index: {output_device_index}")
@@ -295,7 +291,15 @@ def play_audio_from_url(url, host, animation_server=None, done_callback=None):
             logger.info(f"Resampling audio from {samplerate}Hz to {output_sample_rate}Hz")
             data = _resample_audio(data, samplerate, output_sample_rate)
             samplerate = output_sample_rate
-        if animation_server:
+        if explicit_output:
+            # A dedicated stream avoids sounddevice.play's process-global stream,
+            # which can interrupt another room or a feedback sound.
+            channels = 1 if data.ndim == 1 else data.shape[1]
+            with sd.OutputStream(device=output_device_index, samplerate=samplerate,
+                                 channels=channels, dtype='float32') as output:
+                output.write(data.astype(np.float32))
+            result = True
+        elif animation_server:
             logger.info(f"Playing with FFT analysis (samplerate: {samplerate})...")
             result = _play_with_fft_analysis(
                 data,

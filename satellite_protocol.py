@@ -119,6 +119,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
         on_tts_url: callable,
         on_tts_finished: callable,
         pipeline_id: Optional[str] = None,
+        feedback_enabled: bool = True,
     ) -> None:
         super().__init__(device_name)
 
@@ -128,6 +129,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
         self._on_tts_url = on_tts_url          # callback(url: str, done_callback)
         self._on_tts_finished = on_tts_finished  # callback() — called when TTS done
         self._pipeline_id = pipeline_id
+        self._feedback_enabled = feedback_enabled
 
         # Pipeline state
         self._pipeline_active = False
@@ -266,7 +268,8 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
             self._speech_end_handled = True
             self._is_streaming_audio = False
             self._set_animation("processing")
-            utils.processing_sound_loop.start()
+            if self._feedback_enabled:
+                utils.processing_sound_loop.start()
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END:
             if data.get("continue_conversation") == "1":
@@ -359,7 +362,8 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
             self._pipeline_active = False
             self._is_streaming_audio = False
             return
-        utils.play_feedback_sound("activation")
+        if self._feedback_enabled:
+            utils.play_feedback_sound("activation")
         self._set_animation("listening")
         _LOGGER.info("Pipeline run started")
 
@@ -453,7 +457,8 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
             else:
                 self._release_block()
             self._set_animation("hidden")
-            utils.play_feedback_sound("deactivation")
+            if self._feedback_enabled:
+                utils.play_feedback_sound("deactivation")
 
     def _release_block(self) -> None:
         self._block_wake_words = False
@@ -596,6 +601,8 @@ class SatelliteServer:
         on_tts_finished: callable,
         port: int = 6053,
         pipeline_id: Optional[str] = None,
+        mac_address: Optional[str] = None,
+        protocol_factory=None,
     ) -> None:
         self._device_name = device_name
         self._animation_server = animation_server
@@ -603,7 +610,8 @@ class SatelliteServer:
         self._on_tts_finished = on_tts_finished
         self._port = port
         self._pipeline_id = pipeline_id
-        self._mac_address = utils.get_env("DEVICE_MAC", "") or _make_mac_address()
+        self._mac_address = mac_address or utils.get_env("DEVICE_MAC", "") or _make_mac_address()
+        self._protocol_factory = protocol_factory or VoiceSatelliteProtocol
 
         self._server = None
         self._protocol: Optional[VoiceSatelliteProtocol] = None
@@ -611,7 +619,7 @@ class SatelliteServer:
         self._zeroconf_info = None
 
     def _make_protocol(self) -> VoiceSatelliteProtocol:
-        protocol = VoiceSatelliteProtocol(
+        protocol = self._protocol_factory(
             device_name=self._device_name,
             mac_address=self._mac_address,
             animation_server=self._animation_server,

@@ -209,12 +209,11 @@ modules:
       - install -Dm644 packaging/flatpak/io.github.SmolinskiP.GLaSSIST.metainfo.xml /app/share/metainfo/io.github.SmolinskiP.GLaSSIST.metainfo.xml
       - install -Dm644 img/icon.png /app/share/icons/hicolor/256x256/apps/io.github.SmolinskiP.GLaSSIST.png
     sources:
-      # Update tag + commit for each release (or let external-data-checker
+      # Update the tag for each release (or let external-data-checker
       # open the PR automatically once the app is on Flathub).
       - type: git
         url: https://github.com/SmolinskiP/GLaSSIST.git
-        tag: 3.5.1
-        commit: bc23992f3882669004ed0e0621306b17c1be982a
+        tag: 3.7.0
         x-checker-data:
           type: git
           tag-pattern: '^([\d.]+)$'

@@ -32,6 +32,7 @@ from conversation_manager import ConversationManager
 from prompt_server import PromptServer
 from satellite_protocol import SatelliteServer
 import update_checker
+from multi_room import rooms_enabled, configured_room_entries, validate_rooms
 
 logger = utils.setup_logger()
 
@@ -52,6 +53,8 @@ class HAAssistApp:
         self.conversation_manager = None
         self.prompt_server = None
         self.satellite_server = None
+        self.multi_room_manager = None
+        self.multi_room_enabled = rooms_enabled()
         self.connection_mode = utils.get_env("CONNECTION_MODE", "websocket").lower()
         self.animations_enabled = utils.get_env_bool("HA_ANIMATIONS_ENABLED", True)
         self.response_text_enabled = utils.get_env_bool("HA_RESPONSE_TEXT_ENABLED", True)
@@ -72,6 +75,8 @@ class HAAssistApp:
 
     def _setup_wake_word_detector(self):
         """Setup wake word detector with callback."""
+        if self.multi_room_enabled:
+            return  # Each room owns its wake model and microphone stream.
         try:
             self.wake_word_detector = WakeWordDetector(
                 callback=self.on_wake_word_detected
@@ -166,6 +171,12 @@ class HAAssistApp:
 
     def _show_wake_word_status(self, icon=None, item=None):
         """Show wake word detection status with animation."""
+        if self.multi_room_manager:
+            message = self.multi_room_manager.status()
+            logger.info(message)
+            if self.animation_server:
+                self.animation_server.show_success(message, duration=4.0)
+            return
         if not self.wake_word_detector:
             print("❌ Wake word detector not initialized")
             if self.animation_server:
@@ -241,6 +252,8 @@ class HAAssistApp:
 
     def _get_toggle_label(self):
         """Return label for pause/resume menu item."""
+        if self.multi_room_manager:
+            return '▶️ Resume wake word' if self.multi_room_manager.paused else '⏸ Pause wake word'
         if self.wake_word_detector and self.wake_word_detector.is_running:
             return '⏸ Pause wake word'
         return '▶️ Resume wake word'
@@ -253,7 +266,7 @@ class HAAssistApp:
             pystray.Menu.SEPARATOR,
             item(self._get_toggle_label(), self._toggle_wake_word_detection),
             item('🎯 Wake word status', self._show_wake_word_status),
-            item('🔄 Restart wake word', self._restart_wake_word),
+            item('🔄 Restart wake word', self._restart_wake_word, enabled=not bool(self.multi_room_enabled)),
             pystray.Menu.SEPARATOR,
             item('⚙️ Settings', self.open_settings),
             item('🔄 Test connection', self._quick_connection_test),
@@ -273,6 +286,10 @@ class HAAssistApp:
 
     def _toggle_wake_word_detection(self, icon=None, item=None):
         """Pause or resume wake word detection from tray."""
+        if self.multi_room_manager:
+            self.multi_room_manager.toggle_pause()
+            self._refresh_tray_menu()
+            return
         if not self.wake_word_detector or not self.wake_word_detector.enabled:
             print("❌ Wake word detection not available")
             if self.animation_server:
@@ -302,6 +319,9 @@ class HAAssistApp:
     
     def _quick_connection_test(self, icon=None, item=None):
         """Quick connection test from tray with animation."""
+        if self.multi_room_manager:
+            self._show_wake_word_status()
+            return
         def test_thread():
             try:
                 test_client = HomeAssistantClient()
@@ -787,6 +807,10 @@ class HAAssistApp:
 
     def on_voice_command_trigger(self):
         """Callback called when user activates voice command."""
+        if self.multi_room_enabled:
+            if self.multi_room_manager:
+                self.multi_room_manager.start_conversation()
+            return
         if self.connection_mode == "esphome":
             if self.satellite_server:
                 self.satellite_server.start_conversation()
@@ -1032,8 +1056,9 @@ class HAAssistApp:
             # Initialize audio manager at startup (both modes need it)
             logger.info("Initializing audio manager...")
             try:
-                self.audio_manager = AudioManager()
-                self.audio_manager.init_audio()
+                if not self.multi_room_enabled:
+                    self.audio_manager = AudioManager()
+                    self.audio_manager.init_audio()
                 logger.info("✅ Audio manager initialized")
             except Exception as e:
                 logger.error(f"❌ Failed to initialize audio manager: {e}")
@@ -1052,6 +1077,14 @@ class HAAssistApp:
                     self.ha_client = None
 
             self.setup_animation_server()
+
+            if self.multi_room_enabled:
+                from multi_room import MultiRoomManager
+                if self.connection_mode != "esphome":
+                    raise ValueError("Multi-room audio requires ESPHome connection mode")
+                self.multi_room_manager = MultiRoomManager(
+                    validate_rooms(configured_room_entries()), self.animation_server)
+                self.multi_room_manager.start()
 
             # Setup conversation system (WebSocket mode only)
             if self.connection_mode != "esphome" and self.ha_client and self.audio_manager:
@@ -1152,6 +1185,9 @@ class HAAssistApp:
             self.settings_window = None
         # Stop wake word detection first
         self.stop_wake_word_detection()
+
+        if self.multi_room_manager:
+            self.multi_room_manager.stop()
 
         # Stop ESPHome satellite server
         if self.satellite_server:
@@ -1264,6 +1300,9 @@ def validate_configuration():
     issues = []
 
     connection_mode = utils.get_env("CONNECTION_MODE", "websocket").lower()
+
+    if rooms_enabled() and connection_mode != "esphome":
+        issues.append("Multi-room audio requires ESPHome connection mode")
 
     if connection_mode == "websocket":
         host = utils.get_env("HA_HOST")

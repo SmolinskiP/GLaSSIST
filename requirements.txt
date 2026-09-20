@@ -9,6 +9,7 @@ charset-normalizer==3.4.2
 clr_loader==0.2.7.post0
 colorama==0.4.6
 flet==0.28.3
+flet-desktop==0.28.3; sys_platform == "win32"
 coloredlogs==15.0.1
 flatbuffers==25.2.10
 humanfriendly==10.0

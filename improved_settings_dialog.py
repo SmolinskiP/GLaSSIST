@@ -1478,6 +1478,13 @@ class ImprovedSettingsDialog:
             env_content += "# Generated automatically by the application\n\n"
             
             env_content += "# === CONNECTION ===\n"
+            room_values = {key: utils.get_env(key, '').strip() for key in
+                           ('HA_ROOMS_ENABLED', 'HA_ROOMS', 'HA_ROOMS_CONFIG')}
+            if any(room_values.values()):
+                env_content += f"CONNECTION_MODE={utils.get_env('CONNECTION_MODE', 'esphome')}\n"
+                for key, value in room_values.items():
+                    if value:
+                        env_content += f"{key}={value}\n"
             env_content += f"HA_HOST={settings['HA_HOST']}\n"
             env_content += f"HA_TOKEN={settings['HA_TOKEN']}\n"
             if settings['HA_PIPELINE_ID']:

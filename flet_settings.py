@@ -188,6 +188,8 @@ class FletSettingsApp:
                     icon=ft.Icons.MIC,
                     content=await self._create_audio_tab(current_settings)
                 ),
+                ft.Tab(text="Rooms", icon=ft.Icons.HOME,
+                       content=await self._create_rooms_tab()),
                 ft.Tab(
                     text="Wake Word",
                     icon=ft.Icons.RECORD_VOICE_OVER,
@@ -287,6 +289,18 @@ class FletSettingsApp:
         except Exception as e:
             logger.debug(f"Could not refresh models on startup: {e}")
     
+    async def _create_rooms_tab(self):
+        from room_settings import RoomSettings
+        self.room_settings = RoomSettings(self.page)
+        def on_enabled(event):
+            if self.room_settings.enabled.value:
+                self.connection_mode_dropdown.value = 'esphome'
+                self.wake_word_enabled.value = True
+            self.page.update()
+        self.room_settings.enabled.on_change = on_enabled
+        await self.room_settings.refresh_devices()
+        return self.room_settings.content
+
     async def _create_connection_tab(self, current_settings):
         """Create connection settings tab"""
         # Connection mode selector
@@ -1033,6 +1047,7 @@ class FletSettingsApp:
         self.debug_switch = ft.Switch(
             label="Debug mode (detailed logs)",
             value=current_settings['DEBUG'] == 'true',
+            tooltip="Save logs to glasssist.log: 2 MB per file, up to 3 backups. Restart to apply.",
             active_color=ft.Colors.ORANGE_600
         )
         
@@ -1431,13 +1446,7 @@ class FletSettingsApp:
             for mic in microphones:
                 # Handle special characters in microphone names
                 try:
-                    mic_name = mic['name']
-                    # Clean up problematic characters
-                    if isinstance(mic_name, bytes):
-                        mic_name = mic_name.decode('utf-8', errors='replace')
-                    
-                    # Replace common problematic characters
-                    mic_name = str(mic_name).replace('\x00', '').strip()
+                    mic_name = utils.normalize_audio_device_name(mic['name'])
                     
                     if not mic_name or len(mic_name) == 0:
                         mic_name = f"Microphone {mic['index']}"
@@ -1496,10 +1505,7 @@ class FletSettingsApp:
             
             for device in output_devices:
                 try:
-                    device_name = device['name']
-                    if isinstance(device_name, bytes):
-                        device_name = device_name.decode('utf-8', errors='replace')
-                    device_name = str(device_name).replace('\x00', '').strip()
+                    device_name = utils.normalize_audio_device_name(device['name'])
                     if not device_name:
                         device_name = f"Output {device['index']}"
                 except Exception as e:
@@ -1849,9 +1855,7 @@ class FletSettingsApp:
             modal=True
         )
         
-        self.page.dialog = progress_dialog
-        progress_dialog.open = True
-        self.page.update()
+        self.page.open(progress_dialog)
         
         try:
             def download():
@@ -1954,9 +1958,7 @@ class FletSettingsApp:
             modal=True
         )
         
-        self.page.dialog = test_dialog
-        test_dialog.open = True
-        self.page.update()
+        self.page.open(test_dialog)
     
     def _simulate_test(self, dialog):
         """Simulate wake word test"""
@@ -1998,11 +2000,21 @@ class FletSettingsApp:
         logger.info("🔥 SAVE SETTINGS CLICKED!")
         try:
             # Validate required fields
-            if not self.host_field.value.strip():
+            try:
+                room_values = self.room_settings.settings(int(self.animation_port_field.value))
+            except (ValueError, TypeError) as exc:
+                await self._show_dialog("Validation Error", str(exc))
+                return
+            room_mode = room_values['HA_ROOMS_ENABLED'] == 'true'
+            if room_mode:
+                self.connection_mode_dropdown.value = 'esphome'
+                self.wake_word_enabled.value = True
+            websocket_mode = self.connection_mode_dropdown.value == 'websocket'
+            if websocket_mode and not self.host_field.value.strip():
                 await self._show_dialog("Validation Error", "Home Assistant server address is required!")
                 return
                 
-            if not self.token_field.value.strip():
+            if websocket_mode and not self.token_field.value.strip():
                 await self._show_dialog("Validation Error", "Access token is required!")
                 return
             
@@ -2110,12 +2122,13 @@ class FletSettingsApp:
             }
             
             # Save to .env file
+            new_settings.update(room_values)
             result = self._save_env_file(new_settings)
             
             if result['success']:
                 await self._show_dialog("Settings Saved", 
                     f"{result['message']}\n\nRestart GLaSSIST to apply changes.",
-                    on_close=lambda: self.page.window_close())
+                    on_close=lambda: self.page.window.close())
                 
                 if self.animation_server:
                     self.animation_server.show_success("Settings saved", duration=3.0)
@@ -2137,6 +2150,16 @@ class FletSettingsApp:
             
             env_content += "# === CONNECTION ===\n"
             env_content += f"CONNECTION_MODE={settings['CONNECTION_MODE']}\n"
+            if 'HA_ROOMS' in settings:
+                env_content += f"HA_ROOMS_ENABLED={settings['HA_ROOMS_ENABLED']}\n"
+                env_content += f"HA_ROOMS={settings['HA_ROOMS']}\n"
+                # Clear the legacy path so imported settings take precedence.
+                env_content += "HA_ROOMS_CONFIG=\n"
+            else:
+                for key in ('HA_ROOMS_ENABLED', 'HA_ROOMS', 'HA_ROOMS_CONFIG'):
+                    value = utils.get_env(key, '').strip()
+                    if value:
+                        env_content += f"{key}={value}\n"
             env_content += f"HA_HOST={settings['HA_HOST']}\n"
             env_content += f"HA_TOKEN={settings['HA_TOKEN']}\n"
             if settings['HA_PIPELINE_ID']:
@@ -2197,8 +2220,17 @@ class FletSettingsApp:
             os.makedirs(os.path.dirname(env_path), exist_ok=True)
             
             # Write file
-            with open(env_path, 'w', encoding='utf-8') as f:
-                f.write(env_content)
+            import tempfile
+            temporary = None
+            try:
+                with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8',
+                                                 dir=os.path.dirname(env_path), delete=False) as f:
+                    temporary = f.name
+                    f.write(env_content)
+                os.replace(temporary, env_path)
+            finally:
+                if temporary and os.path.exists(temporary):
+                    os.unlink(temporary)
             
             logger.info(f"Settings saved to: {env_path}")
             return {
@@ -2215,6 +2247,8 @@ class FletSettingsApp:
     
     async def _show_dialog(self, title, message, on_close=None):
         """Show dialog with message"""
+        if title in ("Validation Error", "Save Error"):
+            logger.warning("%s: %s", title, message)
         dialog = ft.AlertDialog(
             title=ft.Text(title),
             content=ft.Text(message),
@@ -2224,14 +2258,11 @@ class FletSettingsApp:
             modal=True
         )
         
-        self.page.dialog = dialog
-        dialog.open = True
-        self.page.update()
+        self.page.open(dialog)
     
     def _close_dialog(self, dialog, callback=None):
         """Close dialog and optionally call callback"""
-        dialog.open = False
-        self.page.update()
+        self.page.close(dialog)
         if callback:
             callback()
 

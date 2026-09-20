@@ -20,6 +20,9 @@ long-lived token; it supports remote addresses but has fewer satellite features.
 
 ## 🚀 Key Features
 
+Experimental [multi-room audio setup](docs/multi-room.md) is available in ESPHome
+mode: separate microphone/speaker pairs and one active conversation at a time.
+
 - **Home Assistant Assist** — local microphone capture and speaker playback, without dedicated hardware
 - **Any Assist conversation agent** — local Ollama, cloud-based Claude or GPT, and whatever HA supports next
 - **ESPHome Satellite mode** — timers and conversation follow-up instead of one command and awkward silence
