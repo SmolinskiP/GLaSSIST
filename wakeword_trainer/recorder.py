@@ -116,16 +116,16 @@ class AmbientCollector:
     """Turns a continuous recording into 2-second clips and keeps only the ones with sound.
 
     Used to collect what the model hears in everyday life (conversations, TV, music) so it can learn
-    that this is NOT the wake word. The noise floor is tracked over the last ~5 minutes, so a clip is
-    kept when it is clearly louder than the room's background.
+    that this is NOT the wake word. A clip is kept when its level is above a fixed minimum (about
+    -44 dBFS, well above a quiet room's ~0.002). The level is deliberately NOT compared with the
+    "background": music or a TV that plays all the time would then count as background and never be
+    recorded, which is exactly the sound that fools a wake word.
     """
 
-    def __init__(self, folder, tag='env', chunk_seconds=2, history=150, factor=3.0, minimum=0.008):
+    def __init__(self, folder, tag='env', chunk_seconds=2, minimum=0.006):
         self.folder, self.tag = folder, tag
         self.size = int(chunk_seconds * SAMPLE_RATE)
-        self.factor, self.minimum = factor, minimum
-        self.levels = []
-        self.history = history
+        self.minimum = minimum
         self.buffer = np.zeros(0, np.float32)
         self.saved = 0
         self.seen = 0
@@ -140,11 +140,7 @@ class AmbientCollector:
             clip, self.buffer = self.buffer[:self.size], self.buffer[self.size:]
             level = float(np.sqrt(np.mean(clip ** 2)))
             self.seen += 1
-            floor = float(np.percentile(self.levels, 30)) if len(self.levels) >= 10 else None
-            self.levels = (self.levels + [level])[-self.history:]
-            if floor is None:
-                continue                       # first ~20 s only calibrate the room noise
-            if level > max(floor * self.factor, self.minimum):
+            if level > self.minimum:
                 sf.write(os.path.join(self.folder, f'real_{self.tag}_{self._index:04d}.wav'), clip,
                          SAMPLE_RATE, subtype='PCM_16')
                 self._index += 1

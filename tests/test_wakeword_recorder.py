@@ -20,9 +20,16 @@ def _noise(seconds, level, seed=0):
     return (np.random.default_rng(seed).standard_normal(int(seconds * SR)) * level).astype(np.float32)
 
 
+def test_music_that_plays_all_the_time_is_recorded(tmp_path):
+    """Regression: a level compared with the 'background' ignored constant music/TV completely."""
+    c = AmbientCollector(str(tmp_path), 'music')
+    c.feed(_noise(60, 0.04))                     # a full minute of loud, continuous sound
+    assert c.saved == 30 and c.seen == 30
+
+
 def test_keeps_only_clips_louder_than_the_room(tmp_path):
     c = AmbientCollector(str(tmp_path), 'env')
-    c.feed(_noise(30, 0.002))                    # 30 s of quiet room: calibrates, nothing is kept
+    c.feed(_noise(30, 0.002))                    # 30 s of quiet room: nothing is kept
     assert c.saved == 0 and c.seen == 15
     c.feed(_noise(4, 0.1, seed=1))               # two loud clips (a conversation)
     c.feed(_noise(10, 0.002, seed=2))            # quiet again
