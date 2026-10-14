@@ -1360,11 +1360,13 @@ def main():
                         help='Open settings window automatically after starting the application')
     parser.add_argument('--wake-word-wizard', action='store_true',
                         help='Open the wizard that trains a custom wake word, then exit')
+    parser.add_argument('--improve', action='store_true',
+                        help='With --wake-word-wizard: open on the "Improve" step (reduce false triggers)')
     args = parser.parse_args()
 
     if args.wake_word_wizard:
         import wake_word_wizard
-        wake_word_wizard.run()
+        wake_word_wizard.run(improve=args.improve)
         return
 
     # Set UTF-8 encoding for console output on Windows

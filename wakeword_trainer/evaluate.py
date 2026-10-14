@@ -62,6 +62,28 @@ def evaluate(ws, model_path=None, thresholds=(0.5, 0.7, 0.9), progress=None):
     return result
 
 
+def scan_clips(ws, tag='env', holdout_only=True, threshold=0.5, model_path=None, progress=None):
+    """How many recorded everyday-audio clips trigger the model? (None of them contain the wake word.)
+
+    With holdout_only=True only the clips kept aside from training are scanned, so the number is
+    honest both before and after retraining and the two can be compared.
+    """
+    import glob
+    head = OnnxHead(model_path or ws.model_path)
+    files = sorted(glob.glob(os.path.join(ws.real_neg, f'real_{tag}_*.wav')))
+    if holdout_only:
+        files = [f for f in files if F.is_real_holdout(f)]
+    scores = []
+    for i, f in enumerate(files):
+        scores.append(clip_max_score(head, f))
+        if progress:
+            progress(i + 1, len(files))
+    triggers = int((np.asarray(scores) > threshold).sum()) if scores else 0
+    return {'clips': len(files), 'triggers': triggers, 'rate': (triggers / len(files)) if files else None,
+            'threshold': threshold, 'holdout_only': holdout_only,
+            'worst': sorted([(round(s, 3), os.path.basename(f)) for s, f in zip(scores, files)], reverse=True)[:5]}
+
+
 def verdict(result):
     """Plain-language summary used by the wizard: 'good', 'ok' or 'poor' plus the reasons."""
     pos = result['test_pos']

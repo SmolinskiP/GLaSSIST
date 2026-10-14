@@ -66,12 +66,12 @@ def test_navigation_through_all_steps(wizard):
     wizard._next()
     assert wizard.step == 1 and wizard.back_btn.visible
     assert wizard.next_btn.disabled          # tools are not installed in the test folder
-    for step in range(2, 6):
+    for step in range(2, 7):
         wizard._show(step)
         assert wizard.step == step
     assert wizard.next_btn.text == 'Fechar'   # the last step ends with a close button
     wizard._back()
-    assert wizard.step == 4
+    assert wizard.step == 5 and wizard.title.value == 'Melhorar'
 
 
 def test_recording_step_requires_enough_clips(wizard, tmp_path):
@@ -181,10 +181,129 @@ def test_training_failure_marks_the_failed_stage(wizard, monkeypatch):
     assert 'MemoryError' in wizard.train_status.value and wizard.train_btn.visible
 
 
-def test_last_step_has_a_close_button(wizard, monkeypatch):
+def _fake_trained_project(wizard, word, trained=True):
+    name = W.slugify(word)
+    ws = W.Workspace(os.path.join(wizard.root, 'projects', name), W.Project(word=word, language='pt'))
+    ws.save_project()
+    if trained:
+        with open(ws.model_path, 'wb') as f:
+            f.write(b'onnx')
+    return ws
+
+
+def test_reduce_false_triggers_entry_lists_only_trained_projects(wizard, tmp_path):
+    _fake_trained_project(wizard, 'Bruninha')
+    _fake_trained_project(wizard, 'Bruna')
+    _fake_trained_project(wizard, 'Rascunho', trained=False)        # no model yet: not offered
+    wizard.improve_mode = True
+    wizard._show_picker()
+    assert wizard.title.value == 'Reduzir ativações falsas'
+    assert not wizard.next_btn.visible and not wizard.back_btn.visible
+    assert [o.key for o in wizard.pick_dd.options] == ['bruna', 'bruninha']
+    wizard._open_project('bruninha')
+    assert wizard.ws.project.word == 'Bruninha' and wizard.language == 'pt'
+    assert wizard.step == 1                      # tools not installed in the test folder: install first
+
+
+def test_reduce_false_triggers_goes_straight_to_improve_when_tools_are_ready(wizard, monkeypatch):
+    _fake_trained_project(wizard, 'Bruninha')
+    monkeypatch.setattr(W.env_setup, 'is_ready', lambda root: True)
+    wizard.improve_mode = True
+    wizard._show_picker()
+    wizard._open_project('bruninha')
+    assert wizard.step == 5 and wizard.title.value == 'Melhorar'
+
+
+def test_reduce_false_triggers_without_projects_offers_to_create_one(wizard):
+    wizard.improve_mode = True
+    wizard._show_picker()
+    shown = ' | '.join(_texts(wizard.body))
+    assert 'Nenhuma palavra' in shown and 'Criar sua própria palavra' in shown
+    wizard._start_new()
+    assert wizard.step == 0 and not wizard.improve_mode
+
+
+def test_settings_button_opens_the_wizard_on_the_improve_step(monkeypatch):
+    import flet_settings
+    launched = []
+    monkeypatch.setattr(flet_settings.subprocess, 'Popen', lambda cmd, **kw: launched.append(cmd))
+    app = flet_settings.FletSettingsApp()
+    app._open_wake_word_wizard(None, improve=True)
+    app._open_wake_word_wizard(None)
+    assert launched[0][-2:] == ['--wake-word-wizard', '--improve']
+    assert launched[1][-1] == '--wake-word-wizard'
+
+
+def test_improve_step_records_scans_and_offers_retraining(wizard, monkeypatch):
     wizard.lang_dd.value, wizard.word_tf.value = 'pt', 'Bruninha'
     wizard._apply_welcome()
     wizard._show(5)
+    assert wizard.title.value == 'Melhorar' and not wizard.next_btn.disabled     # optional step
+    assert wizard.imp_privacy.visible and 'Privacidade' in wizard.imp_privacy.value
+    _run_threads_inline(monkeypatch)
+    seen = {}
+
+    from wakeword_trainer import recorder
+    def fake_record(total, folder, tag, on_update=None, stop_event=None):
+        seen['seconds'], seen['folder'], seen['tag'] = total, folder, tag
+        seen['btn_hidden'] = not wizard.imp_btn.visible and wizard.imp_wait.visible and wizard.imp_stop.visible
+        on_update(60, 0.5, 12)
+        return 40
+    monkeypatch.setattr(recorder, 'record_ambient', fake_record)
+    monkeypatch.setattr(wizard, '_run_cli', lambda args, **kw: {'clips': 20, 'triggers': 6, 'rate': 0.3})
+    wizard.imp_minutes.value = '15'
+    wizard._improve_record()
+    assert seen == {'seconds': 900, 'folder': wizard.ws.real_neg, 'tag': 'env', 'btn_hidden': True}
+    shown = ' | '.join(_texts(wizard.imp_result))
+    assert 'Antes: 6 de 20' in shown
+    assert wizard.imp_retrain.visible and wizard.imp_btn.visible and not wizard.imp_wait.visible
+    assert wizard.improve_before == {'clips': 20, 'triggers': 6, 'rate': 0.3}
+
+
+def test_improve_step_reports_silence_and_errors(wizard, monkeypatch):
+    wizard.lang_dd.value, wizard.word_tf.value = 'pt', 'Bruninha'
+    wizard._apply_welcome()
+    wizard._show(5)
+    _run_threads_inline(monkeypatch)
+    from wakeword_trainer import recorder
+    monkeypatch.setattr(recorder, 'record_ambient', lambda *a, **k: 0)
+    monkeypatch.setattr(wizard, '_run_cli', lambda args, **kw: {'clips': 0, 'triggers': 0, 'rate': None})
+    wizard._improve_record()
+    assert 'Nenhum som foi gravado' in ' | '.join(_texts(wizard.imp_result)) and not wizard.imp_retrain.visible
+
+    def boom(*a, **k):
+        raise RuntimeError('mic busy')
+    monkeypatch.setattr(recorder, 'record_ambient', boom)
+    wizard._improve_record()
+    assert 'mic busy' in wizard.imp_status.value and wizard.imp_btn.visible
+
+
+def test_retrain_from_improve_jumps_to_train_and_shows_before_after(wizard, monkeypatch):
+    wizard.lang_dd.value, wizard.word_tf.value = 'pt', 'Bruninha'
+    wizard._apply_welcome()
+    wizard.improve_before = {'clips': 20, 'triggers': 6, 'rate': 0.3}
+    wizard._show(5)
+    _run_threads_inline(monkeypatch)
+
+    def fake_cli(args, on_progress=None, on_log=None, on_stage=None):
+        if args[0] == 'scan':
+            return {'clips': 20, 'triggers': 1, 'rate': 0.05}
+        if args[0] == 'train':
+            return {}
+        return {'verdict': {'level': 'good', 'reasons': []}, 'test_pos': {'clips': 1, 'above': {'0.5': 1}},
+                'hold_real_neg': {'clips': 0, 'above': {'0.5': 0}}}
+    monkeypatch.setattr(wizard, '_run_cli', fake_cli)
+    wizard._improve_retrain()
+    assert wizard.step == 4
+    shown = ' | '.join(_texts(wizard.verdict_box))
+    assert 'Antes: 6 de 20' in shown and 'Depois: 1 de 20' in shown
+    assert wizard.improve_before is None            # consumed: a later retrain does not compare again
+
+
+def test_last_step_has_a_close_button(wizard, monkeypatch):
+    wizard.lang_dd.value, wizard.word_tf.value = 'pt', 'Bruninha'
+    wizard._apply_welcome()
+    wizard._show(6)
     assert wizard.next_btn.visible and wizard.next_btn.text == 'Fechar'
     closed = []
     monkeypatch.setattr(wizard, '_on_close', lambda: closed.append(True))
@@ -197,7 +316,7 @@ def test_last_step_has_a_close_button(wizard, monkeypatch):
 def test_add_to_list_uses_install_and_reports(wizard, monkeypatch):
     wizard.lang_dd.value, wizard.word_tf.value = 'pt', 'Bruninha'
     wizard._apply_welcome()
-    wizard._show(5)
+    wizard._show(6)
     calls = []
     monkeypatch.setattr(W.install, 'install_model', lambda *a, **k: calls.append((a, k)) or {'models': ['bruninha']})
     wizard._add(replace=True)

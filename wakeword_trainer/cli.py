@@ -6,6 +6,7 @@
   python -m wakeword_trainer.cli generate  --workspace DIR
   python -m wakeword_trainer.cli train     --workspace DIR [--epochs 40] [--rebuild]
   python -m wakeword_trainer.cli evaluate  --workspace DIR
+  python -m wakeword_trainer.cli scan      --workspace DIR [--tag env] [--all-clips]
   python -m wakeword_trainer.cli info      --workspace DIR
 """
 import argparse
@@ -20,7 +21,9 @@ def emit(event, **data):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog='wakeword_trainer')
-    ap.add_argument('command', choices=['init', 'download-models', 'generate', 'train', 'evaluate', 'info'])
+    ap.add_argument('command', choices=['init', 'download-models', 'generate', 'train', 'evaluate', 'scan', 'info'])
+    ap.add_argument('--tag', default='env', help='scan: clip tag to scan (recorded everyday audio)')
+    ap.add_argument('--all-clips', action='store_true', help='scan: include the clips used for training')
     ap.add_argument('--workspace')
     ap.add_argument('--word')
     ap.add_argument('--language', default='en')
@@ -60,6 +63,10 @@ def main(argv=None):
             from . import train
             emit('result', **train.train(ws, args.epochs, progress=progress, log=log, rebuild=args.rebuild,
                                          stage=lambda name, state: emit('stage', name=name, state=state)))
+        elif args.command == 'scan':
+            from . import evaluate
+            emit('result', **evaluate.scan_clips(ws, tag=args.tag, holdout_only=not args.all_clips,
+                                                 progress=progress))
         elif args.command == 'evaluate':
             from . import evaluate
             emit('stage', name='evaluate', state='start')

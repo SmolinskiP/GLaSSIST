@@ -125,6 +125,12 @@ def is_synthetic_holdout(path):
     return int(hashlib.md5(os.path.basename(path).encode()).hexdigest(), 16) % 10 == 0
 
 
+def is_real_holdout(path):
+    """1 in 3 recorded speech clips is kept for the final check. Decided by the file NAME, so the
+    choice never changes when more recordings are added later (no leakage between runs)."""
+    return int(hashlib.md5(os.path.basename(path).encode()).hexdigest(), 16) % 3 == 0
+
+
 def split_files(ws):
     """Everything the model is allowed to train on, and what is kept aside for the final exam."""
     wav = lambda folder: sorted(glob.glob(os.path.join(folder, '*.wav')))
@@ -136,8 +142,8 @@ def split_files(ws):
         'train_neg': [f for f in neg if not is_synthetic_holdout(f)],
         'hold_neg': [f for f in neg if is_synthetic_holdout(f)],
         'train_real_pos': wav(ws.real_pos),
-        'train_real_neg': [f for i, f in enumerate(real_neg) if i % 3 != 0],
-        'hold_real_neg': [f for i, f in enumerate(real_neg) if i % 3 == 0],
+        'train_real_neg': [f for f in real_neg if not is_real_holdout(f)],
+        'hold_real_neg': [f for f in real_neg if is_real_holdout(f)],
         'test_pos': wav(ws.test_pos),
     }
 

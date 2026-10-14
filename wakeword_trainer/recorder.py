@@ -112,6 +112,71 @@ def segment_words(audio, min_len=0.25, max_len=3.0, gap=0.35):
     return out
 
 
+class AmbientCollector:
+    """Turns a continuous recording into 2-second clips and keeps only the ones with sound.
+
+    Used to collect what the model hears in everyday life (conversations, TV, music) so it can learn
+    that this is NOT the wake word. The noise floor is tracked over the last ~5 minutes, so a clip is
+    kept when it is clearly louder than the room's background.
+    """
+
+    def __init__(self, folder, tag='env', chunk_seconds=2, history=150, factor=3.0, minimum=0.008):
+        self.folder, self.tag = folder, tag
+        self.size = int(chunk_seconds * SAMPLE_RATE)
+        self.factor, self.minimum = factor, minimum
+        self.levels = []
+        self.history = history
+        self.buffer = np.zeros(0, np.float32)
+        self.saved = 0
+        self.seen = 0
+        os.makedirs(folder, exist_ok=True)
+        self._index = _next_index(folder, tag)
+
+    def feed(self, audio):
+        """Add float32 audio; returns the number of clips saved by this call."""
+        self.buffer = np.concatenate([self.buffer, audio])
+        saved = 0
+        while len(self.buffer) >= self.size:
+            clip, self.buffer = self.buffer[:self.size], self.buffer[self.size:]
+            level = float(np.sqrt(np.mean(clip ** 2)))
+            self.seen += 1
+            floor = float(np.percentile(self.levels, 30)) if len(self.levels) >= 10 else None
+            self.levels = (self.levels + [level])[-self.history:]
+            if floor is None:
+                continue                       # first ~20 s only calibrate the room noise
+            if level > max(floor * self.factor, self.minimum):
+                sf.write(os.path.join(self.folder, f'real_{self.tag}_{self._index:04d}.wav'), clip,
+                         SAMPLE_RATE, subtype='PCM_16')
+                self._index += 1
+                self.saved += 1
+                saved += 1
+        return saved
+
+
+def record_ambient(seconds, folder, tag='env', device=None, on_update=None, stop_event=None):
+    """Record for `seconds` (or until stop_event is set) and save only the clips with sound.
+
+    on_update(elapsed, level 0..1, clips_saved) is called about every 100 ms. Returns the number of
+    clips saved. Nothing but those clips is written to disk.
+    """
+    import pyaudio
+    pa = pyaudio.PyAudio()
+    dev = default_input_index() if device is None else device
+    stream = pa.open(format=pyaudio.paInt16, channels=1, rate=SAMPLE_RATE, input=True,
+                     input_device_index=dev, frames_per_buffer=CHUNK * 5)
+    collector, t0 = AmbientCollector(folder, tag), time.time()
+    try:
+        while time.time() - t0 < seconds and not (stop_event and stop_event.is_set()):
+            data = np.frombuffer(stream.read(CHUNK * 5, exception_on_overflow=False), dtype=np.int16)
+            x = data.astype(np.float32) / 32768.0
+            collector.feed(x)
+            if on_update:
+                on_update(time.time() - t0, min(1.0, float(np.sqrt(np.mean(x ** 2))) * 8), collector.saved)
+    finally:
+        stream.stop_stream(); stream.close(); pa.terminate()
+    return collector.saved
+
+
 def _next_index(folder, tag):
     return len([n for n in os.listdir(folder) if n.startswith(f'real_{tag}_')])
 

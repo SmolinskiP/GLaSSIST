@@ -28,7 +28,8 @@ i18n.patch_flet(ft)
 t = i18n.t
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
-STEP_NAMES = ['Language & word', 'Training tools', 'Voices', 'Your voice', 'Train', 'Test']
+STEP_NAMES = ['Language & word', 'Training tools', 'Voices', 'Your voice', 'Train', 'Improve', 'Test']
+IMPROVE_MINUTES = ('15', '30', '60')
 
 MIN_WORD, MIN_SPEECH, MIN_TEST = 25, 60, 10      # minimum clips before "Next" is enabled
 
@@ -60,7 +61,8 @@ TRAIN_STAGES = [
 
 
 class WakeWordWizard:
-    def __init__(self):
+    def __init__(self, improve=False):
+        self.improve_mode = improve       # opened from "Reduce false triggers": pick a project, go to Improve
         # recordings, projects and the training environment live here (kept out of git, see .gitignore)
         self.root = os.path.join(str(platform_utils.get_config_dir()), 'wakeword_workspace')
         self.page = None
@@ -74,6 +76,7 @@ class WakeWordWizard:
         self.stop_event = threading.Event()
         self.proc = None
         self.evaluation = None
+        self.improve_before = None      # scan of everyday audio before retraining ("Improve" step)
         self.logs = []
 
     # ------------------------------------------------------------------ page scaffolding
@@ -95,7 +98,58 @@ class WakeWordWizard:
                             ft.Row([self.hint], expand=False),
                             ft.Row([self.back_btn, self.next_btn], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)],
                            expand=True))
+        self._show_picker() if self.improve_mode else self._show(0)
+
+    # ------------------------------------------------------------------ "improve" entry: pick a project
+    def trained_projects(self):
+        """[(folder name, Project)] of the projects that already have a trained model."""
+        base = os.path.join(self.root, 'projects')
+        found = []
+        for name in sorted(os.listdir(base)) if os.path.isdir(base) else []:
+            try:
+                ws = Workspace(os.path.join(base, name))
+            except (OSError, ValueError, TypeError):
+                continue
+            if os.path.exists(ws.model_path):
+                found.append((name, ws.project))
+        return found
+
+    def _show_picker(self):
+        self.step = -1
+        self.header.controls = []
+        self.title.value = t('Reduce false triggers')
+        self.back_btn.visible = self.next_btn.visible = False
+        projects = self.trained_projects()
+        if not projects:
+            self.body.content = ft.Column([
+                ft.Text('No custom wake word was trained with the wizard yet. Create one first: the wizard '
+                        'then offers to improve it.'),
+                ft.FilledButton('Create your own wake word', icon=ft.Icons.AUTO_FIX_HIGH,
+                                on_click=lambda e: self._start_new())], spacing=12)
+        else:
+            self.pick_dd = ft.Dropdown(label='Which wake word do you want to improve?', width=480,
+                                       value=projects[0][0],
+                                       options=[ft.dropdown.Option(key=n, text=f'{p.word}  ({p.language})')
+                                                for n, p in projects])
+            self.body.content = ft.Column([
+                ft.Text('The wizard will record everyday audio (conversations, TV, music) while you go about your '
+                        'day, measure how often the model is fooled by it, and retrain it with those clips.'),
+                self.pick_dd,
+                ft.Row([ft.FilledButton('Continue', icon=ft.Icons.ARROW_FORWARD,
+                                        on_click=lambda e: self._open_project(self.pick_dd.value)),
+                        ft.TextButton('Create a new wake word instead', on_click=lambda e: self._start_new())])],
+                spacing=12)
+        self.page.update()
+
+    def _start_new(self):
+        self.improve_mode = False
         self._show(0)
+
+    def _open_project(self, name):
+        self.ws = Workspace(os.path.join(self.root, 'projects', name))
+        self.language, self.word = self.ws.project.language, self.ws.project.word
+        # the training tools are needed to measure and retrain; every earlier step is already done
+        self._show(5 if env_setup.is_ready(self.root) else 1)
 
     def _on_close(self):
         self.stop_event.set()
@@ -494,6 +548,11 @@ class WakeWordWizard:
                 self._run_cli(['train', '--workspace', self.ws.root, '--rebuild'], progress, on_log, on_stage)
                 self.evaluation = self._run_cli(['evaluate', '--workspace', self.ws.root], progress, on_log, on_stage)
                 self._show_verdict(self.evaluation)
+                if getattr(self, 'improve_before', None):          # came from the "Improve" step
+                    self._set_stage_detail_scan()
+                    after = self._run_cli(['scan', '--workspace', self.ws.root])
+                    self._show_improvement(after)
+                    self.improve_before = None
                 self._say(self.train_status, t('Training finished.'), ft.Colors.GREEN_700)
                 ok = True
             except Exception as exc:
@@ -507,6 +566,10 @@ class WakeWordWizard:
                 self.train_btn.visible = True
                 self._set_busy(False)
         threading.Thread(target=work, daemon=True).start()
+
+    def _set_stage_detail_scan(self):
+        self.stage_rows['evaluate']['detail'].value = t('Comparing with the recorded everyday audio...')
+        self.page.update()
 
     def _show_verdict(self, ev):
         v = ev['verdict']
@@ -534,8 +597,112 @@ class WakeWordWizard:
         self.verdict_box.controls = rows
         self.page.update()
 
-    # ------------------------------------------------------------------ step 6: test & add
+    # ------------------------------------------------------------------ step 6: improve (optional)
     def _view_5(self):
+        """Collect everyday audio (conversations, TV...) so the model learns what is NOT the word."""
+        self.imp_minutes = ft.Dropdown(label='How long to record', value='30', width=240,
+                                       options=[ft.dropdown.Option(key=m, text=f'{m} min') for m in IMPROVE_MINUTES])
+        self.imp_privacy = ft.Text('Privacy: this records EVERYTHING the microphone hears, including other people '
+                                   'talking. It stays on this computer and only the clips with sound are kept '
+                                   '(not the silence). Tell the people around you.',
+                                   size=13, weight=ft.FontWeight.BOLD, color=ft.Colors.ORANGE_800)
+        self.imp_wait = ft.Text('Keep doing your normal day. Do NOT say the wake word. You can stop at any time.',
+                                size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_700, visible=False)
+        self.imp_btn = ft.FilledButton('Start recording', icon=ft.Icons.FIBER_MANUAL_RECORD, on_click=self._improve_record)
+        self.imp_stop = ft.OutlinedButton('Stop now', icon=ft.Icons.STOP, visible=False,
+                                          on_click=lambda e: self.stop_event.set())
+        self.imp_bar = ft.ProgressBar(value=0, visible=False)
+        self.imp_status = ft.Text(size=13)
+        self.imp_result = ft.Column(spacing=6)
+        self.imp_retrain = ft.FilledButton('Retrain with these examples', icon=ft.Icons.MODEL_TRAINING,
+                                           visible=False, on_click=self._improve_retrain)
+        self.improve_before = getattr(self, 'improve_before', None)
+        self.body.content = ft.Column([
+            ft.Text('Optional, but the best fix if your wake word triggers by mistake (conversations, TV, music). '
+                    'Leave the microphone recording while you go about your day; the wizard keeps only the clips '
+                    'with sound, measures how often the current model is fooled by them, and then retrains it '
+                    'with them as examples of what is NOT your word.'),
+            self.imp_privacy, ft.Row([self.imp_minutes, self.imp_btn, self.imp_stop], spacing=14),
+            self.imp_wait, self.imp_bar, self.imp_status, self.imp_result, self.imp_retrain],
+            spacing=10, scroll=ft.ScrollMode.AUTO)
+        self.hint.value = t('You can skip this step.')
+        self.next_btn.disabled = False
+
+    def _improve_record(self, e=None):
+        minutes = int(self.imp_minutes.value or '30')
+        total = minutes * 60
+        for c in (self.imp_btn, self.imp_minutes, self.imp_privacy):
+            c.visible = False
+        self.imp_wait.visible = self.imp_stop.visible = self.imp_bar.visible = True
+        self.imp_retrain.visible = False
+        self.imp_result.controls.clear()
+        self.stop_event.clear()
+        self._set_busy(True)
+
+        def update(elapsed, level, saved):
+            self.imp_bar.value = min(1.0, elapsed / total)
+            self._say(self.imp_status, f'{int(elapsed // 60)}:{int(elapsed % 60):02d} / {minutes}:00   ·   '
+                      f'{saved} {t("clips with sound saved")}')
+
+        def work():
+            ok = False
+            try:
+                from wakeword_trainer import recorder
+                saved = recorder.record_ambient(total, self.ws.real_neg, 'env', on_update=update,
+                                                stop_event=self.stop_event)
+                self.imp_wait.visible = self.imp_stop.visible = False
+                self.imp_bar.value = None
+                self._say(self.imp_status, t('Measuring how often the current model is fooled...'))
+                self.improve_before = self._run_cli(['scan', '--workspace', self.ws.root])
+                self._show_before(self.improve_before, saved)
+                ok = True
+            except Exception as exc:
+                self._error(self.imp_status, exc)
+                self.imp_status.value += '\n' + t('Click the button to try again.')
+            finally:
+                self.imp_wait.visible = self.imp_stop.visible = self.imp_bar.visible = False
+                self.imp_btn.text = t('Record more') if ok else t('Try again')
+                self.imp_btn.visible = self.imp_minutes.visible = self.imp_privacy.visible = True
+                self._set_busy(False)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _show_before(self, scan, saved):
+        n, k = scan['clips'], scan['triggers']
+        rows = []
+        if saved == 0:
+            rows.append(ft.Text(t('No sound was recorded: check the microphone and try again.'), color=ft.Colors.RED_600))
+        elif n == 0:
+            rows.append(ft.Text(t('Recorded, but too few clips to measure yet. Record a bit longer.'), size=13))
+        else:
+            color = ft.Colors.GREEN_700 if k == 0 else ft.Colors.RED_700
+            rows.append(ft.Text(f'{t("Recorded")}: {saved} {t("clips with sound")}.', size=13))
+            rows.append(ft.Text(f'{t("Before")}: {k} {t("of")} {n} {t("clips the model had never heard triggered it by mistake")}.',
+                                size=15, weight=ft.FontWeight.BOLD, color=color))
+            if k:
+                rows.append(ft.Text('Retraining with these clips teaches it that this is not your word.',
+                                    size=12, color=ft.Colors.GREY_700))
+        self.imp_result.controls = rows
+        self.imp_retrain.visible = saved >= 10
+        self._say(self.imp_status, '')
+
+    def _improve_retrain(self, e=None):
+        """Go to the Train step and start it: the new clips are now part of the training data."""
+        self._show(4)
+        self._train()
+
+    def _show_improvement(self, after):
+        """After retraining: show before / after on the same held-out clips."""
+        before = self.improve_before
+        if not before or not after['clips']:
+            return
+        better = after['triggers'] <= before['triggers']
+        self.verdict_box.controls.append(ft.Text(
+            f'{t("Before")}: {before["triggers"]} {t("of")} {before["clips"]}   →   '
+            f'{t("After")}: {after["triggers"]} {t("of")} {after["clips"]}  {t("everyday clips that triggered it by mistake")}',
+            size=15, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_700 if better else ft.Colors.ORANGE_700))
+
+    # ------------------------------------------------------------------ step 7: test & add
+    def _view_6(self):
         self.test_running = False
         self.score_bar = ft.ProgressBar(value=0, width=420)
         self.test_text = ft.Text(size=14)
@@ -628,8 +795,8 @@ class WakeWordWizard:
         self._say(self.add_msg, t('Okay. Your model is saved in the wizard folder; you can add it later by running the wizard again.'))
 
 
-def run():
-    wizard = WakeWordWizard()
+def run(improve=False):
+    wizard = WakeWordWizard(improve=improve)
     ft.app(target=wizard.main, view=ft.FLET_APP)
 
 

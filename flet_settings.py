@@ -891,13 +891,25 @@ class FletSettingsApp:
                             ft.Text("Helps reduce false activations from non-speech sounds (0.0 = disabled)",
                                    size=12, color=ft.Colors.GREY_600),
                             ft.Container(height=15),
-                            self.noise_suppression_switch
+                            self.noise_suppression_switch,
+                            ft.Container(height=15),
+                            ft.Text("Triggering by mistake (conversations, TV, music)?",
+                                    size=14, weight=ft.FontWeight.W_500),
+                            ft.Text("Raising the threshold helps a little. The real fix is to record everyday audio "
+                                    "and retrain your wake word with it: the wizard does it for you.",
+                                    size=12, color=ft.Colors.GREY_600),
+                            ft.OutlinedButton(
+                                "Reduce false triggers",
+                                icon=ft.Icons.HEARING_DISABLED,
+                                tooltip="Opens the wizard on the Improve step for one of your custom wake words",
+                                on_click=lambda e: self._open_wake_word_wizard(e, improve=True)
+                            )
                         ]),
                         padding=20
                     ),
                     elevation=2
                 ),
-                
+
                 # Management card
                 ft.Card(
                     content=ft.Container(
@@ -1919,14 +1931,18 @@ class FletSettingsApp:
             await self._show_dialog("Error", f"Failed to download models: {str(ex)}")
             logger.error(f"Model download failed: {ex}")
     
-    def _open_wake_word_wizard(self, e):
-        """Launch the custom wake word wizard in its own process (it has its own Flet window)."""
+    def _open_wake_word_wizard(self, e, improve=False):
+        """Launch the custom wake word wizard in its own process (it has its own Flet window).
+
+        improve=True opens it on the "Improve" step (record everyday audio and retrain) for an
+        existing custom wake word, to reduce false triggers.
+        """
         try:
+            flag = ['--wake-word-wizard'] + (['--improve'] if improve else [])
             if getattr(sys, 'frozen', False):
-                cmd = [sys.executable, '--wake-word-wizard']
+                cmd = [sys.executable] + flag
             else:
-                cmd = [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'main.py'),
-                       '--wake-word-wizard']
+                cmd = [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'main.py')] + flag
             subprocess.Popen(cmd, cwd=os.path.dirname(os.path.abspath(__file__)))
             logger.info("Started the wake word wizard")
         except Exception as ex:
