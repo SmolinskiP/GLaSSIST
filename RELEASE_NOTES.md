@@ -1,3 +1,11 @@
+## 🔉 GLaSSIST 3.8.1 — Media player ducking in ESPHome mode
+
+### ✨ New features
+
+- **Media players are lowered in ESPHome mode too.** Volume management (**Settings → Media Players**) used to work only in WebSocket mode. ESPHome satellite and room conversations now lower the selected media players while GLaSSIST listens and speaks, and restore them afterwards. In ESPHome mode this needs the Home Assistant address and access token (**Connection → WebSocket Settings**).
+- **Changelog tab.** Settings now show the latest release notes straight from GitHub, with the installed version marked.
+- **About & Help.** The About tab is renamed to make the issue tracker and contact details easier to find.
+
 ## 🌍 GLaSSIST 3.8.0 — Interface translations
 
 ### ✨ New features
