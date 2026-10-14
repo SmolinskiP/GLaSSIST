@@ -17,9 +17,9 @@ word live and whether to add it to your wake word list.
 | 1 | **Language & word** | Pick the language and type the word (3–4 syllables work best; avoid common words). |
 | 2 | **Training tools** | Creates a separate Python environment (CPU PyTorch, openWakeWord models, edge-tts). ~800 MB, once. |
 | 3 | **Voices** | Generates thousands of synthetic clips with neural voices of the chosen language: your word at different speeds and pitches, plus words and phrases that must *not* trigger it. |
-| 4 | **Your voice** | You record: the word (~2 min), normal speech (~2 min), the quiet room (30 s) and a separate *exam* set of the word (~75 s). |
-| 5 | **Train** | Trains a small head on openWakeWord embeddings, exports `ONNX`, then checks it on the exam recordings and on held-out speech it has never seen, and tells you in plain words if the result is good, usable or not good enough. |
-| 6 | **Test** | Live meter: say the word and watch the bar. Then *Add it to my wake word list* (copies the model to `models/` and updates `HA_WAKE_WORD_MODELS`) or *Use only this one*. |
+| 4 | **Your voice** | You record: the word (~2 min), normal speech (~3 min), the quiet room (30 s) and a separate *exam* set of the word (~75 s). A live counter shows what was heard. |
+| 5 | **Train** | Click once and wait: a checklist shows each stage (prepare, extract audio features, train, save, check on your exam recordings) with a spinner on the current one, a green check when done and a red cross where it failed. The model is exported as `ONNX`, checked on the exam recordings and on held-out speech it has never seen, and the verdict says in plain words if the result is good, usable or not good enough, with the counts. |
+| 6 | **Test** | Live meter: say the word and watch the bar (wait the 2 seconds the detector needs to get ready). Then *Add it to my wake word list* (copies the model to `models/` and updates `HA_WAKE_WORD_MODELS`) or *Use only this one*. *Close* ends the wizard. |
 
 ## Why your own voice matters
 

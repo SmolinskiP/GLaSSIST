@@ -69,7 +69,7 @@ def test_navigation_through_all_steps(wizard):
     for step in range(2, 6):
         wizard._show(step)
         assert wizard.step == step
-    assert not wizard.next_btn.visible        # last step has no "next"
+    assert wizard.next_btn.text == 'Fechar'   # the last step ends with a close button
     wizard._back()
     assert wizard.step == 4
 
@@ -82,7 +82,8 @@ def test_recording_step_requires_enough_clips(wizard, tmp_path):
     assert 'Ainda falta' in wizard.rec_msg.value
     import numpy as np
     import soundfile as sf
-    for folder, n in ((wizard.ws.real_pos, 25), (wizard.ws.real_neg, 30), (wizard.ws.test_pos, 10)):
+    for folder, n in ((wizard.ws.real_pos, W.MIN_WORD), (wizard.ws.real_neg, W.MIN_SPEECH),
+                      (wizard.ws.test_pos, W.MIN_TEST)):
         for i in range(n):
             sf.write(os.path.join(folder, f'c_{i}.wav'), np.zeros(1600, np.float32), 16000)
     wizard._refresh_recording_status()
@@ -95,14 +96,102 @@ def test_verdict_is_explained(wizard, level, fragment):
     wizard.lang_dd.value, wizard.word_tf.value = 'pt', 'Bruninha'
     assert wizard._apply_welcome()
     wizard._show(4)
-    ev = {'verdict': {'level': level, 'reasons': ['50% of normal-speech clips triggered it'] if level == 'poor' else []},
+    ev = {'verdict': {'level': level, 'reasons': ['12 of 20 normal-speech clips triggered it'] if level == 'poor' else []},
           'test_pos': {'clips': 30, 'above': {'0.5': 29}}, 'hold_real_neg': {'clips': 58, 'above': {'0.5': 2}},
           'ambient': {'windows_above_0_5': 0}}
     wizard._show_verdict(ev)
     shown = ' | '.join(_texts(wizard.verdict_box))
     assert fragment in shown and '29 / 30' in shown and '2 / 58' in shown
     if level == 'poor':
-        assert '50% dos trechos de fala normal a ativaram' in shown
+        assert '12 de 20 trechos de fala normal a ativaram' in shown
+        assert 'não precisa refazer as vozes' in shown.lower()
+
+
+def _run_threads_inline(monkeypatch):
+    """Run the wizard's background threads synchronously so the tests can inspect the final state."""
+    class Inline:
+        def __init__(self, target, daemon=None): self.target = target
+        def start(self): self.target()
+    monkeypatch.setattr(W.threading, 'Thread', Inline)
+
+
+def test_voices_button_hides_while_working_and_returns_on_error(wizard, monkeypatch):
+    wizard.lang_dd.value, wizard.word_tf.value = 'pt', 'Bruninha'
+    wizard._apply_welcome()
+    wizard._show(2)
+    _run_threads_inline(monkeypatch)
+    seen = {}
+
+    def failing(args, on_progress=None, **kw):
+        seen['btn_hidden_during'] = not wizard.voices_btn.visible
+        seen['wait_shown'] = wizard.voices_wait.visible
+        raise RuntimeError('no internet')
+
+    monkeypatch.setattr(wizard, '_run_cli', failing)
+    wizard._generate()
+    assert seen == {'btn_hidden_during': True, 'wait_shown': True}
+    assert wizard.voices_btn.visible and not wizard.voices_wait.visible       # back so the user can retry
+    assert 'no internet' in wizard.voices_status.value and 'tentar de novo' in wizard.voices_status.value
+
+
+def test_training_checklist_marks_each_stage(wizard, monkeypatch):
+    wizard.lang_dd.value, wizard.word_tf.value = 'pt', 'Bruninha'
+    wizard._apply_welcome()
+    wizard._show(4)
+    assert set(wizard.stage_state.values()) == {'pending'}
+    _run_threads_inline(monkeypatch)
+    snapshots = []
+
+    def fake_cli(args, on_progress=None, on_log=None, on_stage=None):
+        if args[0] == 'train':
+            for name in ('prepare', 'features', 'train', 'export'):
+                on_stage(name, 'start')
+                snapshots.append(dict(wizard.stage_state))
+                if name == 'train':
+                    on_progress(5, 40)
+                on_stage(name, 'done')
+            return {}
+        on_stage('evaluate', 'start'); on_stage('evaluate', 'done')
+        return {'verdict': {'level': 'good', 'reasons': []}, 'test_pos': {'clips': 1, 'above': {'0.5': 1}},
+                'hold_real_neg': {'clips': 0, 'above': {'0.5': 0}}}
+
+    monkeypatch.setattr(wizard, '_run_cli', fake_cli)
+    wizard._train()
+    assert snapshots[1]['features'] == 'running' and snapshots[1]['prepare'] == 'done'
+    assert snapshots[1]['train'] == 'pending'
+    assert set(wizard.stage_state.values()) == {'done'}
+    assert wizard.train_btn.visible and not wizard.train_wait.visible
+
+
+def test_training_failure_marks_the_failed_stage(wizard, monkeypatch):
+    wizard.lang_dd.value, wizard.word_tf.value = 'pt', 'Bruninha'
+    wizard._apply_welcome()
+    wizard._show(4)
+    _run_threads_inline(monkeypatch)
+
+    def fake_cli(args, on_progress=None, on_log=None, on_stage=None):
+        on_stage('prepare', 'start'); on_stage('prepare', 'done')
+        on_stage('features', 'start')
+        raise RuntimeError('MemoryError')
+
+    monkeypatch.setattr(wizard, '_run_cli', fake_cli)
+    wizard._train()
+    assert wizard.stage_state['prepare'] == 'done' and wizard.stage_state['features'] == 'failed'
+    assert wizard.stage_state['train'] == 'pending'
+    assert 'MemoryError' in wizard.train_status.value and wizard.train_btn.visible
+
+
+def test_last_step_has_a_close_button(wizard, monkeypatch):
+    wizard.lang_dd.value, wizard.word_tf.value = 'pt', 'Bruninha'
+    wizard._apply_welcome()
+    wizard._show(5)
+    assert wizard.next_btn.visible and wizard.next_btn.text == 'Fechar'
+    closed = []
+    monkeypatch.setattr(wizard, '_on_close', lambda: closed.append(True))
+    wizard.next_btn.on_click(None)
+    assert closed == [True]
+    wizard._show(4)
+    assert wizard.next_btn.text == 'Avançar'          # not the close button on other steps
 
 
 def test_add_to_list_uses_install_and_reports(wizard, monkeypatch):

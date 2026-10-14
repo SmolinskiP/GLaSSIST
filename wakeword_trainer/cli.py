@@ -58,10 +58,14 @@ def main(argv=None):
             emit('result', **stats)
         elif args.command == 'train':
             from . import train
-            emit('result', **train.train(ws, args.epochs, progress=progress, log=log, rebuild=args.rebuild))
+            emit('result', **train.train(ws, args.epochs, progress=progress, log=log, rebuild=args.rebuild,
+                                         stage=lambda name, state: emit('stage', name=name, state=state)))
         elif args.command == 'evaluate':
             from . import evaluate
-            emit('result', **evaluate.evaluate(ws, progress=progress))
+            emit('stage', name='evaluate', state='start')
+            result = evaluate.evaluate(ws, progress=progress)
+            emit('stage', name='evaluate', state='done')
+            emit('result', **result)
         return 0
     except Exception as exc:  # report instead of a bare traceback; the wizard shows this text
         emit('error', msg=f'{type(exc).__name__}: {exc}')

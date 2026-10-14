@@ -78,8 +78,14 @@ def verdict(result):
     elif detected < 0.95:
         level = 'ok'; reasons.append(f'{detected:.0%} of your test recordings were detected')
     if false_rate is not None:
-        if false_rate > 0.10:
-            level = 'poor'; reasons.append(f'{false_rate:.0%} of normal-speech clips triggered it')
+        n_false = neg['above'].get('0.5', 0)
+        if n_false:
+            reasons.append(f'{n_false} of {neg["clips"]} normal-speech clips triggered it')
+        if false_rate > 0.15:
+            level = 'poor'
         elif false_rate > 0.03 and level == 'good':
-            level = 'ok'; reasons.append(f'{false_rate:.0%} of normal-speech clips triggered it')
+            level = 'ok'
+        if neg['clips'] < 40 and n_false:
+            reasons.append('only a few speech clips were checked, so this number is not very reliable: '
+                           'record more normal speech to check it better')
     return {'level': level, 'detected': detected, 'false_clip_rate': false_rate, 'reasons': reasons}

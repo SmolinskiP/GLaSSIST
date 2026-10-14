@@ -30,19 +30,32 @@ t = i18n.t
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 STEP_NAMES = ['Language & word', 'Training tools', 'Voices', 'Your voice', 'Train', 'Test']
 
-# (key, title, seconds, instructions, minimum clips, destination)
+MIN_WORD, MIN_SPEECH, MIN_TEST = 25, 60, 10      # minimum clips before "Next" is enabled
+
+# (key, title, seconds, instructions, minimum clips)
 RECORDINGS = [
     ('word', 'Say your wake word', 120,
      'Say the wake word about once every 3 seconds, with a pause in between. Vary it: normal, quiet, loud, '
-     'fast, near and far from the microphone.', 25),
-    ('speech', 'Talk normally', 120,
+     'fast, near and far from the microphone.', MIN_WORD),
+    ('speech', 'Talk normally', 180,
      'Talk about anything (tell about your day, read something aloud, let a video play). '
-     'Do NOT say the wake word. This teaches the model what is not the word.', 30),
+     'Do NOT say the wake word. This teaches the model what is not the word and checks that it does not '
+     'trigger by mistake: the more normal speech, the more reliable the result.', MIN_SPEECH),
     ('quiet', 'Stay quiet', 30,
      'Do not speak. This records the sound of your room (fan, hum, keyboard).', 0),
     ('test', 'Final exam: say it once more', 75,
      'Say the wake word again, about once every 3 seconds. These recordings are never used for training: '
-     'they are only used to check honestly how well the model works.', 10),
+     'they are only used to check honestly how well the model works.', MIN_TEST),
+]
+
+
+# (stage name emitted by the trainer, label shown in the checklist)
+TRAIN_STAGES = [
+    ('prepare', 'Prepare the data'),
+    ('features', 'Extract the audio features (the slow part, about 10 minutes)'),
+    ('train', 'Train the model'),
+    ('export', 'Save the model'),
+    ('evaluate', 'Check it on your exam recordings'),
 ]
 
 
@@ -108,10 +121,20 @@ class WakeWordWizard:
         self.title.value = t(STEP_NAMES[step])
         self.hint.value = ''
         self.back_btn.visible = step > 0
-        self.next_btn.visible = step < len(STEP_NAMES) - 1
+        last = step == len(STEP_NAMES) - 1
+        self.next_btn.visible = True
         self.next_btn.disabled = False
+        # the last step ends the wizard: the button closes the window
+        self.next_btn.text = t('Close') if last else t('Next')
+        self.next_btn.icon = ft.Icons.CHECK if last else ft.Icons.ARROW_FORWARD
+        self.next_btn.on_click = self._close_window if last else self._next
         getattr(self, f'_view_{step}')()
         self.page.update()
+
+    def _close_window(self, e=None):
+        if self.busy or getattr(self, 'test_running', False):
+            self.stop_event.set()
+        self._on_close()
 
     def _back(self, e=None):
         if self.busy:
@@ -138,7 +161,7 @@ class WakeWordWizard:
             return self.ws is not None and self.ws.count(self.ws.pos) >= 50 and self.ws.count(self.ws.neg) >= 100
         if self.step == 3:
             s = self.ws.summary()
-            return s['real_pos'] >= 25 and s['real_neg'] >= 30 and s['test_pos'] >= 10
+            return s['real_pos'] >= MIN_WORD and s['real_neg'] >= MIN_SPEECH and s['test_pos'] >= MIN_TEST
         return True
 
     def _say(self, control, text, color=None):
@@ -224,7 +247,7 @@ class WakeWordWizard:
         threading.Thread(target=work, daemon=True).start()
 
     # ------------------------------------------------------------------ subprocess helper
-    def _run_cli(self, args, on_progress=None, on_log=None):
+    def _run_cli(self, args, on_progress=None, on_log=None, on_stage=None):
         """Run `python -m wakeword_trainer.cli ...` in the training environment; return its result dict."""
         cmd = [env_setup.trainer_python(self.root), '-m', 'wakeword_trainer.cli'] + args
         env = dict(os.environ, PYTHONUTF8='1', PYTHONUNBUFFERED='1', PYTHONPATH=APP_DIR)
@@ -244,6 +267,8 @@ class WakeWordWizard:
                 on_progress(msg['done'], msg['total'])
             elif event == 'log' and on_log:
                 on_log(msg['msg'])
+            elif event == 'stage' and on_stage:
+                on_stage(msg['name'], msg['state'])
             elif event == 'result':
                 result = msg
             elif event == 'error':
@@ -258,6 +283,8 @@ class WakeWordWizard:
         s = self.ws.summary()
         self.voices_bar = ft.ProgressBar(value=0, visible=False)
         self.voices_status = ft.Text(size=13)
+        self.voices_wait = ft.Text('Just wait: do not click or do anything else. This takes about 5 to 10 minutes.',
+                                   size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_700, visible=False)
         self.voices_btn = ft.FilledButton('Generate the voices', icon=ft.Icons.RECORD_VOICE_OVER,
                                           on_click=self._generate)
         done = s['synthetic_pos'] >= 50 and s['synthetic_neg'] >= 100
@@ -267,12 +294,16 @@ class WakeWordWizard:
         self.body.content = ft.Column([
             ft.Text('The computer will now create thousands of short audio clips of your word (and of other '
                     'words and phrases that must NOT trigger it) using neural voices of the chosen language, '
-                    'at different speeds and pitches. Takes about 5 to 10 minutes.'),
-            self.voices_status, self.voices_btn, self.voices_bar], spacing=10)
+                    'at different speeds and pitches. You only need to click the button once.'),
+            self.voices_btn, self.voices_wait, self.voices_bar, self.voices_status], spacing=10)
         self.next_btn.disabled = not done
 
     def _generate(self, e=None):
+        # the button disappears while it works, so it cannot be clicked twice
+        self.voices_btn.visible = False
+        self.voices_wait.visible = True
         self.voices_bar.visible = True
+        self._say(self.voices_status, '')
         self._set_busy(True)
 
         def progress(done, total):
@@ -280,15 +311,25 @@ class WakeWordWizard:
             self._say(self.voices_status, f'{done} / {total}')
 
         def work():
+            ok = False
             try:
                 self._run_cli(['generate', '--workspace', self.ws.root], on_progress=progress)
                 s = self.ws.summary()
-                self._say(self.voices_status, f'{t("Ready")}: {s["synthetic_pos"]} + {s["synthetic_neg"]}',
-                          ft.Colors.GREEN_700)
+                ok = s['synthetic_pos'] >= 50 and s['synthetic_neg'] >= 100
+                if ok:
+                    self._say(self.voices_status, f'✓ {t("Ready")}: {s["synthetic_pos"]} + {s["synthetic_neg"]}',
+                              ft.Colors.GREEN_700)
+                else:
+                    self._say(self.voices_status, t('Not enough voices were generated. Click the button to try again.'),
+                              ft.Colors.RED_600)
             except Exception as exc:
                 self._error(self.voices_status, exc)
+                self.voices_status.value += '\n' + t('Click the button to try again.')
             finally:
+                self.voices_wait.visible = False
                 self.voices_bar.visible = False
+                self.voices_btn.visible = not ok         # back only when it failed
+                self.voices_btn.text = t('Try again') if not ok else t('Generate again')
                 self._set_busy(False)
         threading.Thread(target=work, daemon=True).start()
 
@@ -326,9 +367,9 @@ class WakeWordWizard:
             card['status'].color = ft.Colors.GREEN_700 if ok and counts[key] else None
         self.next_btn.disabled = self.busy or not self._can_continue()
         need = []
-        if s['real_pos'] < 25: need.append(t('at least 25 clips of your word'))
-        if s['real_neg'] < 30: need.append(t('at least 30 speech clips'))
-        if s['test_pos'] < 10: need.append(t('at least 10 exam clips'))
+        if s['real_pos'] < MIN_WORD: need.append(f'{t("at least")} {MIN_WORD} {t("clips of your word")}')
+        if s['real_neg'] < MIN_SPEECH: need.append(f'{t("at least")} {MIN_SPEECH} {t("speech clips")}')
+        if s['test_pos'] < MIN_TEST: need.append(f'{t("at least")} {MIN_TEST} {t("exam clips")}')
         self.rec_msg.value = (t('Still needed') + ': ' + ', '.join(need)) if need else \
             t('You have enough recordings. More recordings make the result better.')
         self.page.update()
@@ -377,52 +418,93 @@ class WakeWordWizard:
     # ------------------------------------------------------------------ step 5: train & evaluate
     def _view_4(self):
         s = self.ws.summary()
+        trained = s['model'] is not None
         self.train_bar = ft.ProgressBar(value=0, visible=False)
         self.train_status = ft.Text(size=13)
-        self.train_log = ft.Text(size=11, color=ft.Colors.GREY_600, max_lines=6)
+        self.train_wait = ft.Text('Click once and wait: do not close this window. It takes about 15 to 20 minutes.',
+                                  size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_700, visible=False)
         self.verdict_box = ft.Column(spacing=6)
         self.train_btn = ft.FilledButton('Train the model', icon=ft.Icons.MODEL_TRAINING, on_click=self._train)
-        trained = s['model'] is not None
+        self.stage_rows, self.stage_state, self.current_stage = {}, {}, None
+        rows = []
+        for key, label in TRAIN_STAGES:
+            icon, name, detail = ft.Container(width=24, height=24), ft.Text(label, size=14), ft.Text(size=12, color=ft.Colors.GREY_600)
+            self.stage_rows[key] = {'icon': icon, 'text': name, 'detail': detail}
+            rows.append(ft.Row([icon, ft.Column([name, detail], spacing=0)], spacing=10))
+            self._set_stage(key, 'pending')
         self.train_status.value = t('A trained model already exists for this word.') if trained else ''
         self.body.content = ft.Column([
             ft.Text('Now the computer learns your word from the synthetic voices and from your recordings, then '
-                    'checks itself on the exam recordings it has never seen. This takes about 15 to 20 minutes '
-                    'and uses the CPU heavily. You can leave it running.'),
-            self.train_btn, self.train_bar, self.train_status, self.train_log, self.verdict_box],
-            spacing=10, scroll=ft.ScrollMode.AUTO)
+                    'checks itself on the exam recordings it has never seen. It uses the CPU heavily; you can '
+                    'leave it running.'),
+            self.train_btn, self.train_wait, self.train_bar, ft.Column(rows, spacing=8),
+            self.train_status, self.verdict_box], spacing=10, scroll=ft.ScrollMode.AUTO)
         self.next_btn.disabled = not trained
 
-    def _train(self, e=None):
-        self.train_bar.visible = True
-        self.train_btn.disabled = True
-        self.verdict_box.controls.clear()
-        self._set_busy(True)
-        lines = []
+    def _set_stage(self, key, state, detail=''):
+        """state: pending | running | done | failed. The icon shows what the computer is doing."""
+        row = self.stage_rows[key]
+        self.stage_state[key] = state
+        if state == 'running':
+            row['icon'].content = ft.ProgressRing(width=20, height=20, stroke_width=3)
+        else:
+            icon, color = {'done': (ft.Icons.CHECK_CIRCLE, ft.Colors.GREEN_600),
+                           'failed': (ft.Icons.CANCEL, ft.Colors.RED_600)}.get(
+                state, (ft.Icons.RADIO_BUTTON_UNCHECKED, ft.Colors.GREY_500))
+            row['icon'].content = ft.Icon(icon, color=color, size=22)
+        row['text'].weight = ft.FontWeight.BOLD if state == 'running' else ft.FontWeight.NORMAL
+        row['text'].color = ft.Colors.RED_600 if state == 'failed' else None
+        row['detail'].value = detail
 
-        def log(msg):
-            lines.append(msg)
-            self.train_log.value = '\n'.join(lines[-5:])
+    def _train(self, e=None):
+        # one click: the button disappears and the stage list shows exactly what is happening
+        self.train_btn.visible = False
+        self.train_wait.visible = True
+        self.train_bar.visible = True
+        self.train_bar.value = None                  # indeterminate until we know the progress
+        self.verdict_box.controls.clear()
+        self._say(self.train_status, '')
+        for key, _ in TRAIN_STAGES:
+            self._set_stage(key, 'pending')
+        self.current_stage = None
+        self._set_busy(True)
+
+        def on_stage(name, state):
+            self.current_stage = name if state == 'start' else None
+            self._set_stage(name, 'running' if state == 'start' else 'done')
+            self.train_bar.value = None
             self.page.update()
 
+        def on_log(msg):                              # e.g. "extracting audio features (...)"
+            if self.current_stage == 'features':
+                self.stage_rows['features']['detail'].value = msg[:90]
+                self.page.update()
+
         def progress(done, total):
-            self.train_bar.value = done / max(1, total)
+            if self.current_stage == 'train':
+                self.train_bar.value = done / max(1, total)
+                self.stage_rows['train']['detail'].value = f'{done} / {total}'
+            elif self.current_stage == 'evaluate':
+                self.stage_rows['evaluate']['detail'].value = f'{done} / {total}'
             self.page.update()
 
         def work():
+            ok = False
             try:
-                self._say(self.train_status, t('Training... (extracting audio features is the slow part)'))
-                self._run_cli(['train', '--workspace', self.ws.root, '--rebuild'], progress, log)
-                self.train_bar.value = None
-                self._say(self.train_status, t('Checking the model on your exam recordings...'))
-                self.evaluation = self._run_cli(['evaluate', '--workspace', self.ws.root], progress, log)
+                self._run_cli(['train', '--workspace', self.ws.root, '--rebuild'], progress, on_log, on_stage)
+                self.evaluation = self._run_cli(['evaluate', '--workspace', self.ws.root], progress, on_log, on_stage)
                 self._show_verdict(self.evaluation)
                 self._say(self.train_status, t('Training finished.'), ft.Colors.GREEN_700)
+                ok = True
             except Exception as exc:
+                self._set_stage(self.current_stage or 'prepare', 'failed')
                 self._error(self.train_status, exc)
+                self.train_status.value += '\n' + t('Click the button to try again.')
             finally:
+                self.train_wait.visible = False
                 self.train_bar.visible = False
-                self.train_btn.disabled = False
-                self.train_btn.text = t('Train again')
+                self.train_btn.text = t('Train again') if ok else t('Try again')
+                self.train_btn.visible = True
                 self._set_busy(False)
         threading.Thread(target=work, daemon=True).start()
 
@@ -442,8 +524,13 @@ class WakeWordWizard:
         for r in v['reasons']:
             rows.append(ft.Text('• ' + t(r), size=12))
         if v['level'] != 'good':
-            rows.append(ft.Text('To improve it: go back to "Your voice", record more clips of your word and more '
-                                'normal speech, then train again.', size=12, color=ft.Colors.GREY_700))
+            rows.append(ft.Text('To improve it: go back to "Your voice" and record more NORMAL SPEECH (this is what '
+                                'reduces false triggers); if your word was not recognized well, record more clips of '
+                                'the word too. You do not need to redo the voices. Then train again.',
+                                size=12, color=ft.Colors.GREY_700))
+        if v['level'] == 'ok':
+            rows.append(ft.Text('You can already use it: raising the detection threshold in the settings also '
+                                'reduces false triggers.', size=12, color=ft.Colors.GREY_700))
         self.verdict_box.controls = rows
         self.page.update()
 
@@ -487,10 +574,17 @@ class WakeWordWizard:
                 stream = pa.open(format=pyaudio.paInt16, channels=1, rate=16000, input=True,
                                  frames_per_buffer=1280)
                 armed = True
-                self._say(self.test_text, t('Listening... say your wake word.'))
+                # the detector needs ~2 s of audio before its first reliable scores
+                self._say(self.test_text, t('Getting ready... wait 2 seconds, then speak.'))
+                frames = 0
                 while not self.stop_event.is_set():
                     frame = np.frombuffer(stream.read(1280, exception_on_overflow=False), dtype=np.int16)
                     score = max(model.predict(frame).values())
+                    frames += 1
+                    if frames < 25:
+                        continue
+                    if frames == 25:
+                        self._say(self.test_text, t('Listening... say your wake word.'))
                     self.score_bar.value = min(1.0, float(score))
                     self.score_bar.color = ft.Colors.GREEN_600 if score > 0.5 else None
                     if score > 0.5 and armed:

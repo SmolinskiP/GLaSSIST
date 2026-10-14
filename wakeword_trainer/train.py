@@ -59,9 +59,21 @@ def export_onnx(model, path):
         torch.onnx.export(model, dummy, path, **kwargs)
 
 
-def train(ws, epochs=40, hidden=32, progress=None, log=print, rebuild=False, seed=0):
+def train(ws, epochs=40, hidden=32, progress=None, log=print, rebuild=False, seed=0, stage=None):
+    """`stage(name, state)` is called with state 'start' / 'done' for: prepare, features, train, export."""
+    stage = stage or (lambda name, state: None)
     torch.manual_seed(seed); np.random.seed(seed); random.seed(seed)
+    stage('prepare', 'start')
+    files = F.split_files(ws)
+    if not files['train_pos'] or not files['train_neg']:
+        raise RuntimeError('no synthetic voices found: run the "Voices" step first')
+    if not files['train_real_pos']:
+        log('warning: no recordings of your voice; the model will only know synthetic voices')
+    stage('prepare', 'done')
+    stage('features', 'start')
     data = build_features(ws, log, rebuild)
+    stage('features', 'done')
+    stage('train', 'start')
     Xp, Xn = data['train']
     Xp_h, Xn_h = data['hold']
     if len(Xp) == 0 or len(Xn) == 0:
@@ -102,8 +114,11 @@ def train(ws, epochs=40, hidden=32, progress=None, log=print, rebuild=False, see
         if progress:
             progress(epoch + 1, epochs)
 
+    stage('train', 'done')
+    stage('export', 'start')
     os.makedirs(ws.out, exist_ok=True)
     export_onnx(model, ws.model_path)
+    stage('export', 'done')
     with open(os.path.join(ws.out, 'training.json'), 'w', encoding='utf-8') as f:
         json.dump({'history': history, 'epochs': epochs, 'hidden': hidden}, f, indent=2)
     log(f'model saved: {ws.model_path}')
