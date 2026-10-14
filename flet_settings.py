@@ -5,6 +5,7 @@ Replaces the problematic Tkinter-based settings
 import flet as ft
 import asyncio
 import os
+import sys
 import threading
 import webbrowser
 import subprocess
@@ -907,6 +908,13 @@ class FletSettingsApp:
                                     "Open Models Folder",
                                     icon=ft.Icons.FOLDER_OPEN,
                                     on_click=self._open_models_folder
+                                ),
+                                ft.FilledButton(
+                                    "Create your own wake word",
+                                    icon=ft.Icons.AUTO_FIX_HIGH,
+                                    tooltip="Step-by-step wizard: choose a language and a word, record your voice, "
+                                            "train and test the model",
+                                    on_click=self._open_wake_word_wizard
                                 )
                             ], spacing=10, wrap=True),
                             ft.Container(height=10),
@@ -1911,6 +1919,20 @@ class FletSettingsApp:
             await self._show_dialog("Error", f"Failed to download models: {str(ex)}")
             logger.error(f"Model download failed: {ex}")
     
+    def _open_wake_word_wizard(self, e):
+        """Launch the custom wake word wizard in its own process (it has its own Flet window)."""
+        try:
+            if getattr(sys, 'frozen', False):
+                cmd = [sys.executable, '--wake-word-wizard']
+            else:
+                cmd = [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'main.py'),
+                       '--wake-word-wizard']
+            subprocess.Popen(cmd, cwd=os.path.dirname(os.path.abspath(__file__)))
+            logger.info("Started the wake word wizard")
+        except Exception as ex:
+            logger.error(f"Failed to start the wake word wizard: {ex}")
+            asyncio.create_task(self._show_dialog("Error", f"Failed to start the wizard: {str(ex)}"))
+
     def _open_models_folder(self, e):
         """Open models folder"""
         try:

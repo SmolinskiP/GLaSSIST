@@ -1,0 +1,40 @@
+{
+  "name": "Português (Brasil)",
+  "edge_locales": ["pt-BR", "pt-PT"],
+  "wake_prefixes": ["ei", "oi", "ô", "ok", "opa"],
+  "words": [
+    "Bruna", "Bruno", "Ana", "Aninha", "Julia", "Julinha", "Maria", "Mariana", "Carol", "Carolina", "Paula", "Paulinha",
+    "Pedro", "João", "Lucas", "Luiz", "Luiza", "Fernanda", "Fernando", "Rafael", "Rafaela", "Camila", "Gabriel", "Gabriela",
+    "Beatriz", "Bia", "Bianca", "Larissa", "Letícia", "Marcos", "Marcelo", "Renata", "Ricardo", "Roberto", "Sandra", "Sérgio",
+    "Tiago", "Vitória", "Vinícius", "Amanda", "André", "Daniel", "Daniela", "Eduardo", "Felipe", "Helena", "Igor", "Isabela",
+    "casa", "cozinha", "vizinha", "galinha", "farinha", "linha", "caminha", "rainha", "minha", "sozinha", "tinha", "vinha",
+    "sardinha", "bolinha", "casinha", "gatinha", "amiguinha", "filhinha", "netinha", "priminha", "mãezinha", "florzinha",
+    "menininha", "sobrinha", "madrinha", "campainha", "palavrinha", "brasil", "brinquedo", "brilhante", "brincadeira",
+    "bruto", "brusca", "branco", "braço", "bravo", "breve", "briga", "brisa", "bronze", "bruxa", "bruxinha", "bolo", "bola",
+    "banho", "barulho", "bastante", "bateria", "beber", "beijo", "bicho", "bilhete", "boneca", "bonito", "braba", "cabelo",
+    "cadeira", "caderno", "café", "cama", "carro", "chave", "chuva", "cidade", "cinema", "comida", "computador", "cortina",
+    "dinheiro", "domingo", "escola", "espelho", "família", "faca", "feijão", "festa", "frio", "fruta", "garagem", "garrafa",
+    "gato", "geladeira", "janela", "jantar", "jogo", "lanche", "leite", "livro", "luz", "mala", "manhã", "mesa", "música",
+    "noite", "ônibus", "padaria", "pão", "parede", "pessoa", "porta", "praia", "quarto", "relógio", "rua", "sala", "sapato",
+    "semana", "sofá", "telefone", "televisão", "tempo", "trabalho", "trânsito", "ventilador", "verão", "viagem", "vidro"
+  ],
+  "phrases": [
+    "eu não sei o que fazer hoje", "vamos assistir um filme", "o cachorro está latindo muito", "a minha mãe ligou agora",
+    "você viu o jogo ontem", "preciso de um café bem forte", "o trânsito está horrível", "amanhã eu trabalho cedo",
+    "essa música é muito boa", "não esquece as chaves", "quem vai lavar a louça", "o gato subiu no telhado",
+    "me passa o controle remoto", "está muito calor aqui dentro", "vou tomar um banho rápido", "a internet está lenta hoje",
+    "chegou uma encomenda", "hoje é aniversário da minha prima", "vamos pedir uma pizza", "o carro precisa de gasolina",
+    "feliz aniversário para você", "bom dia", "boa tarde", "boa noite pessoal", "até logo", "tudo bem com você", "obrigado",
+    "por favor", "desculpa", "um dois três quatro cinco", "segunda terça quarta quinta sexta", "janeiro fevereiro março abril",
+    "alô alô", "psiu", "ei você", "oi tudo bom", "olha só isso", "não acredito", "que legal", "que horas são",
+    "qual a previsão do tempo", "vai chover amanhã", "quanto é dois mais dois", "me conta uma piada", "qual é a temperatura",
+    "que dia é hoje", "toca uma música", "onde fica a farmácia", "me lembra de comprar pão", "adiciona leite na lista de compras",
+    "cria um timer de cinco minutos", "estou com fome", "preciso sair daqui a pouco", "tem alguém na porta", "o jantar está pronto",
+    "Alexa", "Ok Google", "Hey Siri", "Ei Jarvis", "Oi Nabu", "a internet caiu de novo", "liga pra mim mais tarde",
+    "eu já volto", "espera um pouquinho", "deixa que eu faço", "isso não funciona direito", "que cheiro bom é esse"
+  ],
+  "verbs": ["ligar", "desligar", "abrir", "fechar", "acender", "apagar", "aumentar", "diminuir", "pausar", "tocar"],
+  "objects": ["a luz", "a televisão", "o ventilador", "o robô aspirador", "a música", "o portão", "a cortina",
+              "o ar condicionado", "o volume", "o YouTube", "a cozinha", "a sala", "o quarto", "a garagem"],
+  "carriers": ["{w}", "oi {w}", "cadê a {w}", "a {w} chegou", "fala com a {w}", "obrigado {w}", "bom dia {w}"]
+}

@@ -1,0 +1,39 @@
+{
+  "name": "Español",
+  "edge_locales": ["es-ES", "es-MX", "es-AR", "es-CO", "es-US"],
+  "wake_prefixes": ["oye", "hola", "ey", "vale", "ok"],
+  "words": [
+    "Ana", "Anita", "Alba", "Carla", "Carlos", "Carmen", "Clara", "Claudia", "David", "Diego", "Elena", "Eva", "Fernando",
+    "Gabriela", "Javier", "Jorge", "José", "Juan", "Julia", "Laura", "Lucía", "Luis", "Manuel", "Marcos", "María", "Marta",
+    "Miguel", "Nuria", "Pablo", "Paula", "Pedro", "Rosa", "Rubén", "Sara", "Sergio", "Sofía", "Teresa", "Víctor",
+    "casa", "cocina", "vecina", "gallina", "harina", "línea", "camina", "reina", "mía", "sola", "tenía", "venía", "sardina",
+    "pelota", "casita", "gatita", "amiguita", "hijita", "nietita", "primita", "mamita", "florecita", "niñita", "sobrina",
+    "madrina", "campana", "palabra", "brasil", "juguete", "brillante", "broma", "bruto", "brusca", "blanco", "brazo",
+    "bravo", "breve", "pelea", "brisa", "bronce", "bruja", "bolsa", "balón", "baño", "ruido", "bastante", "batería",
+    "beber", "beso", "bicho", "billete", "muñeca", "bonito", "cabello", "silla", "cuaderno", "café", "cama", "coche",
+    "llave", "lluvia", "ciudad", "cine", "comida", "ordenador", "cortina", "dinero", "domingo", "escuela", "espejo",
+    "familia", "cuchillo", "frijol", "fiesta", "frío", "fruta", "garaje", "botella", "gato", "nevera", "ventana", "cena",
+    "juego", "merienda", "leche", "libro", "luz", "maleta", "mañana", "mesa", "música", "noche", "autobús", "panadería",
+    "pan", "pared", "persona", "puerta", "playa", "cuarto", "reloj", "calle", "sala", "zapato", "semana", "sofá",
+    "teléfono", "televisión", "tiempo", "trabajo", "tráfico", "ventilador", "verano", "viaje", "vidrio"
+  ],
+  "phrases": [
+    "no sé qué hacer hoy", "vamos a ver una película", "el perro ladra mucho", "mi madre acaba de llamar",
+    "viste el partido de ayer", "necesito un café bien fuerte", "el tráfico está horrible", "mañana trabajo temprano",
+    "esta canción es muy buena", "no olvides las llaves", "quién lava los platos", "el gato subió al tejado",
+    "pásame el mando", "hace mucho calor aquí dentro", "voy a darme una ducha rápida", "el internet está lento hoy",
+    "ha llegado un paquete", "hoy es el cumpleaños de mi prima", "vamos a pedir una pizza", "el coche necesita gasolina",
+    "feliz cumpleaños", "buenos días", "buenas tardes", "buenas noches a todos", "hasta luego", "cómo estás", "gracias",
+    "por favor", "perdón", "uno dos tres cuatro cinco", "lunes martes miércoles jueves viernes", "enero febrero marzo abril",
+    "hola hola", "oye tú", "mira esto", "no me lo creo", "qué bueno", "qué hora es", "cuál es el pronóstico del tiempo",
+    "va a llover mañana", "cuánto es dos más dos", "cuéntame un chiste", "cuál es la temperatura", "qué día es hoy",
+    "pon música", "dónde está la farmacia", "recuérdame comprar pan", "añade leche a la lista de la compra",
+    "pon un temporizador de cinco minutos", "tengo hambre", "tengo que salir en un rato", "hay alguien en la puerta",
+    "la cena está lista", "Alexa", "Ok Google", "Hey Siri", "se cayó el internet otra vez", "llámame más tarde",
+    "ahora vuelvo", "espera un momento", "déjame a mí", "esto no funciona bien", "qué bien huele"
+  ],
+  "verbs": ["encender", "apagar", "abrir", "cerrar", "bajar", "subir", "pausar", "poner", "parar", "activar"],
+  "objects": ["la luz", "la televisión", "el ventilador", "el robot aspirador", "la música", "el portón", "la cortina",
+              "el aire acondicionado", "el volumen", "YouTube", "la cocina", "el salón", "el dormitorio", "el garaje"],
+  "carriers": ["{w}", "hola {w}", "dónde está {w}", "ya llegó {w}", "habla con {w}", "gracias {w}", "buenos días {w}"]
+}

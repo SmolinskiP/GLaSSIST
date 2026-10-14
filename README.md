@@ -124,7 +124,8 @@ GLaSSIST bundles more than 100 models from the
 [Home Assistant Wake Words Collection](https://github.com/fwartner/home-assistant-wakewords-collection),
 including Alexa, Jarvis, GLaDOS, Computer, Scarlett, and plenty of names your family will question.
 
-Want your own wake word? [openWakeWord](https://github.com/dscripka/openWakeWord) provides two Google
+Want your own wake word, in your own language? Use the built-in [wake word wizard](docs/WAKE_WORD_WIZARD.md)
+(Settings → Wake Word → *Create your own wake word*). Alternatively, [openWakeWord](https://github.com/dscripka/openWakeWord) provides two Google
 Colab notebooks. Follow the [custom wake-word guide](docs/CUSTOM_WAKE_WORDS.md) to train, convert,
 install, and test your model.
 

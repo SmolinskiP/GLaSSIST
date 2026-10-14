@@ -1,5 +1,9 @@
 # Custom wake-word models
 
+> **Easiest way:** the built-in [wake word wizard](WAKE_WORD_WIZARD.md) trains a model in your own language
+> (Settings → Wake Word → *Create your own wake word*), tests it live and adds it to your list. The manual
+> Colab workflow below is still available.
+
 GLaSSIST uses [openWakeWord](https://github.com/dscripka/openWakeWord) and supports custom wake-word
 models in ONNX and TFLite formats. The easiest workflow is to train a model in Google Colab, convert
 it when necessary, and add it to GLaSSIST's `models/` directory.

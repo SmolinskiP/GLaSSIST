@@ -52,3 +52,6 @@ AGENTS.md
 
 # External/licensed sound files (user-provided, not bundled)
 sound/*.mp3
+
+# Wake word wizard: personal recordings, trained projects and the training environment
+wakeword_workspace/

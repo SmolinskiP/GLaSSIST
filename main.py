@@ -1358,7 +1358,14 @@ def main():
     parser = argparse.ArgumentParser(description='GLaSSIST - Voice Assistant for Home Assistant')
     parser.add_argument('--settings', action='store_true',
                         help='Open settings window automatically after starting the application')
+    parser.add_argument('--wake-word-wizard', action='store_true',
+                        help='Open the wizard that trains a custom wake word, then exit')
     args = parser.parse_args()
+
+    if args.wake_word_wizard:
+        import wake_word_wizard
+        wake_word_wizard.run()
+        return
 
     # Set UTF-8 encoding for console output on Windows
     if sys.platform == "win32":
