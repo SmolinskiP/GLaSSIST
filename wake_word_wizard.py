@@ -579,7 +579,8 @@ class WakeWordWizard:
                 self._show_verdict(self.evaluation)
                 if getattr(self, 'improve_before', None):          # came from the "Improve" step
                     self._set_stage_detail_scan()
-                    after = self._run_cli(['scan', '--workspace', self.ws.root])
+                    after = self._run_cli(['scan', '--workspace', self.ws.root, '--tag',
+                                           getattr(self, 'improve_tag', 'env')])
                     self._show_improvement(after)
                     self.improve_before = None
                 self._say(self.train_status, t('Training finished.'), ft.Colors.GREEN_700)
@@ -667,6 +668,12 @@ class WakeWordWizard:
         self.imp_retrain = ft.FilledButton('Retrain with these examples', icon=ft.Icons.MODEL_TRAINING,
                                            visible=False, on_click=self._improve_retrain)
         self.improve_before = getattr(self, 'improve_before', None)
+        self.imp_trig_text = ft.Text(size=13)
+        self.imp_trig_btn = ft.FilledButton('Use them and retrain', icon=ft.Icons.MODEL_TRAINING,
+                                            on_click=self._use_captured)
+        self.imp_trig_open = ft.OutlinedButton('Open the folder', icon=ft.Icons.FOLDER_OPEN,
+                                               on_click=lambda e: self._open_folder(self._detections_dir()))
+        self._refresh_captured()
         self.body.content = ft.Column([
             ft.Text('Optional, but the best fix if your wake word triggers by mistake (conversations, TV, music). '
                     'Leave the microphone recording while you go about your day (with people talking, TV, music); '
@@ -674,7 +681,13 @@ class WakeWordWizard:
                     'the current model is fooled by them, and then retrains it with them as examples of what is '
                     'NOT your word. Aim for at least 100 clips.'),
             self.imp_privacy, ft.Row([self.imp_minutes, self.imp_btn, self.imp_stop], spacing=14),
-            self.imp_wait, self.imp_bar, self.imp_status, self.imp_result, self.imp_retrain],
+            self.imp_wait, self.imp_bar, self.imp_status, self.imp_result, self.imp_retrain,
+            ft.Divider(),
+            ft.Text('Or use the real false triggers', size=16, weight=ft.FontWeight.BOLD),
+            ft.Text('If "Save a 3-second audio clip of every detection" is on in Settings, GLaSSIST keeps the sound '
+                    'that triggered it. Listen in the folder and DELETE the clips where you really said your word; '
+                    'the rest are the best examples of what fools the model.', size=12),
+            self.imp_trig_text, ft.Row([self.imp_trig_open, self.imp_trig_btn], spacing=12)],
             spacing=10, scroll=ft.ScrollMode.AUTO)
         self.hint.value = t('You can skip this step.')
         self.next_btn.disabled = False
@@ -704,6 +717,7 @@ class WakeWordWizard:
                 self.imp_wait.visible = self.imp_stop.visible = False
                 self.imp_bar.value = None
                 self._say(self.imp_status, t('Measuring how often the current model is fooled...'))
+                self.improve_tag = 'env'
                 self.improve_before = self._run_cli(['scan', '--workspace', self.ws.root])
                 self._show_before(self.improve_before, saved)
                 ok = True
@@ -741,6 +755,56 @@ class WakeWordWizard:
         self.imp_result.controls = rows
         self.imp_retrain.visible = saved >= 10
         self._say(self.imp_status, '')
+
+    # ---- clips kept by the detector (Settings: "Save a 3-second audio clip of every detection")
+    def _detections_dir(self):
+        return os.path.join(self.root, 'detections', self.ws.project.model_name)
+
+    def _captured_clips(self):
+        folder = self._detections_dir()
+        return sorted(os.path.join(folder, n) for n in os.listdir(folder) if n.endswith('.wav')) \
+            if os.path.isdir(folder) else []
+
+    def _refresh_captured(self):
+        n = len(self._captured_clips())
+        self.imp_trig_text.value = (f'{n} {t("clips captured by GLaSSIST for this wake word.")}' if n else
+                                    t('None yet. Turn on "Save a 3-second audio clip of every detection" in Settings '
+                                      'and use GLaSSIST for a while.'))
+        self.imp_trig_btn.disabled = n < 5
+
+    def _open_folder(self, folder):
+        os.makedirs(folder, exist_ok=True)
+        try:
+            platform_utils.open_file_manager(folder)
+        except Exception as exc:
+            self._error(self.imp_status, exc)
+
+    def _use_captured(self, e=None):
+        """Copy the captured clips into the training data as negatives, measure 'before', retrain."""
+        import shutil
+        clips = self._captured_clips()
+        if not clips:
+            return
+        used = os.path.join(self._detections_dir(), 'used')
+        os.makedirs(used, exist_ok=True)
+        existing = len([n for n in os.listdir(self.ws.real_neg) if n.startswith('real_trig_')])
+        for i, src in enumerate(clips):
+            shutil.copyfile(src, os.path.join(self.ws.real_neg, f'real_trig_{existing + i:04d}.wav'))
+            shutil.move(src, os.path.join(used, os.path.basename(src)))          # never used twice
+        self.improve_tag = 'trig'
+        self._set_busy(True)
+        self._say(self.imp_status, t('Measuring how often the current model is fooled...'))
+
+        def work():
+            try:
+                self.improve_before = self._run_cli(['scan', '--workspace', self.ws.root, '--tag', 'trig'])
+            except Exception as exc:
+                self.improve_before = None
+                self._error(self.imp_status, exc)
+            finally:
+                self._set_busy(False)
+            self._improve_retrain()
+        threading.Thread(target=work, daemon=True).start()
 
     def _improve_retrain(self, e=None):
         """Go to the Train step and start it: the new clips are now part of the training data."""

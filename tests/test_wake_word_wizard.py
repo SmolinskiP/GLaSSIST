@@ -301,6 +301,40 @@ def test_retrain_from_improve_jumps_to_train_and_shows_before_after(wizard, monk
     assert wizard.improve_before is None            # consumed: a later retrain does not compare again
 
 
+def test_captured_triggers_are_used_as_negatives_and_never_twice(wizard, monkeypatch):
+    import numpy as np
+    import soundfile as sf
+    wizard.lang_dd.value, wizard.word_tf.value = 'pt', 'Bruninha'
+    wizard._apply_welcome()
+    folder = os.path.join(wizard.root, 'detections', 'bruninha')
+    os.makedirs(folder)
+    for i in range(6):
+        sf.write(os.path.join(folder, f'trig_20261014_11000{i}_bruninha_099.wav'), np.zeros(48000, np.float32), 16000)
+    wizard._show(5)
+    assert '6' in wizard.imp_trig_text.value and not wizard.imp_trig_btn.disabled
+    _run_threads_inline(monkeypatch)
+    calls = []
+
+    def fake_cli(args, on_progress=None, on_log=None, on_stage=None):
+        calls.append(args)
+        if args[0] == 'scan':
+            return {'clips': 3, 'triggers': 2 if len(calls) == 1 else 0, 'rate': 0.0}
+        if args[0] == 'train':
+            return {}
+        return {'verdict': {'level': 'good', 'reasons': []}, 'test_pos': {'clips': 1, 'above': {'0.5': 1}},
+                'hold_real_neg': {'clips': 0, 'above': {'0.5': 0}}}
+    monkeypatch.setattr(wizard, '_run_cli', fake_cli)
+    wizard._use_captured()
+    copied = sorted(n for n in os.listdir(wizard.ws.real_neg) if n.startswith('real_trig_'))
+    assert copied == [f'real_trig_000{i}.wav' for i in range(6)]
+    assert os.listdir(os.path.join(folder, 'used')) and not [n for n in os.listdir(folder) if n.endswith('.wav')]
+    assert ['scan', '--workspace', wizard.ws.root, '--tag', 'trig'] in calls            # "before" on trigger clips
+    assert wizard.step == 4 and wizard.improve_before is None                          # retrained, consumed
+    assert 'Antes: 2 de 3' in ' | '.join(_texts(wizard.verdict_box))
+    wizard._show(5)
+    assert wizard.imp_trig_btn.disabled and 'Ainda nenhum' in wizard.imp_trig_text.value    # all were consumed
+
+
 def test_last_step_has_a_close_button(wizard, monkeypatch):
     wizard.lang_dd.value, wizard.word_tf.value = 'pt', 'Bruninha'
     wizard._apply_welcome()

@@ -128,6 +128,7 @@ class FletSettingsApp:
             'HA_WAKE_WORD_THRESHOLD': utils.get_env('HA_WAKE_WORD_THRESHOLD', 0.5, float),
             'HA_WAKE_WORD_VAD_THRESHOLD': utils.get_env('HA_WAKE_WORD_VAD_THRESHOLD', 0.3, float),
             'HA_WAKE_WORD_NOISE_SUPPRESSION': utils.get_env('HA_WAKE_WORD_NOISE_SUPPRESSION', 'false'),
+            'HA_WAKE_WORD_SAVE_DETECTIONS': utils.get_env('HA_WAKE_WORD_SAVE_DETECTIONS', 'false'),
             'HA_MEDIA_PLAYER_ENTITIES': utils.get_env('HA_MEDIA_PLAYER_ENTITIES', ''),
             'HA_MEDIA_PLAYER_TARGET_VOLUME': utils.get_env('HA_MEDIA_PLAYER_TARGET_VOLUME', 0.3, float),
             'HA_TIMER_SOUND': utils.get_env('HA_TIMER_SOUND', ''),
@@ -819,7 +820,17 @@ class FletSettingsApp:
             value=current_settings['HA_WAKE_WORD_NOISE_SUPPRESSION'] == 'true',
             active_color=ft.Colors.INDIGO_600
         )
-        
+
+        # Keep a short clip of every detection, to teach the model what fools it (reduces false triggers)
+        self.save_detections_switch = ft.Switch(
+            label="Save a 3-second audio clip of every detection",
+            tooltip="Kept only on this computer, in the wakeword_workspace/detections folder. "
+                    "Used by the wizard to retrain the wake word with the sounds that fooled it. "
+                    "Restart GLaSSIST to apply.",
+            value=current_settings['HA_WAKE_WORD_SAVE_DETECTIONS'] == 'true',
+            active_color=ft.Colors.ORANGE_700
+        )
+
         # Populate selected models
         await self._populate_wake_word_models(current_settings['HA_WAKE_WORD_MODELS'])
         
@@ -892,6 +903,11 @@ class FletSettingsApp:
                                    size=12, color=ft.Colors.GREY_600),
                             ft.Container(height=15),
                             self.noise_suppression_switch,
+                            self.save_detections_switch,
+                            ft.Text("When it is on, every detection keeps ~3 seconds of the audio that triggered it "
+                                    "(only on this computer). Delete the clips where you really said the word; "
+                                    "the wizard retrains with the rest to stop the false triggers.",
+                                    size=12, color=ft.Colors.GREY_600),
                             ft.Container(height=15),
                             ft.Text("Triggering by mistake (conversations, TV, music)?",
                                     size=14, weight=ft.FontWeight.W_500),
@@ -1329,7 +1345,8 @@ class FletSettingsApp:
             self.available_models_dropdown,
             self.wake_threshold_slider,
             self.vad_threshold_slider,
-            self.noise_suppression_switch
+            self.noise_suppression_switch,
+            self.save_detections_switch
         ]
         
         for control in controls:
@@ -2165,6 +2182,10 @@ class FletSettingsApp:
                 'HA_WAKE_WORD_THRESHOLD': str(round(self.wake_threshold_slider.value, 2)),
                 'HA_WAKE_WORD_VAD_THRESHOLD': str(round(self.vad_threshold_slider.value, 2)),
                 'HA_WAKE_WORD_NOISE_SUPPRESSION': 'true' if self.noise_suppression_switch.value else 'false',
+                'HA_WAKE_WORD_SAVE_DETECTIONS': (
+                    'true' if getattr(getattr(self, 'save_detections_switch', None), 'value',
+                                      utils.get_env('HA_WAKE_WORD_SAVE_DETECTIONS', 'false') == 'true')
+                    else 'false'),
                 
                 # Media player settings
                 'HA_MEDIA_PLAYER_ENTITIES': self.media_player_entities_field.value.strip(),
@@ -2269,6 +2290,7 @@ class FletSettingsApp:
             env_content += f"HA_WAKE_WORD_THRESHOLD={settings['HA_WAKE_WORD_THRESHOLD']}\n"
             env_content += f"HA_WAKE_WORD_VAD_THRESHOLD={settings['HA_WAKE_WORD_VAD_THRESHOLD']}\n"
             env_content += f"HA_WAKE_WORD_NOISE_SUPPRESSION={settings['HA_WAKE_WORD_NOISE_SUPPRESSION']}\n"
+            env_content += f"HA_WAKE_WORD_SAVE_DETECTIONS={settings.get('HA_WAKE_WORD_SAVE_DETECTIONS', 'false')}\n"
             
             env_content += "\n# === MEDIA PLAYER VOLUME MANAGEMENT ===\n"
             env_content += f"HA_MEDIA_PLAYER_ENTITIES={settings['HA_MEDIA_PLAYER_ENTITIES']}\n"

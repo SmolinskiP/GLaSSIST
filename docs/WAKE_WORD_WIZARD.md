@@ -26,6 +26,10 @@ word live and whether to add it to your wake word list.
 
 Open **Settings → Wake Word → Detection → Reduce false triggers** (or python main.py --wake-word-wizard --improve): pick one of your trained words and the wizard opens on the *Improve* step.
 
+### Learn from the real false triggers
+
+Turn on **Settings → Wake Word → Detection → Save a 3-second audio clip of every detection** (HA_WAKE_WORD_SAVE_DETECTIONS=true). The detector keeps the last 3 seconds in memory and writes them to wakeword_workspace/detections/<word>/ only when it triggers. After a while, open the *Improve* step, listen to the clips (open the folder), **delete the ones where you really said the word**, and click *Use them and retrain*: the rest are exactly the sounds that fool the model, the best training examples there are. Clips are used once and moved to a used folder.
+
 ## Why your own voice matters
 
 Synthetic voices alone give a model that works on synthetic voices. Your recordings teach it your
