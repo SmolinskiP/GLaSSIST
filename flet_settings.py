@@ -16,7 +16,13 @@ from audio import AudioManager
 from version import __version__
 import update_checker
 
+import i18n
+
 logger = utils.setup_logger()
+
+# Translate the settings UI according to HA_LANGUAGE (see i18n.py, locales/)
+i18n.init_from_env()
+i18n.patch_flet(ft)
 
 class FletSettingsApp:
     def __init__(self, animation_server=None):
@@ -112,6 +118,7 @@ class FletSettingsApp:
             'DEBUG': utils.get_env('DEBUG', 'false'),
             'HA_ANIMATIONS_ENABLED': utils.get_env('HA_ANIMATIONS_ENABLED', 'true'),
             'HA_RESPONSE_TEXT_ENABLED': utils.get_env('HA_RESPONSE_TEXT_ENABLED', 'true'),
+            'HA_LANGUAGE': i18n.normalize(utils.get_env('HA_LANGUAGE', 'en')),
             'HA_SAMPLE_RATE': utils.get_env('HA_SAMPLE_RATE', '16000'),
             'HA_FRAME_DURATION_MS': utils.get_env('HA_FRAME_DURATION_MS', '30'),
             'ANIMATION_PORT': utils.get_env('ANIMATION_PORT', '8765'),
@@ -1043,6 +1050,15 @@ class FletSettingsApp:
             active_color=ft.Colors.BLUE_600
         )
         
+        # Interface language (applies after saving and reopening the settings window)
+        self.language_dropdown = ft.Dropdown(
+            label="Language",
+            value=current_settings['HA_LANGUAGE'],
+            options=[ft.dropdown.Option(key=code, text=name) for code, name in i18n.LANGUAGES.items()],
+            helper_text="Interface language. Save and reopen the settings window to apply.",
+            expand=True
+        )
+
         # Debug mode
         self.debug_switch = ft.Switch(
             label="Debug mode (detailed logs)",
@@ -1103,6 +1119,8 @@ class FletSettingsApp:
                     content=ft.Container(
                         content=ft.Column([
                             ft.Text("🎨 Interface & Performance", size=18, weight=ft.FontWeight.BOLD),
+                            self.language_dropdown,
+                            ft.Container(height=10),
                             self.animations_switch,
                             ft.Text("Three.js animations with audio visualization. Disable to save CPU/memory.",
                                    color=ft.Colors.GREY_600, size=12),
@@ -2090,6 +2108,10 @@ class FletSettingsApp:
                 'DEBUG': 'true' if self.debug_switch.value else 'false',
                 'HA_ANIMATIONS_ENABLED': 'true' if self.animations_switch.value else 'false',
                 'HA_RESPONSE_TEXT_ENABLED': 'true' if self.response_text_switch.value else 'false',
+                'HA_LANGUAGE': i18n.normalize(
+                    getattr(getattr(self, 'language_dropdown', None), 'value', None)
+                    or utils.get_env('HA_LANGUAGE', 'en')
+                ),
                 'HA_SAMPLE_RATE': self.sample_rate_dropdown.value,
                 'HA_OUTPUT_SAMPLE_RATE': self.output_sample_rate_dropdown.value,
                 'HA_FRAME_DURATION_MS': self.frame_duration_dropdown.value,
@@ -2187,6 +2209,7 @@ class FletSettingsApp:
             env_content += "\n# === INTERFACE & PERFORMANCE ===\n"
             env_content += f"HA_ANIMATIONS_ENABLED={settings['HA_ANIMATIONS_ENABLED']}\n"
             env_content += f"HA_RESPONSE_TEXT_ENABLED={settings['HA_RESPONSE_TEXT_ENABLED']}\n"
+            env_content += f"HA_LANGUAGE={settings['HA_LANGUAGE']}\n"
 
             env_content += "\n# === NETWORK ===\n"
             env_content += f"ANIMATION_PORT={settings['ANIMATION_PORT']}\n"

@@ -53,6 +53,7 @@ pyinstaller --name "GLaSSIST" ^
     --add-data "sound;sound" ^
     --add-data "img;img" ^
     --add-data "models;models" ^
+    --add-data "locales;locales" ^
     --add-data "venv/Lib/site-packages/openwakeword;openwakeword" ^
     --add-data "venv/Lib/site-packages/onnxruntime/capi/*;onnxruntime/capi/" ^
     --hidden-import "openwakeword" ^

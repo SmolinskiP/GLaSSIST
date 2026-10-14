@@ -21,6 +21,7 @@ except Exception:
 from PIL import Image, ImageDraw
 from pystray import MenuItem as item
 import utils
+import i18n
 from client import HomeAssistantClient
 from audio import AudioManager
 from animation_server import AnimationServer
@@ -253,25 +254,25 @@ class HAAssistApp:
     def _get_toggle_label(self):
         """Return label for pause/resume menu item."""
         if self.multi_room_manager:
-            return '▶️ Resume wake word' if self.multi_room_manager.paused else '⏸ Pause wake word'
+            return i18n.t('▶️ Resume wake word' if self.multi_room_manager.paused else '⏸ Pause wake word')
         if self.wake_word_detector and self.wake_word_detector.is_running:
-            return '⏸ Pause wake word'
-        return '▶️ Resume wake word'
+            return i18n.t('⏸ Pause wake word')
+        return i18n.t('▶️ Resume wake word')
 
     def _build_tray_menu(self):
         """Construct tray menu reflecting current state."""
         return pystray.Menu(
-            item('🎤 Activate voice (%s)' % utils.get_env("HA_HOTKEY", "ctrl+shift+h"),
+            item(i18n.t('🎤 Activate voice (%s)') % utils.get_env("HA_HOTKEY", "ctrl+shift+h"),
                  self.trigger_voice_command),
             pystray.Menu.SEPARATOR,
             item(self._get_toggle_label(), self._toggle_wake_word_detection),
-            item('🎯 Wake word status', self._show_wake_word_status),
-            item('🔄 Restart wake word', self._restart_wake_word, enabled=not bool(self.multi_room_enabled)),
+            item(i18n.t('🎯 Wake word status'), self._show_wake_word_status),
+            item(i18n.t('🔄 Restart wake word'), self._restart_wake_word, enabled=not bool(self.multi_room_enabled)),
             pystray.Menu.SEPARATOR,
-            item('⚙️ Settings', self.open_settings),
-            item('🔄 Test connection', self._quick_connection_test),
+            item(i18n.t('⚙️ Settings'), self.open_settings),
+            item(i18n.t('🔄 Test connection'), self._quick_connection_test),
             pystray.Menu.SEPARATOR,
-            item('❌ Close', self.quit_application)
+            item(i18n.t('❌ Close'), self.quit_application)
         )
 
     def _refresh_tray_menu(self):
