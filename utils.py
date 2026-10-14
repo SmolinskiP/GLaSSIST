@@ -203,6 +203,63 @@ def get_datetime_string():
     """Return formatted date and time string."""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+def _looks_like_mp3(content):
+    """True for an ID3 tag or an MPEG audio frame sync at the start."""
+    return content[:3] == b'ID3' or (len(content) > 1 and content[0] == 0xFF
+                                     and content[1] & 0xE0 == 0xE0)
+
+def _decode_audio_bytes(content, logger):
+    """
+    Decode downloaded audio into (float32 data, samplerate).
+    MP3 goes through miniaudio first: it decodes frame by frame to the end,
+    while libsndfile trusts the length estimate of VBR files without a Xing
+    header and drops the tail (issue #55). Windows has no ffmpeg for audioread.
+    """
+    if _looks_like_mp3(content):
+        try:
+            import miniaudio
+            decoded = miniaudio.mp3_read_f32(content)
+            data = np.asarray(decoded.samples, dtype=np.float32)
+            if decoded.nchannels > 1:
+                data = data.reshape((-1, decoded.nchannels))
+            logger.info(f"Decoded with miniaudio: {len(data)} frames, "
+                        f"{decoded.sample_rate}Hz, {decoded.nchannels}ch")
+            return data, decoded.sample_rate
+        except ImportError:
+            pass  # only installed on Windows (requirements.txt)
+        except Exception as e:
+            logger.warning(f"miniaudio failed, trying audioread: {e!r}")
+
+    import tempfile
+    tmp_path = None
+    try:
+        import audioread
+        with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+            tmp_file.write(content)
+
+        with audioread.audio_open(tmp_path) as f:
+            samplerate = f.samplerate
+            channels = f.channels
+            audio_bytes = b''.join(f)
+
+        data = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+        if channels == 2:
+            data = data.reshape((-1, 2))
+        logger.info(f"Decoded with audioread: {len(data)} samples, {samplerate}Hz, {channels}ch")
+        return data, samplerate
+    except Exception as e:
+        # NoBackendError (no ffmpeg/gstreamer) has an empty message, hence repr
+        logger.warning(f"audioread failed, falling back to soundfile: {e!r}")
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+    return sf.read(io.BytesIO(content))
+
 def play_audio_from_url(url, host, animation_server=None, done_callback=None,
                         output_device_index=None):
     """
@@ -244,43 +301,7 @@ def play_audio_from_url(url, host, animation_server=None, done_callback=None,
             audio_buffer = io.BytesIO(response.content)
 
             logger.info("Reading audio file...")
-            import tempfile
-            data = None
-            samplerate = None
-
-            # Try audioread first (better MP3 support via system codecs)
-            try:
-                import audioread
-                audio_buffer.seek(0)
-
-                # Save to temp file for audioread
-                with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as tmp_file:
-                    tmp_path = tmp_file.name
-                    tmp_file.write(response.content)
-
-                with audioread.audio_open(tmp_path) as f:
-                    samplerate = f.samplerate
-                    channels = f.channels
-                    # Read all audio data
-                    audio_bytes = b''.join(f)
-
-                # Convert bytes to numpy array (16-bit signed integers)
-                data = np.frombuffer(audio_bytes, dtype=np.int16)
-                # Normalize to float32 [-1, 1]
-                data = data.astype(np.float32) / 32768.0
-                if channels == 2:
-                    data = data.reshape((-1, 2))
-                logger.info(f"Decoded with audioread: {len(data)} samples, {samplerate}Hz, {channels}ch")
-
-                # Clean up temp file
-                try:
-                    os.unlink(tmp_path)
-                except:
-                    pass
-            except Exception as e:
-                logger.warning(f"audioread failed, falling back to soundfile: {e}")
-                audio_buffer.seek(0)
-                data, samplerate = sf.read(audio_buffer)
+            data, samplerate = _decode_audio_bytes(response.content, logger)
         explicit_output = output_device_index is not None
         if not explicit_output:
             output_device_index = get_output_device_index()

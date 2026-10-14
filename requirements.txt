@@ -38,6 +38,7 @@ six==1.17.0
 sounddevice==0.5.2
 soundfile==0.13.1
 audioread==3.1.0
+miniaudio==1.71; sys_platform == "win32"
 sympy==1.14.0
 threadpoolctl==3.6.0
 tqdm==4.67.1

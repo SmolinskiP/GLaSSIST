@@ -66,6 +66,7 @@ pyinstaller --name "GLaSSIST" ^
     --hidden-import "onnxruntime" ^
     --hidden-import "sounddevice" ^
     --hidden-import "soundfile" ^
+    --hidden-import "miniaudio" ^
     --hidden-import "webview" ^
     --hidden-import "websockets" ^
     --hidden-import "keyboard" ^
