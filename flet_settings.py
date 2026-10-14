@@ -213,7 +213,12 @@ class FletSettingsApp:
                     content=await self._create_advanced_tab(current_settings)
                 ),
                 ft.Tab(
-                    text="About",
+                    text="Changelog",
+                    icon=ft.Icons.HISTORY,
+                    content=self._create_changelog_tab()
+                ),
+                ft.Tab(
+                    text="About & Help",
                     icon=ft.Icons.INFO_OUTLINE,
                     content=await self._create_about_tab()
                 )
@@ -288,6 +293,7 @@ class FletSettingsApp:
 
         # Kick off the background update check now that the version bar exists
         self._start_update_check()
+        self._start_changelog_load()
         
         # Auto-refresh wake word models after all UI is created
         try:
@@ -1194,7 +1200,7 @@ class FletSettingsApp:
         )
     
     async def _create_about_tab(self):
-        """Create about tab"""
+        """Create about & help tab"""
         return ft.Container(
             content=ft.Column([
                 ft.Container(height=20),
@@ -1273,6 +1279,43 @@ class FletSettingsApp:
             padding=20
         )
     
+    def _create_changelog_tab(self):
+        """Create changelog tab; release notes are loaded from GitHub in the background"""
+        self.changelog_column = ft.Column(
+            [ft.Text("Loading changes from GitHub…", color=ft.Colors.GREY_500)],
+            spacing=10, scroll=ft.ScrollMode.AUTO, expand=True)
+        return ft.Container(content=self.changelog_column, padding=20)
+
+    def _start_changelog_load(self):
+        """Fetch release notes from GitHub without blocking the settings window."""
+        def worker():
+            releases = update_checker.get_releases()
+            controls = []
+            if releases:
+                for release in releases:
+                    current = release['tag'].lstrip('v') == __version__
+                    controls += [
+                        ft.Text(release['name'], size=18, weight=ft.FontWeight.BOLD),
+                        ft.Text(f"{release['date']}{i18n.t(' · installed version') if current else ''}",
+                                size=12, color=ft.Colors.CYAN_400 if current else ft.Colors.GREY_500),
+                        ft.Markdown(release['notes'], selectable=True,
+                                    extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
+                                    on_tap_link=lambda e: webbrowser.open(e.data)),
+                        ft.Divider(),
+                    ]
+            else:
+                controls.append(ft.Text("Could not load the changelog from GitHub.", color=ft.Colors.GREY_500))
+            controls.append(ft.TextButton(
+                "View all releases on GitHub", icon=ft.Icons.OPEN_IN_NEW,
+                on_click=lambda _: webbrowser.open(update_checker.RELEASES_URL)))
+            self.changelog_column.controls = controls
+            try:
+                self.page.update()
+            except Exception:
+                pass  # Page may be closed; ignore
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def _start_update_check(self):
         """Run the GitHub update check in the background and update the top version bar."""
         def worker():
