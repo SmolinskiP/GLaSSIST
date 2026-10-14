@@ -213,7 +213,7 @@ modules:
       # open the PR automatically once the app is on Flathub).
       - type: git
         url: https://github.com/SmolinskiP/GLaSSIST.git
-        tag: 3.7.0
+        tag: 3.7.1
         x-checker-data:
           type: git
           tag-pattern: '^([\d.]+)$'
