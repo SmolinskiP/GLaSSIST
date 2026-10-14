@@ -6,6 +6,7 @@
   - **Português (Brasil)** — by [@gustavomorozi](https://github.com/gustavomorozi).
   - **Polski** — new in this release.
   - Want your language? Copy `locales/pl.json` to `locales/<code>.json`, translate the values and add the code to `LANGUAGES` in `i18n.py`. Pull requests welcome.
+- **Help is one click away.** The About tab now links straight to [GitHub issues](https://github.com/SmolinskiP/GLaSSIST/issues) and to my email, so reporting a problem or sharing an idea is easy.
 
 ### 🐛 Bug fixes
 

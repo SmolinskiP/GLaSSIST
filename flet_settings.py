@@ -1212,7 +1212,34 @@ class FletSettingsApp:
                     ),
                     elevation=2
                 ),
-                
+
+                # Help card
+                ft.Card(
+                    content=ft.Container(
+                        content=ft.Column([
+                            ft.Text("🛟 Help & Feedback", size=18, weight=ft.FontWeight.BOLD,
+                                   text_align=ft.TextAlign.CENTER),
+                            ft.Text("Something not working or have an idea? Open an issue on GitHub or write to me.",
+                                   size=16, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_700),
+                            ft.Container(height=15),
+                            ft.Row([
+                                ft.ElevatedButton(
+                                    "🐞 Report an issue",
+                                    icon=ft.Icons.BUG_REPORT,
+                                    on_click=lambda _: webbrowser.open("https://github.com/SmolinskiP/GLaSSIST/issues")
+                                ),
+                                ft.ElevatedButton(
+                                    "smolinski.patryk@mensa.org.pl",
+                                    icon=ft.Icons.EMAIL,
+                                    on_click=lambda _: webbrowser.open("mailto:smolinski.patryk@mensa.org.pl?subject=GLaSSIST")
+                                ),
+                            ], alignment=ft.MainAxisAlignment.CENTER, wrap=True),
+                        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                        padding=30
+                    ),
+                    elevation=2
+                ),
+
                 # Support card
                 ft.Card(
                     content=ft.Container(
@@ -1235,7 +1262,8 @@ class FletSettingsApp:
                 ),
             ], 
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            spacing=20),
+            spacing=20,
+            scroll=ft.ScrollMode.AUTO),
             padding=20
         )
     
