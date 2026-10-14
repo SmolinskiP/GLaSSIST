@@ -970,6 +970,12 @@ class FletSettingsApp:
                                 color=ft.Colors.GREY_700,
                                 size=13
                             ),
+                            ft.Text(
+                                "ESPHome mode: requires the Home Assistant address and access token "
+                                "(Connection tab → WebSocket Settings).",
+                                color=ft.Colors.ORANGE_400,
+                                size=13
+                            ),
                             ft.Container(height=10),
                             ft.Text("Target volume during voice interaction:", size=14, weight=ft.FontWeight.W_500),
                             self.target_volume_slider,

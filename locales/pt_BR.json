@@ -49,6 +49,7 @@
   "For real wake word testing, save your settings and restart GLaSSIST.": "Para um teste real da palavra de ativação, salve as configurações e reinicie o GLaSSIST.",
   "GLaSSIST Desktop Settings": "Configurações do GLaSSIST Desktop",
   "GLaSSIST can automatically adjust media player volumes during voice interactions. Select media players below or enter entity IDs manually.": "O GLaSSIST pode ajustar automaticamente o volume dos players de mídia durante as interações por voz. Escolha os players abaixo ou digite os IDs das entidades manualmente.",
+  "ESPHome mode: requires the Home Assistant address and access token (Connection tab → WebSocket Settings).": "Modo ESPHome: requer o endereço do Home Assistant e o token de acesso (aba Conexão → Configurações do WebSocket).",
   "Generate in Home Assistant: Profile → Long-Lived Access Tokens": "Gere no Home Assistant: Perfil → Tokens de acesso de longa duração",
   "Helps reduce false activations from non-speech sounds (0.0 = disabled)": "Ajuda a reduzir ativações falsas causadas por sons que não são fala (0.0 = desligado)",
   "Higher = less sensitive (fewer false positives, but may miss quiet words)": "Maior = menos sensível (menos falsos positivos, mas pode perder palavras ditas baixinho)",

@@ -58,6 +58,7 @@ from google.protobuf import message
 
 import utils
 from esphome_server import ESPhomeAPIServer
+from media_ducking import media_ducker
 
 PROTO_TO_MESSAGE_TYPE = {v: k for k, v in MESSAGE_TYPE_TO_PROTO.items()}
 
@@ -210,6 +211,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
                 urls.append(msg.preannounce_media_id)
             urls.append(msg.media_id)
 
+            media_ducker.duck()
             self._play_tts_sequence(urls, done_callback=self._tts_finished)
 
         elif isinstance(msg, DeviceInfoRequest):
@@ -257,6 +259,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
             self._is_streaming_audio = True
             self._block_wake_words = True
             self._speech_end_handled = False
+            media_ducker.duck()
             self._set_animation("listening")
 
         elif event_type in (
@@ -310,6 +313,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
             self._is_streaming_audio = False
             self._block_wake_words = False
             self._speech_end_handled = False
+            media_ducker.restore()
             self._set_animation("error")
 
     def _handle_timer_event(self, event_type: VoiceAssistantTimerEventType, timer_id: str = "") -> None:
@@ -362,6 +366,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
             self._pipeline_active = False
             self._is_streaming_audio = False
             return
+        media_ducker.duck()
         if self._feedback_enabled:
             utils.play_feedback_sound("activation")
         self._set_animation("listening")
@@ -434,7 +439,10 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
         if self._continue_conversation:
             _LOGGER.info("Continuing conversation — starting new pipeline run")
             self._start_pipeline_run()
-        elif self._timer_active:
+            return
+
+        media_ducker.restore()
+        if self._timer_active:
             _LOGGER.info("Pipeline ended — playing pending timer sound")
             self._set_animation("hidden")
             # Release wake word block so user can interact while timer sounds
@@ -574,6 +582,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
         self._timer_active = False
         self._speech_end_handled = False
         self._known_timer_ids.clear()
+        media_ducker.restore()
         if self._animation_server:
             try:
                 self._animation_server.show_connecting("Connecting...")
