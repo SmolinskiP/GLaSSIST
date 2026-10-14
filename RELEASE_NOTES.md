@@ -1,6 +1,6 @@
 ## 🌍 GLaSSIST 3.8.0 — Interface translations
 
-### ✨ New feature
+### ✨ New features
 
 - **GLaSSIST speaks your language.** The Settings window, tray menu and on-screen status messages can now be translated. Pick the language in **Settings → Advanced → Interface & Performance → Language** and restart GLaSSIST. English stays the default, and any text without a translation is shown in English. Contributed in [#56](https://github.com/SmolinskiP/GLaSSIST/pull/56) (thanks [@gustavomorozi](https://github.com/gustavomorozi)!).
   - **Português (Brasil)** — by [@gustavomorozi](https://github.com/gustavomorozi).
