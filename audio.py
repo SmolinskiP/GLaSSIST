@@ -117,13 +117,19 @@ class AudioManager:
         default_device = None
         best_device = None
         
+        try:
+            default_index = self.audio.get_default_input_device_info()['index']
+        except Exception as e:
+            logger.debug(f"No default input device: {e}")
+            default_index = None
+        
         for i in range(self.audio.get_device_count()):
             try:
                 device_info = self.audio.get_device_info_by_index(i)
                 logger.debug(f"Audio device {i}: {device_info['name']} - input channels: {device_info.get('maxInputChannels', 0)}")
                 
                 if device_info.get('maxInputChannels', 0) > 0:
-                    if i == self.audio.get_default_input_device_info()['index']:
+                    if i == default_index:
                         default_device = i
                         logger.info(f"Found default microphone: {device_info['name']}")
                     
@@ -139,20 +145,22 @@ class AudioManager:
     
     def close_audio(self):
         """Close audio stream and PyAudio."""
-        try:
-            if self.stream:
+        if self.stream:
+            try:
                 self.stream.stop_stream()
                 self.stream.close()
-                self.stream = None
                 logger.info("Audio stream closed")
-            
-            if self.audio:
+            except Exception as e:
+                logger.error(f"Audio stream closing error: {e}")
+            self.stream = None
+        
+        if self.audio:
+            try:
                 self.audio.terminate()
-                self.audio = None
                 logger.info("PyAudio terminated")
-                
-        except Exception as e:
-            logger.error(f"Audio closing error: {e}")
+            except Exception as e:
+                logger.error(f"PyAudio termination error: {e}")
+            self.audio = None
     
     def _flush_input_buffer(self):
         """Discard mic audio the OS buffered while we weren't recording.
@@ -253,7 +261,7 @@ class AudioManager:
             audio_array = np.frombuffer(audio_data, dtype=np.int16)
             
             # Calculate RMS (Root Mean Square)
-            rms = np.sqrt(np.mean(audio_array**2))
+            rms = np.sqrt(np.mean(audio_array.astype(np.float64)**2))
             
             # Normalize to 0-1 range
             # Maximum value for 16-bit audio is 32767

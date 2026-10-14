@@ -102,10 +102,7 @@ class AnimationServer:
         self.voice_command_callback = callback
     
     async def _send_to_client(self, client, data: Dict):
-        try:
-            await client.send(json.dumps(data))
-        except Exception as e:
-            logger.error(f"Error sending to client: {e}")
+        await client.send(json.dumps(data))
     
     async def _broadcast(self, data: Dict):
         if not self.clients:

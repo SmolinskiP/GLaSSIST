@@ -454,7 +454,7 @@ class WakeWordDetector:
         self.vad_threshold = utils.get_env("HA_WAKE_WORD_VAD_THRESHOLD", 0.3, float)
         
         # Safe boolean parsing for noise suppression
-        noise_suppression_str = utils.get_env("HA_WAKE_WORD_NOISE_SUPPRESSION", "true")
+        noise_suppression_str = utils.get_env("HA_WAKE_WORD_NOISE_SUPPRESSION", "false")
         if isinstance(noise_suppression_str, str):
             self.noise_suppression = noise_suppression_str.lower() in ('true', '1', 'yes', 'y', 't')
         else:

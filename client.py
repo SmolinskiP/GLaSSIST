@@ -280,6 +280,12 @@ class HomeAssistantClient:
                     if self.stt_binary_handler_id is not None:
                         break
                 
+                elif (response_json.get("type") == "result" and
+                      not response_json.get("success", True)):
+                    error = response_json.get("error", {})
+                    logger.error(f"Pipeline start failed: {error.get('code', 'unknown')} - {error.get('message', 'Unknown error')}")
+                    return False
+                
                 elif (response_json.get("type") == "event" and 
                       response_json.get("event", {}).get("type") == "error"):
                     error_data = response_json.get("event", {}).get("data", {})
