@@ -204,7 +204,7 @@ modules:
     build-commands:
       - mkdir -p /app/share/glasssist
       - cp *.py /app/share/glasssist/
-      - cp -r frontend sound models img /app/share/glasssist/
+      - cp -r frontend sound models img locales /app/share/glasssist/
       - cp .env.example /app/share/glasssist/
       - install -Dm755 packaging/flatpak/glasssist.sh /app/bin/glasssist
       - install -Dm644 packaging/flatpak/io.github.SmolinskiP.GLaSSIST.desktop /app/share/applications/io.github.SmolinskiP.GLaSSIST.desktop

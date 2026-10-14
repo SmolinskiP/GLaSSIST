@@ -2,8 +2,8 @@
 Minimal i18n for GLaSSIST Desktop.
 
 Translations live in locales/<code>.json as {"English text": "translated text"}.
-The language is chosen with HA_LANGUAGE in .env (e.g. "pt_BR"); "en" or an unknown
-code leaves every text untouched.
+The language is chosen with HA_LANGUAGE in .env (e.g. "pl", "pt_BR"); "en" or an unknown
+code leaves every text untouched. Changes apply after restarting GLaSSIST.
 
 Instead of touching every UI call, patch_flet() wraps the Flet controls so the
 user-visible text arguments are translated when the control is built (and when
@@ -16,6 +16,7 @@ import sys
 
 LANGUAGES = {
     'en': 'English',
+    'pl': 'Polski',
     'pt_BR': 'Português (Brasil)',
 }
 
@@ -31,10 +32,15 @@ _initialized = False
 
 
 def normalize(code):
-    code = (code or 'en').strip().replace('-', '_')
-    if code.lower() in ('pt', 'pt_br', 'ptbr'):
-        return 'pt_BR'
-    return code if code in LANGUAGES else 'en'
+    """Map 'pt-BR', 'pt', 'pl_PL'... to a LANGUAGES key, matching by base language too."""
+    code = (code or '').strip().replace('-', '_').lower()
+    for key in LANGUAGES:
+        if key.lower() == code:
+            return key
+    for key in LANGUAGES:
+        if key.lower().split('_')[0] == code.split('_')[0]:
+            return key
+    return 'en'
 
 
 def set_language(code):
@@ -119,13 +125,9 @@ def patch_flet(ft):
 
     class TranslatedText(base_text):
         def __init__(self, *args, **kwargs):
-            if args and isinstance(args[0], str):
-                args = (t(args[0]),) + tuple(args[1:])
-            if isinstance(kwargs.get('value'), str):
-                kwargs['value'] = t(kwargs['value'])
-            for key in ('tooltip',):
-                if isinstance(kwargs.get(key), str):
-                    kwargs[key] = t(kwargs[key])
+            # value is translated by the setter below, which Text.__init__ goes through
+            if isinstance(kwargs.get('tooltip'), str):
+                kwargs['tooltip'] = t(kwargs['tooltip'])
             super().__init__(*args, **kwargs)
 
         @property
@@ -167,13 +169,7 @@ def patch_flet(ft):
 
 
 def init_from_env():
-    """Read HA_LANGUAGE (env or .env via utils) and load the table."""
-    code = os.environ.get('HA_LANGUAGE')
-    if not code:
-        try:
-            import utils
-            code = utils.get_env('HA_LANGUAGE', 'en')
-        except Exception:
-            code = 'en'
-    set_language(code)
+    """Read HA_LANGUAGE (.env first, like every other setting) and load the table."""
+    import utils
+    set_language(utils.get_env('HA_LANGUAGE', 'en'))
     return _current

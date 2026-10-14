@@ -196,8 +196,8 @@ use the Settings UI unless you specifically need to edit the environment file.
 ### Languages
 
 The Settings window, tray menu and on-screen status messages can be translated. Pick the language in
-**Settings → Advanced → Interface & Performance → Language** (or set `HA_LANGUAGE=pt_BR` in the environment file)
-and reopen the Settings window. English is the default and every text that has no translation stays in English.
+**Settings → Advanced → Interface & Performance → Language** (or set `HA_LANGUAGE=pl` / `HA_LANGUAGE=pt_BR` in the environment file)
+and restart GLaSSIST. English is the default and every text that has no translation stays in English.
 
 To add a language, copy [`locales/pt_BR.json`](locales/pt_BR.json) to `locales/<code>.json`, translate the values
 (keep `{value}`, `{}` and `%s` placeholders), and add the code to `LANGUAGES` in [`i18n.py`](i18n.py).

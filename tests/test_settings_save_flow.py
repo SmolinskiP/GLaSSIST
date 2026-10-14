@@ -48,6 +48,7 @@ def test_save_button_writes_rooms_or_reports_disk_error(tmp_path, disk_failure):
         'sample_rate_dropdown': '16000', 'output_sample_rate_dropdown': '-1',
         'frame_duration_dropdown': '30', 'media_player_entities_field': '',
         'timer_sound_field': '', 'device_name_field': 'GLaSSIST', 'esphome_port_field': '6053',
+        'language_dropdown': 'pl',
     }
     for name, value in text_fields.items():
         setattr(app, name, SimpleNamespace(value=value))
@@ -78,6 +79,7 @@ def test_save_button_writes_rooms_or_reports_disk_error(tmp_path, disk_failure):
     assert values['HA_ROOMS_ENABLED'] == 'true'
     assert values['HA_WAKE_WORD_ENABLED'] == 'true'
     assert json.loads(values['HA_ROOMS']) == [room]
+    assert values['HA_LANGUAGE'] == 'pl'
     dialog = app.page.open.call_args.args[0]
     assert dialog.title.value == 'Settings Saved'
 

@@ -34,7 +34,7 @@ class FletSettingsApp:
         
     async def main(self, page: ft.Page):
         """Main Flet application entry point"""
-        page.title = "GLaSSIST Settings"
+        page.title = i18n.t("GLaSSIST Settings")
         page.theme_mode = ft.ThemeMode.SYSTEM
         page.window_width = 1400
         page.window_height = 1000
@@ -1050,12 +1050,12 @@ class FletSettingsApp:
             active_color=ft.Colors.BLUE_600
         )
         
-        # Interface language (applies after saving and reopening the settings window)
+        # Interface language (applies after restarting GLaSSIST)
         self.language_dropdown = ft.Dropdown(
             label="Language",
             value=current_settings['HA_LANGUAGE'],
             options=[ft.dropdown.Option(key=code, text=name) for code, name in i18n.LANGUAGES.items()],
-            helper_text="Interface language. Save and reopen the settings window to apply.",
+            helper_text="Interface language. Restart GLaSSIST to apply.",
             expand=True
         )
 
@@ -1251,7 +1251,7 @@ class FletSettingsApp:
             if latest:
                 self.update_status_text.value = "Update available"
                 self.update_status_text.color = ft.Colors.CYAN_400
-                self.update_link_button.text = f"⬇️ Update to {latest}"
+                self.update_link_button.text = i18n.t(f"⬇️ Update to {latest}")
                 self.update_link_button.visible = True
             else:
                 self.update_status_text.value = "✓ Latest version"
@@ -2108,10 +2108,7 @@ class FletSettingsApp:
                 'DEBUG': 'true' if self.debug_switch.value else 'false',
                 'HA_ANIMATIONS_ENABLED': 'true' if self.animations_switch.value else 'false',
                 'HA_RESPONSE_TEXT_ENABLED': 'true' if self.response_text_switch.value else 'false',
-                'HA_LANGUAGE': i18n.normalize(
-                    getattr(getattr(self, 'language_dropdown', None), 'value', None)
-                    or utils.get_env('HA_LANGUAGE', 'en')
-                ),
+                'HA_LANGUAGE': i18n.normalize(self.language_dropdown.value),
                 'HA_SAMPLE_RATE': self.sample_rate_dropdown.value,
                 'HA_OUTPUT_SAMPLE_RATE': self.output_sample_rate_dropdown.value,
                 'HA_FRAME_DURATION_MS': self.frame_duration_dropdown.value,
