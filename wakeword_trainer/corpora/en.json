@@ -1,0 +1,38 @@
+{
+  "name": "English",
+  "edge_locales": ["en-US", "en-GB", "en-AU", "en-CA", "en-IN"],
+  "wake_prefixes": ["hey", "hi", "ok", "okay", "yo"],
+  "words": [
+    "Anna", "Annie", "Alex", "Alexa", "Alice", "Amanda", "Andrew", "Ben", "Betty", "Bill", "Bob", "Brian", "Brenda", "Carl",
+    "Carol", "Chris", "Claire", "Daniel", "David", "Diana", "Emily", "Emma", "Eric", "Frank", "George", "Grace", "Hannah",
+    "Henry", "Jack", "James", "Jane", "Jason", "Jenny", "Jessica", "John", "Julia", "Karen", "Kevin", "Laura", "Linda", "Lucy",
+    "Mark", "Mary", "Michael", "Nancy", "Nick", "Olivia", "Patrick", "Paul", "Peter", "Rachel", "Robert", "Sam", "Sarah",
+    "Steve", "Susan", "Tom", "Victor", "William", "Jarvis", "Siri", "Cortana", "Google", "computer", "jarvis", "mercury",
+    "marvin", "garden", "window", "kitchen", "morning", "evening", "weather", "music", "movie", "coffee", "dinner", "lunch",
+    "house", "light", "door", "table", "chair", "phone", "water", "bottle", "paper", "pencil", "winter", "summer", "spring",
+    "market", "doctor", "teacher", "friend", "family", "mother", "father", "sister", "brother", "daughter", "neighbor",
+    "bread", "butter", "cheese", "apple", "orange", "banana", "tomato", "potato", "chicken", "dessert", "monday", "tuesday",
+    "wednesday", "thursday", "friday", "saturday", "sunday", "january", "february", "march", "april", "holiday", "birthday",
+    "traffic", "internet", "battery", "speaker", "volume", "channel", "remote", "camera", "message", "package", "delivery"
+  ],
+  "phrases": [
+    "I don't know what to do today", "let's watch a movie", "the dog is barking again", "my mom just called",
+    "did you see the game last night", "I need a really strong coffee", "the traffic is terrible", "I work early tomorrow",
+    "this song is really good", "don't forget the keys", "who is going to wash the dishes", "the cat climbed on the roof",
+    "pass me the remote control", "it is really hot in here", "I am going to take a quick shower", "the internet is slow today",
+    "a package just arrived", "it is my cousin's birthday today", "let's order a pizza", "the car needs gas",
+    "happy birthday to you", "good morning", "good afternoon", "good night everyone", "see you later", "how are you doing",
+    "thank you", "please", "sorry about that", "one two three four five", "monday tuesday wednesday thursday friday",
+    "january february march april", "hello hello", "excuse me", "hey you", "hi how are you", "look at this", "I can't believe it",
+    "that is awesome", "what time is it", "what is the weather forecast", "is it going to rain tomorrow", "what is two plus two",
+    "tell me a joke", "what is the temperature", "what day is it", "play some music", "where is the pharmacy",
+    "remind me to buy bread", "add milk to the shopping list", "set a timer for five minutes", "I am hungry",
+    "I need to leave in a minute", "someone is at the door", "dinner is ready", "Alexa", "Ok Google", "Hey Siri",
+    "the internet is down again", "call me later", "I will be right back", "wait a second", "let me do it",
+    "this doesn't work properly", "something smells really good"
+  ],
+  "verbs": ["turn on", "turn off", "open", "close", "dim", "increase", "decrease", "pause", "play", "stop"],
+  "objects": ["the light", "the television", "the fan", "the robot vacuum", "the music", "the gate", "the curtain",
+              "the air conditioner", "the volume", "YouTube", "the kitchen", "the living room", "the bedroom", "the garage"],
+  "carriers": ["{w}", "hi {w}", "where is {w}", "{w} is here", "talk to {w}", "thanks {w}", "good morning {w}"]
+}
