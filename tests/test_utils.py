@@ -63,16 +63,18 @@ class TestUtils:
         utils.validate_audio_format(16000, 1)
         utils.validate_audio_format(44100, 2)
     
-    def test_validate_audio_format_invalid_sample_rate(self):
-        """Test audio format validation with invalid sample rate."""
-        with pytest.raises(ValueError, match="Unsupported sample rate"):
-            utils.validate_audio_format(12000, 1)
-    
-    def test_validate_audio_format_invalid_channels(self):
-        """Test audio format validation with invalid channels."""
-        with pytest.raises(ValueError, match="Unsupported number of channels"):
-            utils.validate_audio_format(16000, 5)
-    
+    @patch('utils.setup_logger')
+    def test_validate_audio_format_unusual_sample_rate(self, mock_setup_logger):
+        """Unusual sample rates are only logged as a warning."""
+        assert utils.validate_audio_format(12000, 1) is True
+        assert "Unusual sample rate" in mock_setup_logger.return_value.warning.call_args[0][0]
+
+    @patch('utils.setup_logger')
+    def test_validate_audio_format_unusual_channels(self, mock_setup_logger):
+        """Unusual channel counts are only logged as a warning."""
+        assert utils.validate_audio_format(16000, 5) is True
+        assert "Unusual channel count" in mock_setup_logger.return_value.warning.call_args[0][0]
+
     @patch('utils.logger')
     def test_setup_logger(self, mock_logger):
         """Test logger setup."""
@@ -80,28 +82,23 @@ class TestUtils:
         logger = utils.setup_logger()
         assert logger is not None
     
-    @patch('pygame.mixer.init')
-    @patch('pygame.mixer.music.load')
-    @patch('pygame.mixer.music.play')
-    @patch('pygame.mixer.music.get_busy')
-    @patch('os.path.exists')
-    def test_play_feedback_sound_success(self, mock_exists, mock_busy, mock_play, mock_load, mock_init):
-        """Test successful sound playback."""
-        mock_exists.return_value = True
-        mock_busy.side_effect = [True, True, False]  # Playing, then stops
-        
+    @patch('utils.threading.Thread')
+    @patch('os.path.exists', return_value=True)
+    def test_play_feedback_sound_success(self, mock_exists, mock_thread):
+        """Test that playback starts in a background thread."""
         with patch.dict(os.environ, {"HA_SOUND_FEEDBACK": "true"}):
             result = utils.play_feedback_sound("activation")
-            assert result is True
-    
-    @patch('pygame.mixer.init')
-    @patch('os.path.exists')
-    def test_play_feedback_sound_disabled(self, mock_exists, mock_init):
+        assert result is True
+        mock_thread.return_value.start.assert_called_once()
+
+    @patch('utils.threading.Thread')
+    def test_play_feedback_sound_disabled(self, mock_thread):
         """Test sound playback when disabled."""
         with patch.dict(os.environ, {"HA_SOUND_FEEDBACK": "false"}):
             result = utils.play_feedback_sound("activation")
-            assert result is False
-    
+        assert result is False
+        mock_thread.assert_not_called()
+
     @patch('os.path.exists')
     def test_play_feedback_sound_file_not_found(self, mock_exists):
         """Test sound playback with missing file."""
@@ -111,24 +108,27 @@ class TestUtils:
             result = utils.play_feedback_sound("activation")
             assert result is False
     
+    @patch('utils.sd')
+    @patch('utils.get_output_sample_rate', return_value=None)
+    @patch('utils.get_output_device_index', return_value=None)
     @patch('requests.get')
-    def test_play_audio_from_url_success(self, mock_get):
+    def test_play_audio_from_url_success(self, mock_get, mock_device, mock_rate, mock_sd):
         """Test audio playback from URL."""
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.content = b"fake_audio_data"
-        mock_get.return_value = mock_response
-        
-        with patch('tempfile.NamedTemporaryFile') as mock_temp:
-            mock_temp.return_value.__enter__.return_value.name = "test.wav"
-            with patch('pygame.mixer.init'), \
-                 patch('pygame.mixer.music.load'), \
-                 patch('pygame.mixer.music.play'), \
-                 patch('pygame.mixer.music.get_busy', side_effect=[True, False]):
-                
-                result = utils.play_audio_from_url("http://test.com/audio.wav", "localhost:8123", Mock())
-                assert result is True
-    
+        import numpy as np
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.content = b"fake_audio_data"
+        data = np.zeros(160, dtype=np.float32)
+        done = Mock()
+
+        with patch('utils._decode_audio_bytes', return_value=(data, 16000)):
+            result = utils.play_audio_from_url("http://test.com/audio.wav", "localhost:8123",
+                                               done_callback=done)
+
+        assert result is True
+        mock_sd.play.assert_called_once_with(data, 16000)
+        mock_sd.wait.assert_called_once()
+        done.assert_called_once()
+
     @patch('requests.get')
     def test_play_audio_from_url_http_error(self, mock_get):
         """Test audio playback from URL with HTTP error."""
@@ -136,28 +136,7 @@ class TestUtils:
         
         result = utils.play_audio_from_url("http://test.com/audio.wav", "localhost:8123", Mock())
         assert result is False
-    
-    def test_convert_audio_chunk_to_float32(self):
-        """Test audio chunk conversion to float32."""
-        # Create test audio data (16-bit integers)
-        import numpy as np
-        audio_data = np.array([1000, -1000, 500, -500], dtype=np.int16)
-        
-        result = utils.convert_audio_chunk_to_float32(audio_data.tobytes())
-        
-        # Should return float32 numpy array
-        assert isinstance(result, np.ndarray)
-        assert result.dtype == np.float32
-        assert len(result) == 4
-        
-        # Values should be normalized to [-1, 1] range
-        assert all(abs(val) <= 1.0 for val in result)
-    
-    def test_convert_audio_chunk_to_float32_empty(self):
-        """Test audio chunk conversion with empty data."""
-        result = utils.convert_audio_chunk_to_float32(b"")
-        assert len(result) == 0
-        assert result.dtype == np.float32
+
 
 
 @patch('utils._read_from_env_file', return_value=None)
@@ -266,3 +245,60 @@ class TestProcessingSoundLoop:
         """Test that stop before start does not raise."""
         loop = utils.ProcessingSoundLoop()
         loop.stop()
+
+
+def _headerless_vbr_mp3():
+    """VBR MP3 without its Xing header frame and with a loud opening, so libsndfile
+    underestimates the length, like the HA tts_proxy files from issue #55."""
+    import io
+    import numpy as np
+    import soundfile as sf
+    sr = 22050
+    rng = np.random.default_rng(0)
+    signal = np.concatenate([rng.uniform(-0.8, 0.8, sr // 2), np.zeros(sr * 3),
+                             0.3 * np.sin(2 * np.pi * 440 * np.arange(sr) / sr)])
+    buf = io.BytesIO()
+    sf.write(buf, signal.astype(np.float32), sr, format='MP3',
+             bitrate_mode='VARIABLE', compression_level=0.9)
+    content = buf.getvalue()
+    assert b'Xing' in content[:200]
+    return content[content.index(content[:2], 4):], len(signal) / sr
+
+
+class TestDecodeAudioBytes:
+    """Regression tests for the TTS tail cutoff on Windows (issue #55)."""
+
+    def test_looks_like_mp3(self):
+        assert utils._looks_like_mp3(b'ID3\x04rest')
+        assert utils._looks_like_mp3(b'\xff\xf3\x80\xc4')
+        assert not utils._looks_like_mp3(b'RIFF\x00\x00WAVE')
+        assert not utils._looks_like_mp3(b'')
+
+    def test_headerless_vbr_mp3_decoded_to_the_end(self):
+        pytest.importorskip("miniaudio")
+        import io
+        import soundfile as sf
+        content, duration = _headerless_vbr_mp3()
+        truncated, _ = sf.read(io.BytesIO(content))
+
+        data, samplerate = utils._decode_audio_bytes(content, Mock())
+
+        assert len(data) / samplerate >= duration
+        assert len(data) / samplerate > len(truncated) / samplerate + 1
+
+    def test_audioread_error_logged_with_type_and_soundfile_fallback(self):
+        import io
+        import numpy as np
+        import soundfile as sf
+        wav = io.BytesIO()
+        sf.write(wav, np.zeros(1600, dtype=np.float32), 16000, format='WAV')
+        logger = Mock()
+
+        class NoBackendError(Exception):
+            pass
+
+        with patch('audioread.audio_open', side_effect=NoBackendError()):
+            data, samplerate = utils._decode_audio_bytes(wav.getvalue(), logger)
+
+        assert samplerate == 16000 and len(data) == 1600
+        assert "NoBackendError()" in logger.warning.call_args[0][0]

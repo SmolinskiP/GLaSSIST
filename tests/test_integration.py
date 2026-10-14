@@ -10,110 +10,101 @@ import time
 from unittest.mock import Mock, patch, AsyncMock, MagicMock
 
 
+APP_ENV = {
+    'HA_HOST': 'localhost:8123',
+    'HA_TOKEN': 'test_token',
+    'CONNECTION_MODE': 'websocket',
+    'HA_ROOMS_ENABLED': 'false',
+    'HA_ANIMATIONS_ENABLED': 'false',
+    'HA_WAKE_WORD_ENABLED': 'false',
+    'HA_RESPONSE_TEXT_ENABLED': 'true',
+    'HA_PIPELINE_ID': '',
+    'HA_MEDIA_PLAYER_ENTITIES': '',
+    'HA_CONTINUE_ON_QUESTION': 'false'
+}
+
+
+@pytest.fixture
+def app():
+    from main import HAAssistApp
+
+    with patch.dict('os.environ', APP_ENV),          patch('utils.play_feedback_sound'),          patch('utils.processing_sound_loop'),          patch('asyncio.sleep', new_callable=AsyncMock):
+        app = HAAssistApp()
+        app.animation_server = Mock(current_state="hidden")
+        app.audio_manager = Mock()
+        yield app
+
+
+def make_ha_client():
+    ha_client = Mock()
+    ha_client.volumes_managed = False
+    ha_client.saved_volumes_for_restore = None
+    ha_client.connect = AsyncMock(return_value=True)
+    ha_client.start_assist_pipeline = AsyncMock(return_value=True)
+    ha_client.send_audio_chunk = AsyncMock(return_value=True)
+    ha_client.end_audio = AsyncMock(return_value=True)
+    ha_client.receive_response = AsyncMock(return_value=[
+        {"type": "event", "event": {"type": "stt-end", "data": {"stt_output": {"text": "turn on lights"}}}}
+    ])
+    ha_client.validate_pipeline_id.return_value = True
+    ha_client.extract_assistant_response.return_value = "Lights turned on"
+    ha_client.extract_audio_url.return_value = None
+    return ha_client
+
+
 class TestVoiceCommandIntegration:
     """Integration tests for voice command processing."""
     
     @pytest.mark.asyncio
-    async def test_complete_voice_command_flow(self):
+    async def test_complete_voice_command_flow(self, app):
         """Test complete voice command flow from audio to response."""
-        # Import main components
-        from main import HAAssistApp
-        from client import HomeAssistantClient
-        from audio import AudioManager
-        from animation_server import AnimationServer
+        ha_client = make_ha_client()
+        app.ha_client = ha_client
+
+        async def record_audio(on_chunk, on_end):
+            await on_chunk(b'audio')
+            await on_end()
+            return True
+
+        app.audio_manager.record_audio = record_audio
         
-        # Mock external dependencies
-        with patch('pyaudio.PyAudio') as mock_pyaudio, \
-             patch('websockets.connect') as mock_ws_connect, \
-             patch('webview.create_window') as mock_webview, \
-             patch('pystray.Icon') as mock_tray:
-            
-            # Setup mocks
-            mock_audio = Mock()
-            mock_pyaudio.return_value = mock_audio
-            mock_audio.get_device_count.return_value = 1
-            mock_audio.get_device_info_by_index.return_value = {
-                'name': 'Test Microphone',
-                'maxInputChannels': 1,
-                'defaultSampleRate': 16000
-            }
-            mock_audio.open.return_value = Mock()
-            
-            mock_ws = AsyncMock()
-            mock_ws_connect.return_value = mock_ws
-            mock_ws.recv.side_effect = [
-                '{"type": "auth_required"}',
-                '{"type": "auth_ok"}',
-                '{"type": "result", "success": true, "result": {"pipelines": []}}',
-                '{"type": "result", "success": true, "result": {}}',
-                '{"type": "event", "event": {"type": "stt-end", "data": {"stt_output": {"text": "turn on lights"}}}}',
-                '{"type": "event", "event": {"type": "intent-end", "data": {"intent_output": {"response": {"speech": {"plain": {"speech": "Lights turned on"}}}}}}}'
-            ]
-            
-            # Create app instance
-            with patch.dict('os.environ', {
-                'HA_HOST': 'localhost:8123',
-                'HA_TOKEN': 'test_token',
-                'HA_ANIMATIONS_ENABLED': 'false',
-                'HA_WAKE_WORD_ENABLED': 'false'
-            }):
-                app = HAAssistApp()
-                
-                # Mock audio recording
-                with patch.object(app, 'animation_server') as mock_anim_server:
-                    mock_anim_server.current_state = "hidden"
-                    
-                    # Test voice command processing
-                    await app.process_voice_command()
-                    
-                    # Verify state changes
-                    assert mock_anim_server.change_state.call_count >= 2
-                    state_calls = [call[0][0] for call in mock_anim_server.change_state.call_args_list]
-                    assert "listening" in state_calls
-                    assert "processing" in state_calls
+        await app.process_voice_command()
+        
+        states = [call[0][0] for call in app.animation_server.change_state.call_args_list]
+        assert states == ["listening", "processing", "responding", "hidden"]
+        ha_client.send_audio_chunk.assert_awaited_once_with(b'audio')
+        ha_client.end_audio.assert_awaited_once()
+        app.animation_server.send_audio_data.assert_called_once_with(b'audio')
+        app.animation_server.send_response_text.assert_called_once_with("Lights turned on")
     
-    @pytest.mark.asyncio
-    async def test_wake_word_to_voice_command(self):
+    def test_wake_word_to_voice_command(self, app):
         """Test wake word detection triggering voice command."""
-        from main import HAAssistApp
-        from wake_word_detector import WakeWordDetector
+        assert app.wake_word_detector.detection_callback == app.on_wake_word_detected
         
-        with patch.dict('os.environ', {
-            'HA_HOST': 'localhost:8123',
-            'HA_TOKEN': 'test_token',
-            'HA_ANIMATIONS_ENABLED': 'false',
-            'HA_WAKE_WORD_ENABLED': 'true',
-            'HA_WAKE_WORD_MODELS': 'alexa'
-        }):
-            with patch('openwakeword.model.Model') as mock_model, \
-                 patch('pyaudio.PyAudio') as mock_pyaudio, \
-                 patch('webview.create_window'), \
-                 patch('pystray.Icon'):
-                
-                # Setup mocks
-                mock_model_instance = Mock()
-                mock_model.return_value = mock_model_instance
-                mock_model_instance.predict.return_value = {'alexa': 0.7}
-                
-                mock_audio = Mock()
-                mock_pyaudio.return_value = mock_audio
-                mock_audio.get_device_count.return_value = 1
-                mock_audio.get_device_info_by_index.return_value = {
-                    'name': 'Test Microphone',
-                    'maxInputChannels': 1,
-                    'defaultSampleRate': 16000
-                }
-                mock_audio.open.return_value = Mock()
-                
-                app = HAAssistApp()
-                
-                # Mock voice command processing
-                with patch.object(app, 'on_voice_command_trigger') as mock_trigger:
-                    # Simulate wake word detection
-                    app.on_wake_word_detected('alexa', 0.7)
-                    
-                    # Should trigger voice command
-                    mock_trigger.assert_called_once()
+        with patch.object(app, 'on_voice_command_trigger') as mock_trigger:
+            app.on_wake_word_detected('alexa', 0.7)
+            
+            mock_trigger.assert_called_once()
+    
+    def test_wake_word_ignored_when_busy(self, app):
+        """Test wake word is ignored while a command is already in progress."""
+        app.animation_server.current_state = "listening"
+        
+        with patch.object(app, 'on_voice_command_trigger') as mock_trigger:
+            app.on_wake_word_detected('alexa', 0.7)
+            
+            mock_trigger.assert_not_called()
+    
+    def test_wake_word_in_esphome_mode(self, app):
+        """Test wake word wakes the satellite instead of starting a websocket command."""
+        app.connection_mode = "esphome"
+        app.satellite_server = Mock()
+        
+        with patch.object(app, 'on_voice_command_trigger') as mock_trigger:
+            app.on_wake_word_detected('alexa', 0.7)
+            
+            app.satellite_server.wakeup.assert_called_once()
+            mock_trigger.assert_not_called()
     
     @pytest.mark.asyncio
     async def test_animation_server_client_communication(self):
@@ -129,8 +120,8 @@ class TestVoiceCommandIntegration:
         server_thread = threading.Thread(target=server.start, daemon=True)
         server_thread.start()
         
-        # Wait for server to start
-        await asyncio.sleep(0.5)
+        while server.server is None:
+            await asyncio.sleep(0.01)
         
         try:
             # Connect client
@@ -165,9 +156,8 @@ class TestVoiceCommandIntegration:
     def test_audio_manager_vad_integration(self):
         """Test AudioManager integration with VAD."""
         from audio import AudioManager
-        from vad import VoiceActivityDetector
         
-        with patch('pyaudio.PyAudio') as mock_pyaudio:
+        with patch.dict('os.environ', {'HA_MICROPHONE_INDEX': '-1'}),              patch('pyaudio.PyAudio') as mock_pyaudio:
             mock_audio = Mock()
             mock_pyaudio.return_value = mock_audio
             mock_audio.get_device_count.return_value = 1
@@ -176,26 +166,25 @@ class TestVoiceCommandIntegration:
                 'maxInputChannels': 1,
                 'defaultSampleRate': 16000
             }
+            mock_audio.get_default_input_device_info.return_value = {'index': 0}
             
             mock_stream = Mock()
             mock_audio.open.return_value = mock_stream
             
-            # Create audio manager
             audio_manager = AudioManager()
             
-            # Mock VAD
             with patch.object(audio_manager, 'vad') as mock_vad:
                 mock_vad.is_speech.return_value = True
                 
-                # Initialize audio
                 success = audio_manager.init_audio()
                 assert success is True
+                assert mock_audio.open.call_args.kwargs['input_device_index'] == 0
                 
-                # Verify VAD integration
                 assert audio_manager.vad == mock_vad
                 
-                # Test cleanup
                 audio_manager.close_audio()
+                mock_stream.stop_stream.assert_called_once()
+                mock_audio.terminate.assert_called_once()
     
     def test_client_pipeline_integration(self):
         """Test Home Assistant client pipeline integration."""
@@ -339,35 +328,19 @@ class TestErrorHandlingIntegration:
     """Integration tests for error handling across modules."""
     
     @pytest.mark.asyncio
-    async def test_connection_error_handling(self):
+    async def test_connection_error_handling(self, app):
         """Test connection error handling throughout the system."""
-        from main import HAAssistApp
+        from client import HomeAssistantClient
         
-        with patch.dict('os.environ', {
-            'HA_HOST': 'nonexistent:8123',
-            'HA_TOKEN': 'invalid_token',
-            'HA_ANIMATIONS_ENABLED': 'false',
-            'HA_WAKE_WORD_ENABLED': 'false'
-        }):
-            with patch('websockets.connect') as mock_connect, \
-                 patch('webview.create_window'), \
-                 patch('pystray.Icon'):
-                
-                # Mock connection failure
-                mock_connect.side_effect = Exception("Connection failed")
-                
-                app = HAAssistApp()
-                
-                with patch.object(app, 'animation_server') as mock_anim_server:
-                    mock_anim_server.current_state = "hidden"
-                    
-                    # Should handle connection error gracefully
-                    await app.process_voice_command()
-                    
-                    # Should show error state
-                    error_calls = [call for call in mock_anim_server.change_state.call_args_list 
-                                 if call[0][0] == "error"]
-                    assert len(error_calls) > 0
+        app.ha_client = HomeAssistantClient()
+        
+        with patch('client.websockets.connect', side_effect=Exception("Connection failed")):
+            result = await app.process_voice_command()
+        
+        assert result is False
+        states = [call[0][0] for call in app.animation_server.change_state.call_args_list]
+        assert states == ["listening", "error", "hidden"]
+        app.animation_server.change_state.assert_any_call("error", "Cannot connect to Home Assistant")
     
     def test_audio_error_handling(self):
         """Test audio error handling."""
@@ -425,8 +398,10 @@ class TestErrorHandlingIntegration:
         mock_websocket.remote_address = ("127.0.0.1", 12345)
         mock_websocket.send.side_effect = Exception("Send error")
         
-        # Should handle send errors gracefully
-        await server._send_to_client(mock_websocket, {"type": "test"})
+        # Send errors drop the client during broadcast
+        server.clients = {mock_websocket}
+        await server._broadcast({"type": "test"})
+        assert mock_websocket not in server.clients
         
         # Test message handling with invalid JSON
         mock_websocket.reset_mock()

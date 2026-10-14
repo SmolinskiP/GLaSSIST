@@ -11,6 +11,12 @@ from unittest.mock import Mock, patch
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# utils runs load_dotenv() on import; drop whatever the developer's real .env added
+_environ_before_dotenv = dict(os.environ)
+import utils  # noqa: E402
+os.environ.clear()
+os.environ.update(_environ_before_dotenv)
+
 @pytest.fixture
 def temp_dir():
     """Create a temporary directory for testing."""
@@ -77,3 +83,9 @@ def mock_webview():
         mock_window = Mock()
         mock_create.return_value = mock_window
         yield mock_window
+
+@pytest.fixture(autouse=True)
+def isolate_env_file():
+    """Keep the developer's real .env out of tests; os.environ is the only source."""
+    with patch('utils._read_from_env_file', return_value=None):
+        yield

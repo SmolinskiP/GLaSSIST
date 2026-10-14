@@ -5,8 +5,19 @@ import pytest
 import os
 import threading
 import asyncio
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
+import sys
+from unittest.mock import Mock, patch, AsyncMock, MagicMock, mock_open
 import main
+
+
+@pytest.fixture(autouse=True)
+def websocket_mode_env():
+    """utils loads the developer's .env at import, so pin the mode-dependent settings."""
+    with patch.dict('os.environ', {
+        'CONNECTION_MODE': 'websocket',
+        'HA_ROOMS_ENABLED': 'false'
+    }):
+        yield
 
 
 class TestHAAssistApp:
@@ -137,11 +148,32 @@ class TestHAAssistApp:
                     
                     mock_trigger.assert_not_called()
     
+    def test_on_wake_word_detected_esphome(self):
+        """Test wake word detection in ESPHome mode wakes the satellite."""
+        with patch.dict('os.environ', {
+            'HA_HOST': 'localhost:8123',
+            'HA_TOKEN': 'test_token',
+            'CONNECTION_MODE': 'esphome'
+        }):
+            with patch('main.platform.system', return_value="Windows"), \
+                 patch('main.WakeWordDetector'):
+
+                app = main.HAAssistApp()
+                app.satellite_server = Mock()
+                app.animation_server = Mock()
+
+                with patch.object(app, 'on_voice_command_trigger') as mock_trigger:
+                    app.on_wake_word_detected("alexa", 0.7)
+
+                    app.satellite_server.wakeup.assert_called_once()
+                    mock_trigger.assert_not_called()
+
+    @patch('main.check_linux_dependencies', return_value=True)
     @patch('main.platform.system')
-    def test_create_tray_icon_linux(self, mock_system):
-        """Test tray icon creation on Linux (disabled)."""
+    def test_create_tray_icon_linux(self, mock_system, mock_check_deps):
+        """Test tray icon creation on Linux without AppIndicator (skipped)."""
         mock_system.return_value = "Linux"
-        
+
         with patch.dict('os.environ', {
             'HA_HOST': 'localhost:8123',
             'HA_TOKEN': 'test_token'
@@ -383,7 +415,7 @@ class TestHAAssistApp:
         }):
             with patch('main.platform.system', return_value="Windows"), \
                  patch('main.WakeWordDetector'), \
-                 patch('main.AnimationServer') as mock_server:
+                 patch('animation_server.AnimationServer') as mock_server:
                 
                 mock_server_instance = Mock()
                 mock_server.return_value = mock_server_instance
@@ -395,7 +427,25 @@ class TestHAAssistApp:
                 mock_server_instance.set_voice_command_callback.assert_called_once()
                 mock_server_instance.start.assert_called_once()
                 assert app.animation_server == mock_server_instance
-    
+                mock_server_instance.set_window_visibility_callback.assert_not_called()
+
+    @patch('main.check_linux_dependencies', return_value=True)
+    def test_setup_animation_server_linux_visibility_callback(self, mock_check_deps):
+        """Test animation server gets the window visibility callback on Linux."""
+        with patch.dict('os.environ', {
+            'HA_HOST': 'localhost:8123',
+            'HA_TOKEN': 'test_token',
+            'HA_ANIMATIONS_ENABLED': 'true'
+        }):
+            with patch('main.platform.system', return_value="Linux"), \
+                 patch('main.WakeWordDetector'), \
+                 patch('animation_server.AnimationServer') as mock_server:
+
+                app = main.HAAssistApp()
+                app.setup_animation_server()
+
+                mock_server.return_value.set_window_visibility_callback.assert_called_once()
+
     def test_setup_animation_server_disabled(self):
         """Test animation server setup when disabled."""
         with patch.dict('os.environ', {
@@ -456,62 +506,68 @@ class TestHAAssistApp:
                 assert result is False
                 mock_create_window.assert_not_called()
     
-    @patch('main.keyboard.add_hotkey')
-    def test_setup_hotkey_success(self, mock_add_hotkey):
+    def test_setup_hotkey_success(self):
         """Test successful hotkey setup."""
+        mock_keyboard = Mock()
+
         with patch.dict('os.environ', {
             'HA_HOST': 'localhost:8123',
             'HA_TOKEN': 'test_token',
             'HA_HOTKEY': 'ctrl+alt+v'
         }):
             with patch('main.platform.system', return_value="Windows"), \
-                 patch('main.WakeWordDetector'):
-                
+                 patch('main.WakeWordDetector'), \
+                 patch.dict(sys.modules, {'keyboard': mock_keyboard}):
+
                 app = main.HAAssistApp()
                 result = app.setup_hotkey()
-                
+
                 assert result is True
-                mock_add_hotkey.assert_called_once_with(
+                assert mock_keyboard.add_hotkey.call_args_list[0].args == (
                     'ctrl+alt+v',
                     app.on_voice_command_trigger
                 )
-    
-    @patch('main.keyboard.add_hotkey')
-    def test_setup_hotkey_import_error(self, mock_add_hotkey):
+                assert mock_keyboard.add_hotkey.call_args_list[1].args == (
+                    'escape',
+                    app.hide_interface
+                )
+
+    def test_setup_hotkey_import_error(self):
         """Test hotkey setup with import error."""
-        mock_add_hotkey.side_effect = ImportError("keyboard not installed")
-        
         with patch.dict('os.environ', {
             'HA_HOST': 'localhost:8123',
             'HA_TOKEN': 'test_token'
         }):
             with patch('main.platform.system', return_value="Windows"), \
-                 patch('main.WakeWordDetector'):
-                
+                 patch('main.WakeWordDetector'), \
+                 patch.dict(sys.modules, {'keyboard': None}):
+
                 app = main.HAAssistApp()
                 result = app.setup_hotkey()
-                
+
                 assert result is False
-    
-    @patch('main.keyboard.add_hotkey')
-    def test_setup_hotkey_exception(self, mock_add_hotkey):
+
+    def test_setup_hotkey_exception(self):
         """Test hotkey setup with exception."""
-        mock_add_hotkey.side_effect = Exception("Hotkey error")
-        
+        mock_keyboard = Mock()
+        mock_keyboard.add_hotkey.side_effect = Exception("Hotkey error")
+
         with patch.dict('os.environ', {
             'HA_HOST': 'localhost:8123',
             'HA_TOKEN': 'test_token'
         }):
             with patch('main.platform.system', return_value="Windows"), \
-                 patch('main.WakeWordDetector'):
-                
+                 patch('main.WakeWordDetector'), \
+                 patch.dict(sys.modules, {'keyboard': mock_keyboard}):
+
                 app = main.HAAssistApp()
                 result = app.setup_hotkey()
-                
+
                 assert result is False
-    
+
+    @patch('main.asyncio')
     @patch('main.threading.Thread')
-    def test_on_voice_command_trigger_idle(self, mock_thread):
+    def test_on_voice_command_trigger_idle(self, mock_thread, mock_asyncio):
         """Test voice command trigger when idle."""
         with patch.dict('os.environ', {
             'HA_HOST': 'localhost:8123',
@@ -530,8 +586,28 @@ class TestHAAssistApp:
                 app.on_voice_command_trigger()
                 
                 mock_thread.assert_called_once()
+                assert mock_thread.call_args.kwargs['daemon'] is True
                 mock_thread_instance.start.assert_called_once()
-    
+
+    def test_on_voice_command_trigger_esphome(self):
+        """Test voice command trigger in ESPHome mode starts a satellite conversation."""
+        with patch.dict('os.environ', {
+            'HA_HOST': 'localhost:8123',
+            'HA_TOKEN': 'test_token',
+            'CONNECTION_MODE': 'esphome'
+        }):
+            with patch('main.platform.system', return_value="Windows"), \
+                 patch('main.WakeWordDetector'):
+
+                app = main.HAAssistApp()
+                app.satellite_server = Mock()
+
+                with patch('main.threading.Thread') as mock_thread:
+                    app.on_voice_command_trigger()
+
+                    app.satellite_server.start_conversation.assert_called_once()
+                    mock_thread.assert_not_called()
+
     def test_on_voice_command_trigger_busy(self):
         """Test voice command trigger when busy."""
         with patch.dict('os.environ', {
@@ -656,10 +732,40 @@ class TestValidateConfiguration:
                 assert len(issues) >= 2  # Missing sound files
                 assert any("activation.wav" in issue for issue in issues)
                 assert any("deactivation.wav" in issue for issue in issues)
+    
+    def test_validate_configuration_esphome_skips_host_and_token(self):
+        """Test ESPHome mode does not require HA_HOST and HA_TOKEN."""
+        with patch.dict('os.environ', {
+            'CONNECTION_MODE': 'esphome',
+            'HA_HOST': '',
+            'HA_TOKEN': '',
+            'HA_SOUND_FEEDBACK': 'false'
+        }), patch('main.rooms_enabled', return_value=False),              patch('main.validate_wake_word_config', return_value=[]):
+            issues = main.validate_configuration()
+            
+            assert not any("HA_HOST" in issue or "HA_TOKEN" in issue for issue in issues)
+    
+    def test_validate_configuration_rooms_require_esphome(self):
+        """Test multi-room is flagged outside ESPHome mode."""
+        with patch.dict('os.environ', {
+            'HA_HOST': 'localhost:8123',
+            'HA_TOKEN': 'test_token',
+            'HA_SOUND_FEEDBACK': 'false'
+        }), patch('main.rooms_enabled', return_value=True),              patch('main.validate_wake_word_config', return_value=[]):
+            issues = main.validate_configuration()
+            
+            assert any("Multi-room" in issue for issue in issues)
 
 
 class TestMain:
     """Test cases for main function."""
+    
+    @pytest.fixture(autouse=True)
+    def isolate_process(self):
+        """Keep argparse away from pytest's argv and main() from exiting the process."""
+        with patch.object(sys, 'argv', ['main.py']),              patch('main.os._exit') as mock_exit:
+            self.mock_exit = mock_exit
+            yield
     
     @patch('main.HAAssistApp')
     @patch('main.validate_configuration')
@@ -683,8 +789,19 @@ class TestMain:
                 
                 main.main()
                 
-                mock_app.assert_called_once()
+                mock_app.assert_called_once_with(open_settings_on_start=False)
                 mock_app_instance.run.assert_called_once()
+                self.mock_exit.assert_called_once_with(0)
+    
+    @patch('main.HAAssistApp')
+    @patch('main.validate_configuration', return_value=[])
+    @patch('builtins.print')
+    def test_main_settings_flag(self, mock_print, mock_validate, mock_app):
+        """Test --settings flag is passed to the app."""
+        with patch.object(sys, 'argv', ['main.py', '--settings']),              patch('os.path.exists', return_value=False),              patch('pyaudio.PyAudio'):
+            main.main()
+            
+            mock_app.assert_called_once_with(open_settings_on_start=True)
     
     @patch('main.HAAssistApp')
     @patch('main.validate_configuration')
@@ -716,8 +833,9 @@ class TestMain:
                 assert "CONFIGURATION ISSUES FOUND" in printed_text
     
     @patch('main.HAAssistApp')
+    @patch('main.validate_configuration', return_value=[])
     @patch('builtins.print')
-    def test_main_audio_init_warning(self, mock_print, mock_app):
+    def test_main_audio_init_warning(self, mock_print, mock_validate, mock_app):
         """Test main function with audio initialization warning."""
         mock_app_instance = Mock()
         mock_app.return_value = mock_app_instance
@@ -742,8 +860,9 @@ class TestMain:
                 assert "Audio initialization warning" in printed_text
     
     @patch('main.HAAssistApp')
+    @patch('main.validate_configuration', return_value=[])
     @patch('builtins.print')  
-    def test_main_env_file_handling(self, mock_print, mock_app):
+    def test_main_env_file_handling(self, mock_print, mock_validate, mock_app):
         """Test main function environment file handling."""
         mock_app_instance = Mock()
         mock_app.return_value = mock_app_instance
