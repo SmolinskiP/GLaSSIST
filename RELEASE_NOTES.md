@@ -1,3 +1,17 @@
+## 🌍 GLaSSIST 3.8.0 — Interface translations
+
+### ✨ New feature
+
+- **GLaSSIST speaks your language.** The Settings window, tray menu and on-screen status messages can now be translated. Pick the language in **Settings → Advanced → Interface & Performance → Language** and restart GLaSSIST. English stays the default, and any text without a translation is shown in English. Contributed in [#56](https://github.com/SmolinskiP/GLaSSIST/pull/56) (thanks [@gustavomorozi](https://github.com/gustavomorozi)!).
+  - **Português (Brasil)** — by [@gustavomorozi](https://github.com/gustavomorozi).
+  - **Polski** — new in this release.
+  - Want your language? Copy `locales/pl.json` to `locales/<code>.json`, translate the values and add the code to `LANGUAGES` in `i18n.py`. Pull requests welcome.
+
+### 🐛 Bug fixes
+
+- Room settings, the window title and the version status are now included in translations.
+- Translations are bundled with the Flatpak build.
+
 ## 🩹 GLaSSIST 3.7.1 — Complete TTS playback on Windows
 
 ### 🐛 Bug fixes
