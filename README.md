@@ -193,6 +193,15 @@ The complete set of supported settings and defaults is documented in [`.env.exam
 The application stores user configuration outside the installation directory for packaged builds;
 use the Settings UI unless you specifically need to edit the environment file.
 
+### Languages
+
+The Settings window, tray menu and on-screen status messages can be translated. Pick the language in
+**Settings → Advanced → Interface & Performance → Language** (or set `HA_LANGUAGE=pt_BR` in the environment file)
+and reopen the Settings window. English is the default and every text that has no translation stays in English.
+
+To add a language, copy [`locales/pt_BR.json`](locales/pt_BR.json) to `locales/<code>.json`, translate the values
+(keep `{value}`, `{}` and `%s` placeholders), and add the code to `LANGUAGES` in [`i18n.py`](i18n.py).
+
 ### Tests
 
 Install the test dependencies and use the bundled test runner:
@@ -221,6 +230,7 @@ See [`tests/README.md`](tests/README.md) for the complete test-runner reference.
 - `audio.py`, `vad.py`, `wake_word_detector.py` — capture, speech detection, and wake words
 - `animation_server.py`, `frontend/` — overlay state, audio data, and Three.js visualization
 - `flet_settings.py` — the settings interface and configuration persistence
+- `i18n.py`, `locales/` — interface translations (`HA_LANGUAGE`)
 - `conversation_manager.py`, `prompt_server.py` — local interactive prompts in WebSocket mode
 
 ## 📄 License

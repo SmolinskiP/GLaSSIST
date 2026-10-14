@@ -8,6 +8,7 @@ import websockets
 import numpy as np
 from typing import Dict, List, Optional
 import utils
+import i18n
 
 logger = utils.setup_logger()
 
@@ -165,7 +166,7 @@ class AnimationServer:
     
     def show_success(self, message: str = "Success", duration: float = 3.0):
         """Show success animation for specified time."""
-        self.change_state("success", success_message=message)
+        self.change_state("success", success_message=i18n.t(message))
         
         import threading
         import time
@@ -179,11 +180,11 @@ class AnimationServer:
     
     def show_connecting(self, message: str = "Connecting..."):
         """Show connecting animation (persistent, no auto-hide)."""
-        self.change_state("connecting", success_message=message)
+        self.change_state("connecting", success_message=i18n.t(message))
 
     def show_update(self, message: str = "Update available", duration: float = 5.0):
         """Show the 'update available' animation for a specified time."""
-        self.change_state("update", success_message=message)
+        self.change_state("update", success_message=i18n.t(message))
 
         import threading
         import time
@@ -197,7 +198,7 @@ class AnimationServer:
 
     def show_error(self, message: str = "Error", duration: float = 5.0):
         """Show error animation for specified time."""
-        self.change_state("error", error_message=message)
+        self.change_state("error", error_message=i18n.t(message))
         
         import threading
         import time
