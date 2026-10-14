@@ -188,7 +188,7 @@ class FletSettingsApp:
                     icon=ft.Icons.MIC,
                     content=await self._create_audio_tab(current_settings)
                 ),
-                ft.Tab(text="Rooms", icon=ft.Icons.HOME,
+                ft.Tab(text="Rooms (beta)", icon=ft.Icons.HOME,
                        content=await self._create_rooms_tab()),
                 ft.Tab(
                     text="Wake Word",

@@ -30,7 +30,12 @@ class RoomSettings:
             self.load_error = str(exc)
             self.message.value = f'Cannot load saved rooms: {exc}. Reset the list to replace it.'
         self.content = ft.Container(padding=20, content=ft.Column([
-            ft.Text('Rooms', size=24, weight=ft.FontWeight.BOLD),
+            ft.Row([
+                ft.Text('Rooms', size=24, weight=ft.FontWeight.BOLD),
+                ft.Container(ft.Text('BETA', size=12, weight=ft.FontWeight.BOLD, color=ft.Colors.BLACK),
+                             bgcolor=ft.Colors.AMBER, border_radius=4,
+                             padding=ft.padding.symmetric(horizontal=6, vertical=2)),
+            ]),
             self.enabled,
             ft.Text('Assign a microphone and speaker to each room. One conversation runs at a time. '
                     'The voice hotkey uses the first room. Changes apply after restarting GLaSSIST.'),
