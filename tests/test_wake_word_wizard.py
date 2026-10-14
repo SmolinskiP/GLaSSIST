@@ -104,7 +104,7 @@ def test_verdict_is_explained(wizard, level, fragment):
     assert fragment in shown and '29 / 30' in shown and '2 / 58' in shown
     if level == 'poor':
         assert '12 de 20 trechos de fala normal a ativaram' in shown
-        assert 'não precisa refazer as vozes' in shown.lower()
+        assert 'Melhorar agora (recomendado)' in shown          # the fix is one click away
 
 
 def _run_threads_inline(monkeypatch):
@@ -244,8 +244,8 @@ def test_improve_step_records_scans_and_offers_retraining(wizard, monkeypatch):
     seen = {}
 
     from wakeword_trainer import recorder
-    def fake_record(total, folder, tag, on_update=None, stop_event=None):
-        seen['seconds'], seen['folder'], seen['tag'] = total, folder, tag
+    def fake_record(total, folder, tag, on_update=None, stop_event=None, max_clips=None):
+        seen['seconds'], seen['folder'], seen['tag'], seen['max'] = total, folder, tag, max_clips
         seen['btn_hidden'] = not wizard.imp_btn.visible and wizard.imp_wait.visible and wizard.imp_stop.visible
         on_update(60, 0.5, 12)
         return 40
@@ -253,7 +253,8 @@ def test_improve_step_records_scans_and_offers_retraining(wizard, monkeypatch):
     monkeypatch.setattr(wizard, '_run_cli', lambda args, **kw: {'clips': 20, 'triggers': 6, 'rate': 0.3})
     wizard.imp_minutes.value = '15'
     wizard._improve_record()
-    assert seen == {'seconds': 900, 'folder': wizard.ws.real_neg, 'tag': 'env', 'btn_hidden': True}
+    assert seen == {'seconds': 900, 'folder': wizard.ws.real_neg, 'tag': 'env', 'btn_hidden': True,
+                    'max': W.IMPROVE_TARGET_CLIPS}
     shown = ' | '.join(_texts(wizard.imp_result))
     assert 'Antes: 6 de 20' in shown
     assert wizard.imp_retrain.visible and wizard.imp_btn.visible and not wizard.imp_wait.visible
@@ -311,6 +312,62 @@ def test_last_step_has_a_close_button(wizard, monkeypatch):
     assert closed == [True]
     wizard._show(4)
     assert wizard.next_btn.text == 'Avançar'          # not the close button on other steps
+
+
+def test_risky_word_is_warned_once_then_allowed(wizard):
+    wizard.lang_dd.value, wizard.word_tf.value = 'pt', 'Bruna'          # short, and a common name
+    assert wizard._apply_welcome() is False
+    warning = wizard.welcome_msg.value
+    assert 'curta' in warning and 'palavra ou nome comum' in warning and 'Avançar de novo' in warning
+    assert wizard.ws is None
+    assert wizard._apply_welcome() is True                               # same word, second click: continue
+    assert wizard.ws.project.model_name == 'bruna'
+    wizard.word_tf.value = 'Bruninha'                                    # a good word: no warning at all
+    assert wizard._apply_welcome() is True
+
+
+def test_adding_a_weak_model_warns_and_offers_to_improve_first(wizard, monkeypatch):
+    wizard.lang_dd.value, wizard.word_tf.value = 'pt', 'Bruninha'
+    wizard._apply_welcome()
+    wizard._show(6)
+    wizard.evaluation = {'verdict': {'level': 'ok', 'reasons': []}}
+    wizard._offer_add()
+    assert 'Atenção' in wizard.add_msg.value
+    labels = [b.text for b in wizard.add_row.controls]
+    assert labels[0] == 'Melhorar antes (recomendado)' and 'Adicionar mesmo assim' in labels
+    wizard.add_row.controls[0].on_click(None)
+    assert wizard.step == 5                                              # jumps to the Improve step
+
+
+def test_a_good_model_is_offered_without_warning(wizard):
+    wizard.lang_dd.value, wizard.word_tf.value = 'pt', 'Bruninha'
+    wizard._apply_welcome()
+    wizard._show(6)
+    wizard.evaluation = {'verdict': {'level': 'good', 'reasons': []}}
+    wizard._offer_add()
+    assert 'Atenção' not in wizard.add_msg.value
+    assert wizard.add_row.controls[0].text == 'Adicionar à minha lista de palavras'
+
+
+def test_false_triggers_seen_in_the_live_test_count_as_weak(wizard):
+    wizard.lang_dd.value, wizard.word_tf.value = 'pt', 'Bruninha'
+    wizard._apply_welcome()
+    wizard._show(6)
+    wizard.evaluation = {'verdict': {'level': 'good', 'reasons': []}}
+    wizard.false_test_count = 3
+    wizard._offer_add()
+    assert 'Atenção' in wizard.add_msg.value
+
+
+def test_verdict_is_remembered_between_sessions(wizard):
+    wizard.lang_dd.value, wizard.word_tf.value = 'pt', 'Bruninha'
+    wizard._apply_welcome()
+    wizard._save_evaluation({'verdict': {'level': 'poor', 'reasons': []}})
+    wizard.evaluation = None
+    assert wizard._last_verdict_level() == 'poor'
+    wizard._show(6)
+    wizard._offer_add()
+    assert 'Atenção' in wizard.add_msg.value
 
 
 def test_add_to_list_uses_install_and_reports(wizard, monkeypatch):

@@ -27,6 +27,38 @@ def _shared_suffix(a, b):
     return n
 
 
+def syllables(word):
+    """Rough syllable count (groups of vowels); good enough to warn about very short words."""
+    groups, previous = 0, False
+    for ch in normalize(word):
+        is_vowel = ch in 'aeiouy'
+        if is_vowel and not previous:
+            groups += 1
+        previous = is_vowel
+    return groups
+
+
+def word_risk(word, known_words, min_syllables=3, min_letters=6):
+    """Reasons why a wake word is likely to trigger by mistake in everyday speech.
+
+    Short words, words that are common words/names and words that sound like many others are
+    heard in normal conversation all day. Returns {'syllables', 'letters', 'notes', 'similar'}
+    where notes is a list of: 'short', 'common_word', 'many_similar'.
+    """
+    w = normalize(word)
+    letters = len(w.replace(' ', ''))
+    n = syllables(word)
+    notes = []
+    if n < min_syllables or letters < min_letters:
+        notes.append('short')
+    if w in {normalize(x) for x in known_words}:
+        notes.append('common_word')
+    similar = [x for x in known_words if 0.6 <= similarity(word, x) < 0.95 and normalize(x) != w]
+    if len(similar) >= 3:
+        notes.append('many_similar')
+    return {'syllables': n, 'letters': letters, 'notes': notes, 'similar': similar[:5]}
+
+
 def contains_word(text, word):
     return normalize(word) in normalize(text)
 

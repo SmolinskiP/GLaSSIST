@@ -50,6 +50,23 @@ def test_confusables_exclude_the_word_and_near_twins():
     assert any(p.endswith('inha') for p in picks)   # words ending alike are the hard negatives
 
 
+def test_syllable_estimate():
+    assert C.syllables('Bruninha') == 3
+    assert C.syllables('Bruna') == 2
+    assert C.syllables('Jarvis') == 2 and C.syllables('Alexa') == 3
+
+
+def test_word_risk_flags_short_common_words():
+    corpus = L.load_corpus('pt')
+    bruna = C.word_risk('Bruna', corpus['words'])
+    assert 'short' in bruna['notes'] and 'common_word' in bruna['notes']       # a short, common name
+    good = C.word_risk('Bruninha', corpus['words'])
+    assert 'short' not in good['notes'] and 'common_word' not in good['notes']
+    assert 'short' in C.word_risk('Oi Zé', corpus['words'])['notes']
+    assert C.word_risk('Computador', corpus['words'])['notes'] == ['common_word'] or \
+        'common_word' in C.word_risk('computador', corpus['words'])['notes']
+
+
 def test_fragments_and_positive_phrases():
     assert C.fragments('Bruninha') == ['Brun', 'inha']
     assert C.fragments('ok') == []

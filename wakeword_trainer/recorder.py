@@ -153,8 +153,9 @@ class AmbientCollector:
         return saved
 
 
-def record_ambient(seconds, folder, tag='env', device=None, on_update=None, stop_event=None):
-    """Record for `seconds` (or until stop_event is set) and save only the clips with sound.
+def record_ambient(seconds, folder, tag='env', device=None, on_update=None, stop_event=None, max_clips=None):
+    """Record for `seconds` (or until stop_event is set, or `max_clips` clips were saved) and keep
+    only the clips with sound.
 
     on_update(elapsed, level 0..1, clips_saved) is called about every 100 ms. Returns the number of
     clips saved. Nothing but those clips is written to disk.
@@ -167,6 +168,8 @@ def record_ambient(seconds, folder, tag='env', device=None, on_update=None, stop
     collector, t0 = AmbientCollector(folder, tag), time.time()
     try:
         while time.time() - t0 < seconds and not (stop_event and stop_event.is_set()):
+            if max_clips and collector.saved >= max_clips:
+                break
             data = np.frombuffer(stream.read(CHUNK * 5, exception_on_overflow=False), dtype=np.int16)
             x = data.astype(np.float32) / 32768.0
             collector.feed(x)

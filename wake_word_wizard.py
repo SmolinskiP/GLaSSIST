@@ -29,7 +29,9 @@ t = i18n.t
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 STEP_NAMES = ['Language & word', 'Training tools', 'Voices', 'Your voice', 'Train', 'Improve', 'Test']
-IMPROVE_MINUTES = ('15', '30', '60')
+IMPROVE_MINUTES = ('30', '60', '120')
+IMPROVE_TARGET_CLIPS = 300        # stop by itself once this many clips with sound were collected
+IMPROVE_MIN_CLIPS = 100           # fewer than this is too little to measure or retrain well
 
 MIN_WORD, MIN_SPEECH, MIN_TEST = 25, 60, 10      # minimum clips before "Next" is enabled
 
@@ -77,6 +79,8 @@ class WakeWordWizard:
         self.proc = None
         self.evaluation = None
         self.improve_before = None      # scan of everyday audio before retraining ("Improve" step)
+        self._warned_word = None        # word we already warned about (second click continues)
+        self.false_test_count = None    # triggers counted in the 60 s "do not say it" test
         self.logs = []
 
     # ------------------------------------------------------------------ page scaffolding
@@ -246,6 +250,23 @@ class WakeWordWizard:
                     'phrases is sent to the Microsoft Edge online voices to generate synthetic speech.',
                     size=12, color=ft.Colors.GREY_600)], spacing=10, scroll=ft.ScrollMode.AUTO)
 
+    def _word_warnings(self, word, language):
+        """Why this word may trigger by mistake in everyday speech (empty list = looks fine)."""
+        try:
+            risk = confusables.word_risk(word, languages.load_corpus(language)['words'])
+        except (OSError, KeyError, ValueError):
+            return []
+        out = []
+        if 'short' in risk['notes']:
+            out.append(f'{t("This word is short")} ({risk["syllables"]} {t("syllables")}, {risk["letters"]} '
+                       f'{t("letters")}). ' + t('Short words trigger by mistake far more often; 3 to 4 syllables '
+                                                'work best.'))
+        if 'common_word' in risk['notes']:
+            out.append(t('It is also a common word or name, so people will say it in everyday conversation.'))
+        if out and 'many_similar' in risk['notes']:     # only an extra reason, never a warning by itself
+            out.append(t('Many everyday words sound similar to it.'))
+        return out
+
     def _apply_welcome(self):
         word = (self.word_tf.value or '').strip()
         if len(confusables.normalize(word)) < 4:
@@ -253,6 +274,14 @@ class WakeWordWizard:
             return False
         if len(word) > 30:
             self._say(self.welcome_msg, t('That is too long: use a short word or phrase.'), ft.Colors.RED_600)
+            return False
+        warnings = self._word_warnings(word, self.lang_dd.value)
+        if warnings and self._warned_word != word:
+            # warn once; the same word on a second click means "continue anyway"
+            self._warned_word = word
+            self._say(self.welcome_msg, '\n'.join(warnings) + '\n' +
+                      t('Click Next again to continue anyway, or type a longer, less common word.'),
+                      ft.Colors.ORANGE_800)
             return False
         self.language, self.word = self.lang_dd.value, word
         name = slugify(word)
@@ -584,23 +613,44 @@ class WakeWordWizard:
                                 f'{neg["above"]["0.5"]} / {neg["clips"]}'))
         if 'ambient' in ev:
             rows.append(ft.Text(f'{t("False triggers in the room recording")}: {ev["ambient"]["windows_above_0_5"]}'))
+        if v.get('false_per_hour') is not None and neg['clips']:
+            rows.append(ft.Text(f'{t("Estimated false triggers per hour of everyday sound")}: '
+                                f'{v["false_per_hour"]:.0f}', size=12, color=ft.Colors.GREY_700))
         for r in v['reasons']:
             rows.append(ft.Text('• ' + t(r), size=12))
         if v['level'] != 'good':
-            rows.append(ft.Text('To improve it: go back to "Your voice" and record more NORMAL SPEECH (this is what '
-                                'reduces false triggers); if your word was not recognized well, record more clips of '
-                                'the word too. You do not need to redo the voices. Then train again.',
+            rows.append(ft.Text('A wake word listens all day, so the real test is everyday sound (conversations, TV, '
+                                'music). The best fix is the "Improve" step: record everyday audio and retrain with '
+                                'it. If your word was not recognized well, also record more clips of the word.',
                                 size=12, color=ft.Colors.GREY_700))
-        if v['level'] == 'ok':
-            rows.append(ft.Text('You can already use it: raising the detection threshold in the settings also '
-                                'reduces false triggers.', size=12, color=ft.Colors.GREY_700))
+            rows.append(ft.FilledButton('Improve it now (recommended)', icon=ft.Icons.HEARING_DISABLED,
+                                        on_click=lambda e: self._show(5)))
         self.verdict_box.controls = rows
         self.page.update()
+        self._save_evaluation(ev)
+
+    def _save_evaluation(self, ev):
+        """Remember the last verdict, so the test step can warn before adding a weak model."""
+        try:
+            with open(os.path.join(self.ws.out, 'evaluation.json'), 'w', encoding='utf-8') as f:
+                json.dump(ev, f)
+        except OSError:
+            pass
+
+    def _last_verdict_level(self):
+        ev = self.evaluation
+        if ev is None:
+            try:
+                with open(os.path.join(self.ws.out, 'evaluation.json'), encoding='utf-8') as f:
+                    ev = json.load(f)
+            except (OSError, ValueError):
+                return None
+        return ev.get('verdict', {}).get('level')
 
     # ------------------------------------------------------------------ step 6: improve (optional)
     def _view_5(self):
         """Collect everyday audio (conversations, TV...) so the model learns what is NOT the word."""
-        self.imp_minutes = ft.Dropdown(label='How long to record', value='30', width=240,
+        self.imp_minutes = ft.Dropdown(label='How long to record (at most)', value='60', width=280,
                                        options=[ft.dropdown.Option(key=m, text=f'{m} min') for m in IMPROVE_MINUTES])
         self.imp_privacy = ft.Text('Privacy: this records EVERYTHING the microphone hears, including other people '
                                    'talking. It stays on this computer and only the clips with sound are kept '
@@ -619,9 +669,10 @@ class WakeWordWizard:
         self.improve_before = getattr(self, 'improve_before', None)
         self.body.content = ft.Column([
             ft.Text('Optional, but the best fix if your wake word triggers by mistake (conversations, TV, music). '
-                    'Leave the microphone recording while you go about your day; the wizard keeps only the clips '
-                    'with sound, measures how often the current model is fooled by them, and then retrains it '
-                    'with them as examples of what is NOT your word.'),
+                    'Leave the microphone recording while you go about your day (with people talking, TV, music); '
+                    'the wizard keeps only the clips with sound, stops by itself after 300 clips, measures how often '
+                    'the current model is fooled by them, and then retrains it with them as examples of what is '
+                    'NOT your word. Aim for at least 100 clips.'),
             self.imp_privacy, ft.Row([self.imp_minutes, self.imp_btn, self.imp_stop], spacing=14),
             self.imp_wait, self.imp_bar, self.imp_status, self.imp_result, self.imp_retrain],
             spacing=10, scroll=ft.ScrollMode.AUTO)
@@ -649,7 +700,7 @@ class WakeWordWizard:
             try:
                 from wakeword_trainer import recorder
                 saved = recorder.record_ambient(total, self.ws.real_neg, 'env', on_update=update,
-                                                stop_event=self.stop_event)
+                                                stop_event=self.stop_event, max_clips=IMPROVE_TARGET_CLIPS)
                 self.imp_wait.visible = self.imp_stop.visible = False
                 self.imp_bar.value = None
                 self._say(self.imp_status, t('Measuring how often the current model is fooled...'))
@@ -678,9 +729,15 @@ class WakeWordWizard:
             rows.append(ft.Text(f'{t("Recorded")}: {saved} {t("clips with sound")}.', size=13))
             rows.append(ft.Text(f'{t("Before")}: {k} {t("of")} {n} {t("clips the model had never heard triggered it by mistake")}.',
                                 size=15, weight=ft.FontWeight.BOLD, color=color))
+            if scan.get('per_hour'):
+                rows.append(ft.Text(f'{t("Estimated false triggers per hour of everyday sound")}: {scan["per_hour"]:.0f}',
+                                    size=12, color=ft.Colors.GREY_700))
             if k:
                 rows.append(ft.Text('Retraining with these clips teaches it that this is not your word.',
                                     size=12, color=ft.Colors.GREY_700))
+        if 0 < saved < IMPROVE_MIN_CLIPS:
+            rows.append(ft.Text(f'{t("Only")} {saved} {t("clips so far: for a reliable result record until you have at least")} '
+                                f'{IMPROVE_MIN_CLIPS}. {t("Click Record more.")}', size=12, color=ft.Colors.ORANGE_800))
         self.imp_result.controls = rows
         self.imp_retrain.visible = saved >= 10
         self._say(self.imp_status, '')
@@ -707,26 +764,29 @@ class WakeWordWizard:
         self.score_bar = ft.ProgressBar(value=0, width=420)
         self.test_text = ft.Text(size=14)
         self.test_btn = ft.FilledButton('Yes, test it now', icon=ft.Icons.MIC, on_click=self._toggle_test)
+        self.false_btn = ft.OutlinedButton('Test for false triggers (60 s)', icon=ft.Icons.HEARING_DISABLED,
+                                           on_click=lambda e: self._toggle_test(seconds=60))
         self.add_msg = ft.Text(size=13)
         self.add_row = ft.Row(wrap=True, spacing=10, visible=False)
-        self.add_row.controls = [
-            ft.FilledButton('Add it to my wake word list', icon=ft.Icons.PLAYLIST_ADD,
-                            on_click=lambda e: self._add(replace=False)),
-            ft.OutlinedButton('Use only this one', on_click=lambda e: self._add(replace=True)),
-            ft.TextButton('Not now', on_click=lambda e: self._finish(False))]
         self.body.content = ft.Column([
-            ft.Text('Your model is ready. Do you want to test it now? Say your word and watch the bar: when it '
-                    'passes the middle, GLaSSIST would wake up.'),
+            ft.Text('Your model is ready. Test 1: say your word and watch the bar; when it passes the middle, '
+                    'GLaSSIST would wake up.'),
             ft.Row([self.test_btn, ft.TextButton('Skip the test', on_click=lambda e: self._offer_add())]),
+            ft.Text('Test 2 (recommended): talk with someone or play a video for 60 seconds WITHOUT saying your '
+                    'word. It should not trigger.', size=13),
+            self.false_btn,
             self.score_bar, self.test_text, ft.Divider(), self.add_msg, self.add_row], spacing=10)
 
-    def _toggle_test(self, e=None):
+    def _toggle_test(self, e=None, seconds=None):
+        """Live test. seconds=None: say the word (until stopped). seconds=60: count mistaken triggers."""
         if self.test_running:
             self.stop_event.set()
             return
         self.test_running = True
         self.stop_event.clear()
+        false_mode = seconds is not None
         self.test_btn.text = t('Stop the test')
+        self.false_btn.disabled = self.test_btn.disabled = False
         self.back_btn.disabled = True
         self.page.update()
 
@@ -744,24 +804,33 @@ class WakeWordWizard:
                 # the detector needs ~2 s of audio before its first reliable scores
                 self._say(self.test_text, t('Getting ready... wait 2 seconds, then speak.'))
                 frames = 0
-                while not self.stop_event.is_set():
+                limit = None if seconds is None else 25 + int(seconds * 16000 / 1280)
+                while not self.stop_event.is_set() and (limit is None or frames < limit):
                     frame = np.frombuffer(stream.read(1280, exception_on_overflow=False), dtype=np.int16)
                     score = max(model.predict(frame).values())
                     frames += 1
                     if frames < 25:
                         continue
                     if frames == 25:
-                        self._say(self.test_text, t('Listening... say your wake word.'))
+                        self._say(self.test_text, t('Talk normally or play a video now. Do NOT say your word.')
+                                  if false_mode else t('Listening... say your wake word.'))
                     self.score_bar.value = min(1.0, float(score))
                     self.score_bar.color = ft.Colors.GREEN_600 if score > 0.5 else None
                     if score > 0.5 and armed:
                         detections += 1
                         armed = False
-                        self.test_text.value = f'{t("Detected")}: {detections}'
+                        self.test_text.value = (f'{t("Triggered by mistake")}: {detections}' if false_mode
+                                                else f'{t("Detected")}: {detections}')
                     elif score < 0.2:
                         armed = True
                     self.page.update()
                 stream.stop_stream(); stream.close(); pa.terminate()
+                if false_mode:
+                    self.false_test_count = detections
+                    self._say(self.test_text,
+                              t('No false triggers in this test.') if detections == 0 else
+                              f'{detections} {t("false triggers in this test: it will trigger by mistake in daily use.")}',
+                              ft.Colors.GREEN_700 if detections == 0 else ft.Colors.ORANGE_800)
             except Exception as exc:
                 self._error(self.test_text, exc)
             finally:
@@ -774,7 +843,26 @@ class WakeWordWizard:
         threading.Thread(target=work, daemon=True).start()
 
     def _offer_add(self):
-        self.add_msg.value = t('Do you want to add this wake word to your list?')
+        """Ask whether to add the model. A weak result (or false triggers seen in the test) is flagged first."""
+        level = self._last_verdict_level()
+        weak = level in ('ok', 'poor') or bool(self.false_test_count)
+        buttons = [ft.FilledButton('Add it to my wake word list', icon=ft.Icons.PLAYLIST_ADD,
+                                   on_click=lambda e: self._add(replace=False)),
+                   ft.OutlinedButton('Use only this one', on_click=lambda e: self._add(replace=True)),
+                   ft.TextButton('Not now', on_click=lambda e: self._finish(False))]
+        if weak:
+            self.add_msg.value = t('Careful: this model may trigger by mistake in everyday life. It is better '
+                                   'to improve it first (the "Improve" step), or add it anyway and keep an eye '
+                                   'on it.')
+            self.add_msg.color = ft.Colors.ORANGE_800
+            buttons = [ft.FilledButton('Improve it first (recommended)', icon=ft.Icons.HEARING_DISABLED,
+                                       on_click=lambda e: self._show(5)),
+                       ft.OutlinedButton('Add it anyway', on_click=lambda e: self._add(replace=False)),
+                       ft.TextButton('Not now', on_click=lambda e: self._finish(False))]
+        else:
+            self.add_msg.value = t('Do you want to add this wake word to your list?')
+            self.add_msg.color = None
+        self.add_row.controls = buttons
         self.add_row.visible = True
         self.page.update()
 

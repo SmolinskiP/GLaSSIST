@@ -14,12 +14,17 @@ word live and whether to add it to your wake word list.
 
 | # | Step | What happens |
 |---|------|--------------|
-| 1 | **Language & word** | Pick the language and type the word (3–4 syllables work best; avoid common words). |
+| 1 | **Language & word** | Pick the language and type the word. Short words (under 3 syllables or 6 letters) and common words or names are warned about, because they trigger by mistake in everyday conversation; you can continue anyway. |
 | 2 | **Training tools** | Creates a separate Python environment (CPU PyTorch, openWakeWord models, edge-tts). ~800 MB, once. |
 | 3 | **Voices** | Generates thousands of synthetic clips with neural voices of the chosen language: your word at different speeds and pitches, plus words and phrases that must *not* trigger it. |
 | 4 | **Your voice** | You record: the word (~2 min), normal speech (~3 min), the quiet room (30 s) and a separate *exam* set of the word (~75 s). A live counter shows what was heard. |
-| 5 | **Train** | Click once and wait: a checklist shows each stage (prepare, extract audio features, train, save, check on your exam recordings) with a spinner on the current one, a green check when done and a red cross where it failed. The model is exported as `ONNX`, checked on the exam recordings and on held-out speech it has never seen, and the verdict says in plain words if the result is good, usable or not good enough, with the counts. |
-| 6 | **Test** | Live meter: say the word and watch the bar (wait the 2 seconds the detector needs to get ready). Then *Add it to my wake word list* (copies the model to `models/` and updates `HA_WAKE_WORD_MODELS`) or *Use only this one*. *Close* ends the wizard. |
+| 5 | **Train** | Click once and wait: a checklist shows each stage (prepare, extract audio features, train, save, check on your exam recordings) with a spinner on the current one, a green check when done and a red cross where it failed. The model is exported as `ONNX`, checked on the exam recordings and on held-out speech it has never seen, and the verdict says in plain words if the result is good, usable or not good enough, with the counts and an estimate of false triggers per hour of everyday sound. A small sample can never earn *good*, and a weak result offers *Improve it now*. |
+| 6 | **Improve** | Optional, and the best fix for false triggers: leave the microphone recording while you go about your day (conversations, TV, music; 30, 60 or 120 minutes, stopping by itself after 300 clips). Only the 2-second clips with sound are kept, never the silence. The wizard measures how often the current model is fooled by clips it never trained on (*before*), retrains with them as negatives and shows the same measurement *after*. |
+| 7 | **Test** | Test 1: say the word and watch the bar (wait the 2 seconds the detector needs to get ready). Test 2: talk or play a video for 60 s *without* saying the word and count mistaken triggers. If the verdict was not *good* or Test 2 triggered, adding the model is flagged and *Improve it first* is offered. Then *Add it to my wake word list* (copies the model to `models/` and updates `HA_WAKE_WORD_MODELS`) or *Use only this one*. *Close* ends the wizard. |
+
+## Reduce false triggers later
+
+Open **Settings → Wake Word → Detection → Reduce false triggers** (or python main.py --wake-word-wizard --improve): pick one of your trained words and the wizard opens on the *Improve* step.
 
 ## Why your own voice matters
 
