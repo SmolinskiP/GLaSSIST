@@ -8,6 +8,7 @@ import numpy as np
 import pyaudio
 import utils
 import platform
+import detection_clips
 from platform_utils import check_wake_word_noise_suppression
 
 logger = utils.setup_logger()
@@ -53,6 +54,9 @@ class WakeWordDetector:
         else:
             self.noise_suppression = bool(noise_suppression_str)
         
+        # Optional (off by default): keep ~3 s of audio around every detection to learn from false triggers
+        self.clips = detection_clips.from_env()
+
         # Model configuration
         self.selected_models = self._get_selected_models()
         
@@ -368,6 +372,7 @@ class WakeWordDetector:
                     
                     # Convert to numpy array
                     audio_array = np.frombuffer(audio_data, dtype=np.int16)
+                    self.record_audio(audio_array)
                     
                     # Get predictions from openWakeWord
                     predictions = self.model.predict(audio_array)
@@ -390,6 +395,16 @@ class WakeWordDetector:
         finally:
             logger.info("Wake word detection loop ended")
     
+    def record_audio(self, audio_array):
+        """Feed the detection-clip ring buffer (no-op unless HA_WAKE_WORD_SAVE_DETECTIONS is on)."""
+        if self.clips is not None:
+            self.clips.push(audio_array)
+
+    def record_detection(self, model_name, score):
+        """Queue the last seconds of audio for saving; the file is written on another thread."""
+        if self.clips is not None:
+            self.clips.save(model_name, score)
+
     def _process_predictions(self, predictions):
         """Process wake word predictions and trigger callback if detected."""
         for model_name, score in predictions.items():
@@ -397,6 +412,7 @@ class WakeWordDetector:
                 # Only trigger on models that were specifically selected by user
                 if model_name in self.selected_models:
                     logger.info(f"Wake word detected: '{model_name}' (confidence: {score:.3f})")
+                    self.record_detection(model_name, score)
                     
                     # Call detection callback
                     if self.detection_callback:

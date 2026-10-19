@@ -305,12 +305,15 @@ class MultiRoomManager:
                 data = stream.read(1280, exception_on_overflow=False)
                 future = asyncio.run_coroutine_threadsafe(self._feed(server, data), self._loop)
                 listen = future.result(timeout=2)
+                detector.record_audio(np.frombuffer(data, dtype=np.int16))
                 if listen:
                     if not was_listening:
                         detector.model.reset()
                     predictions = detector.model.predict(np.frombuffer(data, dtype=np.int16))
-                    if any(score >= detector.detection_threshold and name in detector.selected_models
-                           for name, score in predictions.items()):
+                    hits = [(name, score) for name, score in predictions.items()
+                            if score >= detector.detection_threshold and name in detector.selected_models]
+                    if hits:
+                        detector.record_detection(*max(hits, key=lambda h: h[1]))
                         self._loop.call_soon_threadsafe(self._wakeup, server)
                 was_listening = listen
         except Exception:

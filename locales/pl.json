@@ -229,5 +229,8 @@
   "Processing sound": "Dźwięk przetwarzania",
   "WebSocket — GLaSSIST connects to HA": "WebSocket — GLaSSIST łączy się z HA",
   "ESPHome Satellite — HA connects to GLaSSIST": "Satelita ESPHome — HA łączy się z GLaSSIST",
-  "✅ openWakeWord installed and ready": "✅ openWakeWord zainstalowany i gotowy"
+  "✅ openWakeWord installed and ready": "✅ openWakeWord zainstalowany i gotowy",
+  "Save a 3-second audio clip of every detection": "Zapisuj 3-sekundowy fragment dźwięku przy każdym wykryciu",
+  "Kept only on this computer, in the detections folder of the GLaSSIST configuration directory. Restart GLaSSIST to apply.": "Przechowywane tylko na tym komputerze, w folderze detections w katalogu konfiguracji GLaSSIST. Uruchom GLaSSIST ponownie, aby zastosować.",
+  "When it is on, every detection keeps ~3 seconds of the audio that triggered it (only on this computer, off by default). Delete the clips where you really said the word; the rest are the sounds that fool the model, useful to retrain it.": "Gdy włączone, każde wykrycie zachowuje ~3 sekundy dźwięku, który je wywołał (tylko na tym komputerze, domyślnie wyłączone). Usuń nagrania, w których naprawdę powiedziano słowo; reszta to dźwięki, które mylą model i nadają się do ponownego treningu."
 }
