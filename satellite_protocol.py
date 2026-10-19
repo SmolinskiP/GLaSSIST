@@ -56,6 +56,7 @@ from aioesphomeapi.model import (
 )
 from google.protobuf import message
 
+import ai_errors
 import utils
 from esphome_server import ESPhomeAPIServer
 from media_ducking import media_ducker
@@ -138,6 +139,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
         self._block_wake_words = False
         self._tts_url: Optional[str] = None
         self._tts_text: Optional[str] = None
+        self._tts_override: Optional[str] = None   # friendly text for an AI-service error, spoken locally
         self._tts_played = False
         self._continue_conversation = False
         self._timer_active = False
@@ -253,6 +255,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
         if event_type == VoiceAssistantEventType.VOICE_ASSISTANT_RUN_START:
             self._tts_url = data.get("url")
             self._tts_text = None
+            self._tts_override = None
             self._tts_played = False
             self._continue_conversation = False
             self._pipeline_active = True
@@ -285,6 +288,10 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_TTS_START:
             self._tts_text = data.get("text", "")
+            friendly = ai_errors.friendly_error(self._tts_text)
+            if friendly:
+                _LOGGER.info("AI service error answer replaced: %s", friendly)
+                self._tts_text = self._tts_override = friendly
             if self._tts_text and self._animation_server and utils.get_env("HA_RESPONSE_TEXT_ENABLED", "true").lower() in ("true", "1", "yes"):
                 try:
                     self._animation_server.send_response_text(self._tts_text)
@@ -394,6 +401,13 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
             return
         utils.processing_sound_loop.stop()
         self._tts_played = True
+        if self._tts_override:
+            override, self._tts_override = self._tts_override, None
+            url = self._tts_url
+            ai_errors.speak(
+                override, on_done=self._tts_finished,
+                on_unavailable=lambda: self._on_tts_url(url, done_callback=self._tts_finished))
+            return
         _LOGGER.debug("Playing TTS: %s", self._tts_url)
         self._on_tts_url(self._tts_url, done_callback=self._tts_finished)
 

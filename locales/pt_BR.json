@@ -229,5 +229,11 @@
   "Processing sound": "Som de processamento",
   "WebSocket — GLaSSIST connects to HA": "WebSocket — o GLaSSIST se conecta ao HA",
   "ESPHome Satellite — HA connects to GLaSSIST": "Satélite ESPHome — o HA se conecta ao GLaSSIST",
-  "✅ openWakeWord installed and ready": "✅ openWakeWord instalado e pronto"
+  "✅ openWakeWord installed and ready": "✅ openWakeWord instalado e pronto",
+  "The AI service ({}) is overloaded right now. Try again in a few seconds.": "O serviço de IA ({}) está sobrecarregado agora. Tente de novo em alguns segundos.",
+  "The usage limit of the AI service ({}) was reached for now. Try again later.": "O limite de uso do serviço de IA ({}) acabou por enquanto. Tente de novo mais tarde.",
+  "The AI service ({}) refused the access key. Check the key in Home Assistant.": "O serviço de IA ({}) recusou a chave de acesso. Confira a chave no Home Assistant.",
+  "The AI service ({}) took too long to answer. Try again.": "O serviço de IA ({}) demorou demais para responder. Tente de novo.",
+  "The AI service ({}) had an internal error. Try again in a moment.": "O serviço de IA ({}) teve um erro interno. Tente de novo daqui a pouco.",
+  "I could not get an answer from the AI service ({}) right now. Try again.": "Não consegui uma resposta do serviço de IA ({}) agora. Tente de novo."
 }
