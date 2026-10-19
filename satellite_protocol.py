@@ -104,6 +104,45 @@ def _make_mac_address() -> str:
     return mac
 
 
+def find_local_ipv4() -> Optional[str]:
+    """LAN IPv4 address to advertise over mDNS, or None when there is none.
+
+    First asks the OS which address it would use to reach the internet (a UDP "connect" sends
+    nothing). That needs a default route, so when it fails (for example while the network is
+    coming back up) it falls back to the first private address of any network adapter. Loopback
+    and link-local (169.254.x.x) addresses are never returned.
+    """
+    import ipaddress
+    import socket
+
+    def usable(address: str) -> bool:
+        try:
+            ip = ipaddress.ip_address(address)
+        except ValueError:
+            return False
+        return ip.version == 4 and not (ip.is_loopback or ip.is_link_local or ip.is_unspecified)
+
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.connect(("8.8.8.8", 80))
+            address = sock.getsockname()[0]
+        finally:
+            sock.close()
+        if usable(address):
+            return address
+    except OSError:
+        pass
+    try:
+        import ifaddr  # installed together with zeroconf
+        candidates = [ip.ip for adapter in ifaddr.get_adapters() for ip in adapter.ips
+                      if ip.is_IPv4 and usable(ip.ip)]
+    except Exception:
+        return None
+    private = [a for a in candidates if ipaddress.ip_address(a).is_private]
+    return (private or candidates or [None])[0]
+
+
 class VoiceSatelliteProtocol(ESPhomeAPIServer):
     """
     GLaSSIST voice satellite — ESPHome protocol implementation.
@@ -664,14 +703,11 @@ class SatelliteServer:
             _LOGGER.warning("zeroconf not available — mDNS auto-discovery disabled")
             return
 
-        # Resolve the local IP by connecting a UDP socket (no actual data sent)
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            local_ip = s.getsockname()[0]
-            s.close()
-        except Exception:
-            local_ip = "127.0.0.1"
+        local_ip = find_local_ipv4()
+        if local_ip is None:
+            # Never advertise a loopback address: HA would store it and then try to reach itself.
+            _LOGGER.warning("mDNS: no LAN IPv4 address found, auto-discovery disabled for now")
+            return
 
         # ESPHome service name: lowercase device name with spaces → dashes
         service_slug = self._device_name.lower().replace(" ", "-")
