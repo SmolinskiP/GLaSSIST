@@ -260,6 +260,240 @@ def _decode_audio_bytes(content, logger):
 
     return sf.read(io.BytesIO(content))
 
+
+# ---------------------------------------------------------------------------
+# Streaming TTS playback
+#
+# Home Assistant can stream TTS audio while the LLM is still writing the
+# answer (TTS streaming, HA 2025.7+). Downloading the whole response before
+# playing (requests.get + response.content) makes the user wait until the
+# last sentence is synthesized. These helpers start playback as soon as the
+# first audio bytes arrive and fall back to the old path if anything fails
+# before playback starts.
+# ---------------------------------------------------------------------------
+
+class _StreamingNotPossible(Exception):
+    """Raised before any audio was played; caller falls back to full download."""
+
+
+def _sniff_audio_format(head):
+    """Return 'wav', 'flac', 'mp3', 'ogg' or None from the first bytes."""
+    if head[:4] == b'RIFF' and head[8:12] == b'WAVE':
+        return 'wav'
+    if head[:4] == b'fLaC':
+        return 'flac'
+    if head[:4] == b'OggS':
+        return 'ogg'
+    if _looks_like_mp3(head):
+        return 'mp3'
+    return None
+
+
+class _ByteFeeder:
+    """Pull-based reader over an iterator of byte chunks (blocking)."""
+
+    def __init__(self, chunks, initial=b''):
+        self._chunks = chunks
+        self._buf = bytearray(initial)
+        self._eof = False
+
+    def _fill(self, n):
+        while len(self._buf) < n and not self._eof:
+            try:
+                chunk = next(self._chunks)
+            except StopIteration:
+                self._eof = True
+                break
+            if chunk:
+                self._buf += chunk
+
+    def peek(self, n):
+        self._fill(n)
+        return bytes(self._buf[:n])
+
+    def read(self, n):
+        """Block until n bytes are available or the stream ends."""
+        self._fill(n)
+        out = bytes(self._buf[:n])
+        del self._buf[:n]
+        return out
+
+    def read_available(self, max_bytes, min_bytes=1):
+        """Wait for min(max_bytes, min_bytes) bytes (or EOF), then return
+        up to max_bytes of whatever is buffered."""
+        self._fill(min(max_bytes, max(1, min_bytes)))
+        out = bytes(self._buf[:max_bytes])
+        del self._buf[:max_bytes]
+        return out
+
+
+def _parse_wav_header(feeder):
+    """Consume a WAV header; return (samplerate, channels, sampwidth).
+
+    Streaming WAV from HA may carry a placeholder data size (0 or 0xFFFFFFFF),
+    so the data chunk size is ignored and PCM is read until the stream ends.
+    """
+    import struct
+    riff = feeder.read(12)
+    if len(riff) < 12 or riff[:4] != b'RIFF' or riff[8:12] != b'WAVE':
+        raise _StreamingNotPossible('not a WAV stream')
+    fmt = None
+    while True:
+        hdr = feeder.read(8)
+        if len(hdr) < 8:
+            raise _StreamingNotPossible('WAV stream ended before data chunk')
+        cid, size = hdr[:4], struct.unpack('<I', hdr[4:])[0]
+        if cid == b'data':
+            break
+        body = feeder.read(size + (size & 1))
+        if cid == b'fmt ':
+            tag, ch, rate, _, _, bits = struct.unpack('<HHIIHH', body[:16])
+            if tag == 0xFFFE and len(body) >= 26:  # WAVE_FORMAT_EXTENSIBLE
+                tag = struct.unpack('<H', body[24:26])[0]
+            fmt = (tag, ch, rate, bits)
+    if fmt is None:
+        raise _StreamingNotPossible('WAV stream without fmt chunk')
+    tag, ch, rate, bits = fmt
+    if tag != 1 or bits != 16:
+        raise _StreamingNotPossible(f'unsupported WAV encoding tag={tag} bits={bits}')
+    return rate, ch, 2
+
+
+def _iter_pcm_blocks(feeder, fmt, target_rate, logger):
+    """Yield (int16 numpy block shaped (frames, channels), samplerate, channels)."""
+    if fmt == 'wav':
+        rate, ch, width = _parse_wav_header(feeder)
+        frame = ch * width
+        pending = b''
+        while True:
+            data = feeder.read_available(4096 * frame)
+            if not data:
+                break
+            data = pending + data
+            usable = len(data) - (len(data) % frame)
+            pending = data[usable:]
+            if usable:
+                block = np.frombuffer(data[:usable], dtype='<i2').reshape(-1, ch)
+                yield block, rate, ch
+        return
+
+    try:
+        import miniaudio
+    except ImportError:
+        raise _StreamingNotPossible('miniaudio not available for compressed audio')
+
+    formats = {'mp3': miniaudio.FileFormat.MP3,
+               'flac': miniaudio.FileFormat.FLAC,
+               'ogg': miniaudio.FileFormat.VORBIS}
+
+    class _Source(miniaudio.StreamableSource):
+        def read(self, num_bytes):
+            # Decoders ask for large reads (64 KB for MP3). Blocking until that
+            # much has arrived would delay playback by several sentences, so
+            # hand over whatever is buffered; b'' only at the real end.
+            # Small requests (headers, metadata) are filled completely because
+            # some decoders (FLAC) fail on short reads during init.
+            return feeder.read_available(num_bytes, min_bytes=8192)
+
+    ch = 1
+    source = _Source()
+    stream = miniaudio.stream_any(
+        source, source_format=formats[fmt],
+        output_format=miniaudio.SampleFormat.SIGNED16,
+        nchannels=ch, sample_rate=target_rate, frames_to_read=2048)
+    try:
+        for frames in stream:
+            if len(frames):
+                block = np.frombuffer(frames, dtype=np.int16).reshape(-1, ch)
+                yield block, target_rate, ch
+    finally:
+        try:
+            source.close()
+        except Exception:
+            pass
+
+
+def _play_stream_from_url(full_url, animation_server, output_device_index, logger):
+    """Download and play TTS audio at the same time. Returns True on success.
+
+    Raises _StreamingNotPossible if nothing has been played yet, so the caller
+    can fall back to the non-streaming path.
+    """
+    t0 = time.perf_counter()
+    try:
+        response = requests.get(full_url, stream=True, timeout=(5, 120))
+    except Exception as e:
+        raise _StreamingNotPossible(f'request failed: {e!r}')
+    if response.status_code != 200:
+        response.close()
+        raise _StreamingNotPossible(f'HTTP {response.status_code}')
+
+    try:
+        try:
+            feeder = _ByteFeeder(iter(response.iter_content(chunk_size=2048)))
+            head = feeder.peek(12)
+        except Exception as e:
+            raise _StreamingNotPossible(f'cannot read response stream: {e!r}')
+        fmt = _sniff_audio_format(head)
+        logger.info(f"Streaming TTS: format={fmt}, first bytes after "
+                    f"{time.perf_counter() - t0:.2f}s")
+        if fmt is None:
+            raise _StreamingNotPossible(f'unknown audio format {head[:4]!r}')
+
+        configured_rate = get_output_sample_rate()
+        if configured_rate:
+            target_rate = configured_rate
+        else:
+            try:
+                dev = sd.query_devices(output_device_index, 'output')
+                target_rate = int(dev['default_samplerate'])
+            except Exception:
+                target_rate = 48000
+
+        stream = None
+        played = False
+        try:
+            for block, rate, ch in _iter_pcm_blocks(feeder, fmt, target_rate, logger):
+                if stream is None:
+                    if configured_rate and rate != configured_rate:
+                        raise _StreamingNotPossible(
+                            f'WAV rate {rate} differs from configured output rate')
+                    stream = sd.OutputStream(device=output_device_index,
+                                             samplerate=rate, channels=ch,
+                                             dtype='int16', latency='high')
+                    stream.start()
+                    logger.info(f"Streaming TTS: playback started after "
+                                f"{time.perf_counter() - t0:.2f}s ({rate} Hz, {ch} ch)")
+                played = True
+                if animation_server is not None:
+                    mono = block[:, 0] if block.ndim > 1 else block
+                    _send_fft_to_animation(mono, animation_server)
+                stream.write(block)
+        except _StreamingNotPossible:
+            if played:
+                logger.warning("Streaming TTS failed after playback started", exc_info=True)
+                return False
+            raise
+        except Exception as e:
+            if not played:
+                raise _StreamingNotPossible(f'decode/playback failed early: {e!r}')
+            logger.exception(f"Streaming TTS interrupted: {e!r}")
+            return False
+        finally:
+            if stream is not None:
+                try:
+                    stream.stop()   # waits until buffered audio has been played
+                    stream.close()
+                except Exception:
+                    pass
+
+        if not played:
+            raise _StreamingNotPossible('stream contained no audio')
+        logger.info(f"Streaming TTS: finished after {time.perf_counter() - t0:.2f}s")
+        return True
+    finally:
+        response.close()
+
 def play_audio_from_url(url, host, animation_server=None, done_callback=None,
                         output_device_index=None):
     """
@@ -290,6 +524,23 @@ def play_audio_from_url(url, host, animation_server=None, done_callback=None,
                 full_url = f"{protocol}://{host}{url}"
             else:
                 full_url = url
+
+            if get_env_bool('HA_TTS_STREAMING', True):
+                stream_device = output_device_index
+                if stream_device is None:
+                    stream_device = get_output_device_index()
+                try:
+                    result = _play_stream_from_url(
+                        full_url, animation_server, stream_device, logger)
+                    if done_callback:
+                        try:
+                            done_callback()
+                        except Exception as e:
+                            logger.error(f"done_callback error: {e}")
+                    return result
+                except _StreamingNotPossible as e:
+                    logger.warning(f"Streaming TTS not possible ({e}); "
+                                   f"falling back to full download")
 
             logger.info(f"Downloading audio from: {full_url}")
 

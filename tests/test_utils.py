@@ -302,3 +302,95 @@ class TestDecodeAudioBytes:
 
         assert samplerate == 16000 and len(data) == 1600
         assert "NoBackendError()" in logger.warning.call_args[0][0]
+
+
+def _streaming_wav(samples, rate=24000):
+    """WAV bytes with placeholder sizes, as sent by a streaming TTS endpoint."""
+    import struct
+    pcm = samples.astype('<i2').tobytes()
+    fmt = struct.pack('<HHIIHH', 1, 1, rate, rate * 2, 2, 16)
+    return (b'RIFF' + b'\xff\xff\xff\xff' + b'WAVE' + b'fmt ' + struct.pack('<I', 16) + fmt
+            + b'data' + b'\xff\xff\xff\xff' + pcm)
+
+
+def _chunked(data, size=1000):
+    return [data[i:i + size] for i in range(0, len(data), size)]
+
+
+@patch('utils._read_from_env_file', return_value=None)
+class TestStreamingPlayback:
+    """TTS audio is played while it is still being downloaded."""
+
+    def _response(self, chunks, status=200):
+        response = Mock()
+        response.status_code = status
+        response.iter_content.return_value = iter(chunks)
+        return response
+
+    @patch('utils.sd')
+    @patch('utils.get_output_sample_rate', return_value=None)
+    @patch('utils.get_output_device_index', return_value=None)
+    @patch('requests.get')
+    def test_wav_stream_is_played_incrementally(self, mock_get, _dev, _rate, mock_sd, _env):
+        import numpy as np
+        samples = (np.arange(48000) % 200).astype(np.int16)
+        mock_get.return_value = self._response(_chunked(_streaming_wav(samples)))
+        written = []
+        mock_sd.OutputStream.return_value.write.side_effect = lambda block: written.append(block.copy())
+        done = Mock()
+
+        result = utils.play_audio_from_url("http://ha/api/tts_proxy/x.wav", "", done_callback=done)
+
+        assert result is True
+        assert mock_get.call_args.kwargs.get('stream') is True
+        mock_sd.OutputStream.assert_called_once()
+        assert mock_sd.OutputStream.call_args.kwargs['samplerate'] == 24000
+        assert len(written) > 1  # played in several blocks, not one buffer
+        np.testing.assert_array_equal(np.concatenate(written).ravel(), samples)
+        mock_sd.play.assert_not_called()
+        done.assert_called_once()
+
+    @patch('utils.sd')
+    @patch('utils.get_output_sample_rate', return_value=None)
+    @patch('utils.get_output_device_index', return_value=None)
+    @patch('requests.get')
+    def test_unknown_format_falls_back_to_full_download(self, mock_get, _dev, _rate, mock_sd, _env):
+        import numpy as np
+        streamed = self._response([b'\x00\x01\x02\x03' * 10])
+        downloaded = Mock(status_code=200, content=b'whatever')
+        mock_get.side_effect = [streamed, downloaded]
+        data = np.zeros(160, dtype=np.float32)
+        done = Mock()
+
+        with patch('utils._decode_audio_bytes', return_value=(data, 16000)):
+            result = utils.play_audio_from_url("http://ha/x.mp3", "", done_callback=done)
+
+        assert result is True
+        assert mock_get.call_count == 2
+        mock_sd.OutputStream.assert_not_called()
+        mock_sd.play.assert_called_once_with(data, 16000)
+        done.assert_called_once()
+
+    @patch('utils.sd')
+    @patch('utils.get_output_sample_rate', return_value=None)
+    @patch('utils.get_output_device_index', return_value=None)
+    @patch('requests.get')
+    def test_streaming_can_be_disabled(self, mock_get, _dev, _rate, mock_sd, _env):
+        import numpy as np
+        mock_get.return_value = Mock(status_code=200, content=b'whatever')
+        data = np.zeros(160, dtype=np.float32)
+
+        with patch.dict(os.environ, {"HA_TTS_STREAMING": "false"}), \
+                patch('utils._decode_audio_bytes', return_value=(data, 16000)):
+            result = utils.play_audio_from_url("http://ha/x.wav", "", done_callback=Mock())
+
+        assert result is True
+        assert 'stream' not in mock_get.call_args.kwargs
+        mock_sd.OutputStream.assert_not_called()
+
+    def test_compressed_decoder_gets_partial_reads(self, _env):
+        """MP3 decoders ask for 64 KB; the feeder must not wait for all of it."""
+        feeder = utils._ByteFeeder(iter([b'a' * 9000, b'b' * 9000]))
+        first = feeder.read_available(65536, min_bytes=8192)
+        assert first == b'a' * 9000  # returned without waiting for the 2nd chunk
+        assert feeder.read_available(10, min_bytes=8192) == b'b' * 10
