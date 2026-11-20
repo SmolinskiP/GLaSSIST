@@ -48,6 +48,11 @@ class DummyAnimationServer:
         
         threading.Thread(target=hide_after_delay, daemon=True).start()
     
+    def show_connecting(self, message="Connecting..."):
+        """Track the connecting state without showing an overlay."""
+        self.change_state("connecting")
+        logger.info(message)
+
     def show_update(self, message="Update available", duration=5.0):
         """Log update message and auto-hide after duration."""
         logger.info(f"{message}")

@@ -468,6 +468,23 @@ class TestHAAssistApp:
                 mock_dummy_instance.start.assert_called_once()
                 assert app.animation_server == mock_dummy_instance
     
+    @patch('main.SatelliteServer')
+    @patch('main.threading.Thread')
+    @patch('main.WakeWordDetector')
+    def test_start_esphome_without_animations(self, mock_detector, mock_thread, mock_satellite):
+        with patch.dict('os.environ', {
+            'CONNECTION_MODE': 'esphome',
+            'HA_ANIMATIONS_ENABLED': 'false',
+        }), patch('main.platform.system', return_value="Windows"):
+            app = main.HAAssistApp()
+            app.setup_animation_server()
+            app._start_esphome_mode()
+
+        assert isinstance(app.animation_server, main.DummyAnimationServer)
+        assert app.animation_server.current_state == "connecting"
+        assert app.satellite_server is mock_satellite.return_value
+        assert mock_thread.return_value.start.call_count == 2
+
     @patch('main.webview.create_window')
     def test_setup_webview_success(self, mock_create_window):
         """Test successful webview setup."""
