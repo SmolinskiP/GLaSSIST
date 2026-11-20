@@ -912,7 +912,29 @@ class HAAssistApp:
             import keyboard
             
             hotkey = utils.get_env("HA_HOTKEY", "ctrl+shift+h")
-            keyboard.add_hotkey(hotkey, self.on_activation_hotkey, trigger_on_release=True)
+            steps = keyboard.parse_hotkey_combinations(hotkey)
+            if len(steps) == 1:
+                combinations = {frozenset(step) for step in steps[0]}
+                pressed = set()
+                active = None
+
+                def on_key(event):
+                    nonlocal active
+                    # Keep an ordered view of the events. keyboard's
+                    # nonblocking release handler has already removed the key.
+                    if event.event_type == keyboard.KEY_UP:
+                        pressed.discard(event.scan_code)
+                        if active is not None and event.scan_code in active:
+                            active = None
+                    elif event.event_type == keyboard.KEY_DOWN:
+                        pressed.add(event.scan_code)
+                        if active is None and (chord := frozenset(pressed)) in combinations:
+                            active = chord
+                            self.on_activation_hotkey()
+
+                keyboard.hook(on_key)
+            else:
+                keyboard.add_hotkey(hotkey, self.on_activation_hotkey)
             logger.info(f"Keyboard shortcut set: {hotkey}")
             
             # Add escape key to hide interface quickly

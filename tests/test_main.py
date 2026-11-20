@@ -527,32 +527,37 @@ class TestHAAssistApp:
                 assert result is False
                 mock_create_window.assert_not_called()
     
-    def test_setup_hotkey_success(self):
-        """Test successful hotkey setup."""
-        mock_keyboard = Mock()
+    def test_activation_hotkey_fires_once_per_press(self):
+        mock_keyboard = Mock(KEY_DOWN="down", KEY_UP="up")
+        mock_keyboard.parse_hotkey_combinations.return_value = (((29, 42, 34), (29, 54, 34)),)
 
         with patch.dict('os.environ', {
             'HA_HOST': 'localhost:8123',
             'HA_TOKEN': 'test_token',
-            'HA_HOTKEY': 'ctrl+alt+v'
+            'HA_HOTKEY': 'ctrl+shift+g'
         }):
             with patch('main.platform.system', return_value="Windows"), \
                  patch('main.WakeWordDetector'), \
+                 patch('utils._read_from_env_file', return_value=None), \
                  patch.dict(sys.modules, {'keyboard': mock_keyboard}):
 
                 app = main.HAAssistApp()
-                result = app.setup_hotkey()
+                app.on_activation_hotkey = Mock()
+                assert app.setup_hotkey()
 
-                assert result is True
-                assert mock_keyboard.add_hotkey.call_args_list[0].args == (
-                    'ctrl+alt+v',
-                    app.on_activation_hotkey
-                )
-                assert mock_keyboard.add_hotkey.call_args_list[0].kwargs == {"trigger_on_release": True}
-                assert mock_keyboard.add_hotkey.call_args_list[1].args == (
-                    'escape',
-                    app.hide_interface
-                )
+                mock_keyboard.parse_hotkey_combinations.assert_called_once_with('ctrl+shift+g')
+                mock_keyboard.add_hotkey.assert_called_once_with('escape', app.hide_interface)
+                on_key = mock_keyboard.hook.call_args.args[0]
+                for event_type, scan_code in [
+                    ('down', 34), ('up', 34),
+                    ('down', 29), ('down', 42), ('down', 34), ('down', 34), ('down', 34),
+                ]:
+                    on_key(Mock(event_type=event_type, scan_code=scan_code))
+                app.on_activation_hotkey.assert_called_once()
+
+                on_key(Mock(event_type='up', scan_code=34))
+                on_key(Mock(event_type='down', scan_code=34))
+                assert app.on_activation_hotkey.call_count == 2
 
     def test_setup_hotkey_import_error(self):
         """Test hotkey setup with import error."""
@@ -572,7 +577,7 @@ class TestHAAssistApp:
     def test_setup_hotkey_exception(self):
         """Test hotkey setup with exception."""
         mock_keyboard = Mock()
-        mock_keyboard.add_hotkey.side_effect = Exception("Hotkey error")
+        mock_keyboard.parse_hotkey_combinations.side_effect = ValueError("Hotkey error")
 
         with patch.dict('os.environ', {
             'HA_HOST': 'localhost:8123',

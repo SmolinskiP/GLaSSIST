@@ -109,6 +109,8 @@ class FletSettingsApp:
             'HA_SILENCE_THRESHOLD_SEC': utils.get_env('HA_SILENCE_THRESHOLD_SEC', 0.8, float),
             'HA_SOUND_FEEDBACK': utils.get_env('HA_SOUND_FEEDBACK', 'true'),
             'HA_PROCESSING_SOUND': utils.get_env('HA_PROCESSING_SOUND', 'false'),
+            'HA_PROCESSING_SOUND_START': utils.get_env('HA_PROCESSING_SOUND_START', 'stt_vad_end').lower(),
+            'HA_TTS_STREAMING': utils.get_env_bool('HA_TTS_STREAMING', True),
             'HA_SOUND_ACTIVATION': utils.get_env('HA_SOUND_ACTIVATION', 'activation.wav'),
             'HA_SOUND_DEACTIVATION': utils.get_env('HA_SOUND_DEACTIVATION', 'deactivation.wav'),
             'HA_SOUND_PROCESSING': utils.get_env('HA_SOUND_PROCESSING', 'processing.wav'),
@@ -123,6 +125,7 @@ class FletSettingsApp:
             'HA_FRAME_DURATION_MS': utils.get_env('HA_FRAME_DURATION_MS', '30'),
             'ANIMATION_PORT': utils.get_env('ANIMATION_PORT', '8765'),
             'HA_WAKE_WORD_ENABLED': utils.get_env('HA_WAKE_WORD_ENABLED', 'false'),
+            'HA_WAKE_WORD_INTERRUPT': utils.get_env_bool('HA_WAKE_WORD_INTERRUPT', False),
             'HA_WAKE_WORD_MODELS': utils.get_env('HA_WAKE_WORD_MODELS', 'alexa'),
             'HA_WAKE_WORD_THRESHOLD': utils.get_env('HA_WAKE_WORD_THRESHOLD', 0.5, float),
             'HA_WAKE_WORD_VAD_THRESHOLD': utils.get_env('HA_WAKE_WORD_VAD_THRESHOLD', 0.3, float),
@@ -309,7 +312,7 @@ class FletSettingsApp:
             if self.room_settings.enabled.value:
                 self.connection_mode_dropdown.value = 'esphome'
                 self.wake_word_enabled.value = True
-            self.page.update()
+            self._on_esphome_audio_setting_changed(event)
         self.room_settings.enabled.on_change = on_enabled
         await self.room_settings.refresh_devices()
         return self.room_settings.content
@@ -324,6 +327,7 @@ class FletSettingsApp:
                 ft.dropdown.Option("websocket", "WebSocket — GLaSSIST connects to HA"),
                 ft.dropdown.Option("esphome", "ESPHome Satellite — HA connects to GLaSSIST"),
             ],
+            on_change=self._on_esphome_audio_setting_changed,
             expand=True,
         )
 
@@ -506,7 +510,23 @@ class FletSettingsApp:
         self.processing_sound_switch = ft.Switch(
             label="Play processing sound while waiting for response",
             value=current_settings['HA_PROCESSING_SOUND'] == 'true',
-            active_color=ft.Colors.ORANGE_600
+            active_color=ft.Colors.ORANGE_600,
+            on_change=self._on_esphome_audio_setting_changed,
+        )
+        self.processing_sound_start_dropdown = ft.Dropdown(
+            label="Processing sound starts",
+            value="stt_end" if current_settings["HA_PROCESSING_SOUND_START"] == "stt_end" else "stt_vad_end",
+            options=[
+                ft.dropdown.Option("stt_vad_end", "When you stop speaking"),
+                ft.dropdown.Option("stt_end", "After speech is recognized"),
+            ],
+            helper_text="ESPHome only. Enable the processing sound to choose when it starts.",
+        )
+        self.tts_streaming_switch = ft.Switch(
+            label="Play streamed replies as they arrive (ESPHome)",
+            tooltip="Requires a Home Assistant pipeline that streams speech.",
+            value=current_settings["HA_TTS_STREAMING"],
+            active_color=ft.Colors.PURPLE_400,
         )
 
         # Feedback sound file dropdowns
@@ -634,6 +654,8 @@ class FletSettingsApp:
                             ft.Container(height=10),
                             self.sound_feedback_switch,
                             self.processing_sound_switch,
+                            self.processing_sound_start_dropdown,
+                            self.tts_streaming_switch,
                             ft.Text(
                                 "Sound files are loaded from the 'sound' folder — "
                                 "drop your own files there and select them below",
@@ -770,6 +792,12 @@ class FletSettingsApp:
             on_change=self._on_wake_word_toggle,
             active_color=ft.Colors.GREEN_600
         )
+        self.wake_word_interrupt_switch = ft.Switch(
+            label="Let the wake word interrupt replies (ESPHome)",
+            tooltip="Works best with a microphone that cancels speaker echo.",
+            value=current_settings["HA_WAKE_WORD_INTERRUPT"],
+            active_color=ft.Colors.GREEN_600,
+        )
         
         # Check openWakeWord status
         try:
@@ -839,6 +867,7 @@ class FletSettingsApp:
                         content=ft.Column([
                             ft.Text("🎤 Wake Word Activation", size=18, weight=ft.FontWeight.BOLD),
                             self.wake_word_enabled,
+                            self.wake_word_interrupt_switch,
                             ft.Text(
                                 "Allows voice activation using words like 'Alexa', 'Hey Jarvis', etc.",
                                 color=ft.Colors.GREY_600, size=12
@@ -1376,6 +1405,16 @@ class FletSettingsApp:
     
     async def _on_wake_word_toggle(self, e):
         await self._toggle_wake_word_controls()
+
+    def _on_esphome_audio_setting_changed(self, e):
+        self._sync_esphome_controls()
+        self.page.update()
+
+    def _sync_esphome_controls(self):
+        esphome = self.connection_mode_dropdown.value == "esphome"
+        self.processing_sound_start_dropdown.disabled = not (esphome and self.processing_sound_switch.value)
+        self.tts_streaming_switch.disabled = not esphome
+        self.wake_word_interrupt_switch.disabled = not (esphome and self.wake_word_enabled.value)
         
     async def _toggle_wake_word_controls(self):
         """Enable/disable wake word controls based on main switch"""
@@ -1396,7 +1435,8 @@ class FletSettingsApp:
         for control in self.selected_models_column.controls:
             if hasattr(control, 'trailing') and hasattr(control.trailing, 'disabled'):
                 control.trailing.disabled = not enabled
-        
+
+        self._sync_esphome_controls()
         self.page.update()
     
     # Async operations
@@ -2179,6 +2219,8 @@ class FletSettingsApp:
                 'HA_OUTPUT_DEVICE_INDEX': str(selected_output_index),
                 'HA_SOUND_FEEDBACK': 'true' if self.sound_feedback_switch.value else 'false',
                 'HA_PROCESSING_SOUND': 'true' if self.processing_sound_switch.value else 'false',
+                'HA_PROCESSING_SOUND_START': self.processing_sound_start_dropdown.value or 'stt_vad_end',
+                'HA_TTS_STREAMING': 'true' if self.tts_streaming_switch.value else 'false',
                 'HA_SOUND_ACTIVATION': self.activation_sound_dropdown.value or 'activation.wav',
                 'HA_SOUND_DEACTIVATION': self.deactivation_sound_dropdown.value or 'deactivation.wav',
                 'HA_SOUND_PROCESSING': self.processing_sound_dropdown.value or 'processing.wav',
@@ -2197,6 +2239,7 @@ class FletSettingsApp:
                 
                 # Wake word settings
                 'HA_WAKE_WORD_ENABLED': 'true' if self.wake_word_enabled.value else 'false',
+                'HA_WAKE_WORD_INTERRUPT': 'true' if self.wake_word_interrupt_switch.value else 'false',
                 'HA_WAKE_WORD_MODELS': ','.join(selected_models),
                 'HA_WAKE_WORD_THRESHOLD': str(round(self.wake_threshold_slider.value, 2)),
                 'HA_WAKE_WORD_VAD_THRESHOLD': str(round(self.vad_threshold_slider.value, 2)),
@@ -2291,8 +2334,8 @@ class FletSettingsApp:
             env_content += "\n# === AUDIO FEEDBACK ===\n"
             env_content += f"HA_SOUND_FEEDBACK={settings['HA_SOUND_FEEDBACK']}\n"
             env_content += f"HA_PROCESSING_SOUND={settings['HA_PROCESSING_SOUND']}\n"
-            env_content += f"HA_PROCESSING_SOUND_START={utils.get_env('HA_PROCESSING_SOUND_START', 'stt_vad_end')}\n"
-            env_content += f"HA_TTS_STREAMING={utils.get_env('HA_TTS_STREAMING', 'true')}\n"
+            env_content += f"HA_PROCESSING_SOUND_START={settings.get('HA_PROCESSING_SOUND_START', 'stt_vad_end')}\n"
+            env_content += f"HA_TTS_STREAMING={settings.get('HA_TTS_STREAMING', 'true')}\n"
             env_content += f"HA_SOUND_ACTIVATION={settings['HA_SOUND_ACTIVATION']}\n"
             env_content += f"HA_SOUND_DEACTIVATION={settings['HA_SOUND_DEACTIVATION']}\n"
             env_content += f"HA_SOUND_PROCESSING={settings['HA_SOUND_PROCESSING']}\n"
@@ -2302,7 +2345,7 @@ class FletSettingsApp:
             env_content += f"HA_CONVERSATION_TIMEOUT={settings['HA_CONVERSATION_TIMEOUT']}\n"
 
             env_content += "\n# === WAKE WORD DETECTION ===\n"
-            env_content += f"HA_WAKE_WORD_INTERRUPT={utils.get_env('HA_WAKE_WORD_INTERRUPT', 'false')}\n"
+            env_content += f"HA_WAKE_WORD_INTERRUPT={settings.get('HA_WAKE_WORD_INTERRUPT', 'false')}\n"
             env_content += f"HA_WAKE_WORD_ENABLED={settings['HA_WAKE_WORD_ENABLED']}\n"
             env_content += f"HA_WAKE_WORD_MODELS={settings['HA_WAKE_WORD_MODELS']}\n"
             env_content += f"HA_WAKE_WORD_THRESHOLD={settings['HA_WAKE_WORD_THRESHOLD']}\n"

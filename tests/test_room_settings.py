@@ -143,6 +143,8 @@ def test_rooms_tab_enables_required_settings():
         content = asyncio.run(app._create_rooms_tab())
     assert content is app.room_settings.content
     app.room_settings.enabled.value = True
-    app.room_settings.enabled.on_change(None)
+    with patch.object(app, '_sync_esphome_controls') as sync:
+        app.room_settings.enabled.on_change(None)
+    sync.assert_called_once_with()
     assert app.connection_mode_dropdown.value == 'esphome'
     assert app.wake_word_enabled.value
