@@ -406,13 +406,15 @@ class TestHAAssistApp:
                     mock_refresh.assert_called_once()
                     app.animation_server.show_error.assert_called_once()
     
-    def test_setup_animation_server_enabled(self):
+    @pytest.mark.parametrize("configured_port, expected_port", [("4820", 4820), ("65536", 8765)])
+    def test_setup_animation_server_enabled(self, configured_port, expected_port):
         """Test animation server setup when enabled."""
         with patch.dict('os.environ', {
             'HA_HOST': 'localhost:8123',
             'HA_TOKEN': 'test_token',
-            'HA_ANIMATIONS_ENABLED': 'true'
-        }):
+            'HA_ANIMATIONS_ENABLED': 'true',
+            'ANIMATION_PORT': configured_port,
+        }), patch('utils._read_from_env_file', return_value=None):
             with patch('main.platform.system', return_value="Windows"), \
                  patch('main.WakeWordDetector'), \
                  patch('animation_server.AnimationServer') as mock_server:
@@ -423,7 +425,7 @@ class TestHAAssistApp:
                 app = main.HAAssistApp()
                 app.setup_animation_server()
                 
-                mock_server.assert_called_once()
+                mock_server.assert_called_once_with(port=expected_port)
                 mock_server_instance.set_voice_command_callback.assert_called_once()
                 mock_server_instance.start.assert_called_once()
                 assert app.animation_server == mock_server_instance
@@ -500,11 +502,13 @@ class TestHAAssistApp:
                  patch('os.path.exists', return_value=True):
                 
                 app = main.HAAssistApp()
+                app.animation_server = Mock(port=4820)
                 result = app.setup_webview()
                 
                 assert result is True
                 assert app.window == mock_window
                 mock_create_window.assert_called_once()
+                assert mock_create_window.call_args.args[1].endswith("index.html#animation_port=4820")
     
     @patch('main.webview.create_window')
     def test_setup_webview_missing_frontend(self, mock_create_window):

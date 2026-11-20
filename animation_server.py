@@ -12,8 +12,10 @@ import i18n
 
 logger = utils.setup_logger()
 
+DEFAULT_ANIMATION_PORT = 8765
+
 class AnimationServer:
-    def __init__(self, port: int = 8765):
+    def __init__(self, port: int = DEFAULT_ANIMATION_PORT):
         self.port = port
         self.clients: set = set()
         self.server = None

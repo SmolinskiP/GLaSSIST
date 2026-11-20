@@ -24,7 +24,7 @@ import utils
 import i18n
 from client import HomeAssistantClient
 from audio import AudioManager
-from animation_server import AnimationServer
+from animation_server import DEFAULT_ANIMATION_PORT
 from wake_word_detector import WakeWordDetector, validate_wake_word_config
 import platform
 from platform_utils import check_linux_dependencies, hide_window_from_taskbar, get_icon_path, is_flatpak, set_overlay_window_visible
@@ -434,7 +434,11 @@ class HAAssistApp:
         """Setup animation server or dummy server based on configuration."""
         if self.animations_enabled:
             from animation_server import AnimationServer
-            self.animation_server = AnimationServer()
+            port = utils.get_env("ANIMATION_PORT", DEFAULT_ANIMATION_PORT, int)
+            if not 1024 <= port <= 65535:
+                logger.warning("Invalid animation port %s, using %s", port, DEFAULT_ANIMATION_PORT)
+                port = DEFAULT_ANIMATION_PORT
+            self.animation_server = AnimationServer(port=port)
             logger.info("Real animation server created")
             if self.is_linux:
                 # WebKitGTK suspends JS for the unfocused click-through window,
@@ -497,9 +501,11 @@ class HAAssistApp:
         window_width = utils.get_env("WINDOW_WIDTH", 400, int)
         window_height = utils.get_env("WINDOW_HEIGHT", 400, int)
         
+        port = getattr(self.animation_server, "port", DEFAULT_ANIMATION_PORT)
+        # Use a fragment so pywebview serves the same local file and assets.
         self.window = webview.create_window(
             'GLaSSIST',
-            index_path,
+            f"{index_path}#animation_port={port}",
             width=window_width,
             height=window_height,
             resizable=False,
@@ -1344,7 +1350,7 @@ def validate_configuration():
             issues.append(f"Missing deactivation sound file: {deactivation_sound}")
 
     try:
-        anim_port = utils.get_env("ANIMATION_PORT", 8765, int)
+        anim_port = utils.get_env("ANIMATION_PORT", DEFAULT_ANIMATION_PORT, int)
         if anim_port < 1024 or anim_port > 65535:
             issues.append(f"Invalid animation port: {anim_port} (allowed: 1024-65535)")
     except (ValueError, TypeError):

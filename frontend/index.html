@@ -679,7 +679,12 @@
         // WebSocket
         function initWebSocket() {
             try {
-                websocket = new WebSocket('ws://localhost:8765');
+                const params = new URLSearchParams(window.location.hash.slice(1));
+                const configuredPort = Number(params.get('animation_port'));
+                const port = Number.isInteger(configuredPort) && configuredPort >= 1024 && configuredPort <= 65535
+                    ? configuredPort
+                    : 8765;
+                websocket = new WebSocket(`ws://localhost:${port}`);
                 
                 websocket.onopen = function(event) {
                     console.log('Connected to animation server');
