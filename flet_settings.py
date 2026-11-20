@@ -2291,6 +2291,7 @@ class FletSettingsApp:
             env_content += "\n# === AUDIO FEEDBACK ===\n"
             env_content += f"HA_SOUND_FEEDBACK={settings['HA_SOUND_FEEDBACK']}\n"
             env_content += f"HA_PROCESSING_SOUND={settings['HA_PROCESSING_SOUND']}\n"
+            env_content += f"HA_PROCESSING_SOUND_START={utils.get_env('HA_PROCESSING_SOUND_START', 'stt_vad_end')}\n"
             env_content += f"HA_SOUND_ACTIVATION={settings['HA_SOUND_ACTIVATION']}\n"
             env_content += f"HA_SOUND_DEACTIVATION={settings['HA_SOUND_DEACTIVATION']}\n"
             env_content += f"HA_SOUND_PROCESSING={settings['HA_SOUND_PROCESSING']}\n"

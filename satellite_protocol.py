@@ -266,12 +266,17 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
             VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END,
             VoiceAssistantEventType.VOICE_ASSISTANT_STT_END,
         ):
-            if self._speech_end_handled:
-                return
-            self._speech_end_handled = True
-            self._is_streaming_audio = False
-            self._set_animation("processing")
-            if self._feedback_enabled:
+            first_speech_end = not self._speech_end_handled
+            if first_speech_end:
+                self._speech_end_handled = True
+                self._is_streaming_audio = False
+                self._set_animation("processing")
+            wait_for_text = utils.get_env("HA_PROCESSING_SOUND_START", "stt_vad_end").lower() == "stt_end"
+            speech_recognized = (
+                event_type == VoiceAssistantEventType.VOICE_ASSISTANT_STT_END
+                and bool(data.get("text", "").strip())
+            )
+            if self._feedback_enabled and (speech_recognized if wait_for_text else first_speech_end):
                 utils.processing_sound_loop.start()
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END:

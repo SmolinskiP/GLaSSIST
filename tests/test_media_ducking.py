@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 import media_ducking
+from aioesphomeapi.model import VoiceAssistantEventType as EventType
 from satellite_protocol import VoiceSatelliteProtocol
 
 
@@ -95,3 +96,22 @@ def test_satellite_restores_on_disconnect(ducker):
     protocol.wakeup()
     protocol.connection_lost(None)
     ducker.restore.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "setting, text, calls_after_vad, calls_after_stt",
+    [("stt_vad_end", "hello", 1, 1), ("stt_end", " hello ", 0, 1), ("stt_end", "  ", 0, 0)],
+)
+def test_processing_sound_can_wait_for_recognized_speech(setting, text, calls_after_vad, calls_after_stt):
+    protocol = make_protocol()
+    protocol._feedback_enabled = True
+    with patch.dict(os.environ, {"HA_PROCESSING_SOUND_START": setting}), \
+         patch("utils._read_from_env_file", return_value=None), \
+         patch("satellite_protocol.utils.processing_sound_loop") as sound, \
+         patch("satellite_protocol.media_ducker"):
+        protocol._handle_voice_event(EventType.VOICE_ASSISTANT_RUN_START, {})
+        protocol._handle_voice_event(EventType.VOICE_ASSISTANT_STT_VAD_END, {})
+        assert not protocol.is_streaming_audio
+        assert sound.start.call_count == calls_after_vad
+        protocol._handle_voice_event(EventType.VOICE_ASSISTANT_STT_END, {"text": text})
+        assert sound.start.call_count == calls_after_stt
