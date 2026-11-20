@@ -488,7 +488,7 @@ class TestHAAssistApp:
     @patch('main.webview.create_window')
     def test_setup_webview_success(self, mock_create_window):
         """Test successful webview setup."""
-        mock_window = Mock()
+        mock_window = MagicMock()
         mock_create_window.return_value = mock_window
         
         with patch.dict('os.environ', {

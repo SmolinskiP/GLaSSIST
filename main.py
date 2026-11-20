@@ -28,6 +28,7 @@ from animation_server import AnimationServer
 from wake_word_detector import WakeWordDetector, validate_wake_word_config
 import platform
 from platform_utils import check_linux_dependencies, hide_window_from_taskbar, get_icon_path, is_flatpak, set_overlay_window_visible
+from platform_utils import guard_webview2_cleanup
 from dummy_animation_server import DummyAnimationServer
 from conversation_manager import ConversationManager
 from prompt_server import PromptServer
@@ -511,6 +512,9 @@ class HAAssistApp:
             y=10
         )
         
+        if self.is_windows:
+            self.window.events.before_show += guard_webview2_cleanup
+
         logger.info(f"Webview window configured ({window_width}x{window_height}, hidden from taskbar)")
         return True
 

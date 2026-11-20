@@ -30,9 +30,7 @@ pyreadline3==3.5.4
 pystray==0.19.5
 python-dotenv==1.1.0
 pythonnet==3.0.5
-# 6.2 catches WebView2 teardown errors when its process has already exited (#64).
-pywebview==6.2; sys_platform == "win32"
-pywebview==5.4; sys_platform != "win32"
+pywebview==5.4
 requests==2.32.3
 scikit-learn==1.6.1
 scipy==1.15.3

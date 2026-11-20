@@ -84,6 +84,23 @@ def get_icon_path():
     
     return None
 
+def guard_webview2_cleanup(window):
+    """Backport pywebview's WebView2 shutdown exception handling to 5.4 (#64)."""
+    browser = getattr(window.native, "browser", None)
+    clear_user_data = getattr(browser, "clear_user_data", None)
+    if clear_user_data is None:
+        return
+
+    def clear_user_data_safely():
+        try:
+            clear_user_data()
+        except Exception as exc:
+            # Windows can tear down WebView2 before WinForms closes the window.
+            logger.warning("WebView2 cleanup failed: %s", exc)
+
+    browser.clear_user_data = clear_user_data_safely
+
+
 def hide_window_from_taskbar(window_title="GLaSSIST"):
     """Hide window from taskbar - cross-platform implementation."""
     if platform.system() == "Windows":
