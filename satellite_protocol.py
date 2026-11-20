@@ -127,7 +127,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
         self._device_name = device_name
         self._mac_address = mac_address
         self._animation_server = animation_server
-        self._on_tts_url = on_tts_url          # callback(url: str, done_callback)
+        self._on_tts_url = on_tts_url
         self._on_tts_finished = on_tts_finished  # callback() — called when TTS done
         self._pipeline_id = pipeline_id
         self._feedback_enabled = feedback_enabled
@@ -139,6 +139,9 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
         self._tts_url: Optional[str] = None
         self._tts_text: Optional[str] = None
         self._tts_played = False
+        self._tts_completed = False
+        self._playback_cancel = None
+        self._ignore_cancelled_events = False
         self._continue_conversation = False
         self._timer_active = False
         self._speech_end_handled = False
@@ -162,6 +165,10 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
     def block_wake_words(self) -> bool:
         return self._block_wake_words or self._pipeline_active
 
+    @property
+    def can_interrupt_response(self) -> bool:
+        return self._playback_cancel is not None and utils.get_env_bool("HA_WAKE_WORD_INTERRUPT", False)
+
     def handle_audio(self, audio_chunk: bytes) -> None:
         """Feed a microphone audio chunk — called from audio capture thread."""
         if not self._is_streaming_audio:
@@ -178,6 +185,9 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
             return
 
         if self.block_wake_words:
+            if self.can_interrupt_response:
+                self.cancel_interaction(restart=True)
+                return
             _LOGGER.debug("Wake word blocked — pipeline already active")
             return
 
@@ -185,10 +195,44 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
 
     def start_conversation(self) -> None:
         """Start pipeline run without wake word (e.g. hotkey trigger)."""
-        if self._pipeline_active:
+        if self.block_wake_words or self._playback_cancel:
             _LOGGER.debug("Pipeline already active, ignoring trigger")
             return
         self._start_pipeline_run()
+
+    def toggle_conversation(self) -> None:
+        """Cancel the current interaction or start one if idle."""
+        if not self.cancel_interaction():
+            self.start_conversation()
+
+    def cancel_interaction(self, *, restart=False) -> bool:
+        if not self._pipeline_active and self._playback_cancel is None:
+            return False
+
+        if self._pipeline_active:
+            self.send_messages([VoiceAssistantRequest(start=False)])
+            self._ignore_cancelled_events = True
+        if self._playback_cancel:
+            self._playback_cancel.set()
+            self._playback_cancel = None
+        self._pipeline_active = False
+        self._is_streaming_audio = False
+        self._tts_url = self._tts_text = None
+        self._tts_played = False
+        self._tts_completed = False
+        self._continue_conversation = False
+        utils.processing_sound_loop.stop()
+        media_ducker.restore()
+        self._set_animation("hidden")
+        # HA uses the same completion message for interrupted TTS and announcements.
+        self.send_messages([VoiceAssistantAnnounceFinished()])
+        if restart:
+            self._start_pipeline_run()
+        else:
+            self._release_block()
+            if self._timer_active:
+                self._play_timer_sound()
+        return True
 
     # -------------------------------------------------------------------------
     # ESPHome message handling
@@ -204,6 +248,8 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
 
         elif isinstance(msg, VoiceAssistantAnnounceRequest):
             _LOGGER.info("HA announce: %s", msg.text)
+            if self._playback_cancel:
+                self._playback_cancel.set()
             self._continue_conversation = msg.start_conversation
 
             urls = []
@@ -212,7 +258,8 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
             urls.append(msg.media_id)
 
             media_ducker.duck()
-            self._play_tts_sequence(urls, done_callback=self._tts_finished)
+            self._block_wake_words = True
+            self._play_tts_sequence(urls)
 
         elif isinstance(msg, DeviceInfoRequest):
             yield from self._respond_device_info()
@@ -250,10 +297,17 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
     ) -> None:
         _LOGGER.info("Voice event: %s data=%s", event_type.name, data)
 
+        if self._ignore_cancelled_events:
+            # Events have no run ID in ESPHome. Wait for the next run's start.
+            if event_type != VoiceAssistantEventType.VOICE_ASSISTANT_RUN_START or not self._pipeline_active:
+                return
+            self._ignore_cancelled_events = False
+
         if event_type == VoiceAssistantEventType.VOICE_ASSISTANT_RUN_START:
             self._tts_url = data.get("url")
             self._tts_text = None
             self._tts_played = False
+            self._tts_completed = False
             self._continue_conversation = False
             self._pipeline_active = True
             self._is_streaming_audio = True
@@ -286,7 +340,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_PROGRESS:
             if data.get("tts_start_streaming") == "1":
-                self._play_tts()
+                self._play_tts(streaming=True)
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_TTS_START:
             self._tts_text = data.get("text", "")
@@ -299,21 +353,24 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_TTS_END:
             self._tts_url = data.get("url")
             self._play_tts()
-            self._set_animation("responding")
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END:
             utils.processing_sound_loop.stop()
             self._is_streaming_audio = False
             self._pipeline_active = False
-            if not self._tts_played:
-                self._tts_finished()
+            playback_done = not self._tts_played or self._tts_completed
             self._tts_played = False
+            if playback_done:
+                self._tts_finished_on_loop()
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_ERROR:
             code = data.get("code", "")
             msg_text = data.get("message", "")
             _LOGGER.error("Pipeline error: %s — %s", code, msg_text)
             utils.processing_sound_loop.stop()
+            if self._playback_cancel:
+                self._playback_cancel.set()
+                self._playback_cancel = None
             self._pipeline_active = False
             self._is_streaming_audio = False
             self._block_wake_words = False
@@ -362,6 +419,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
         self._is_streaming_audio = True
         self._speech_end_handled = False
         self._tts_played = False
+        self._tts_completed = False
         self._continue_conversation = False
 
         try:
@@ -370,6 +428,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
             _LOGGER.exception("Failed to send pipeline start request; resetting state")
             self._pipeline_active = False
             self._is_streaming_audio = False
+            self._block_wake_words = False
             return
         media_ducker.duck()
         if self._feedback_enabled:
@@ -394,35 +453,42 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
     # TTS playback
     # -------------------------------------------------------------------------
 
-    def _play_tts(self) -> None:
+    def _play_tts(self, *, streaming=False) -> None:
         if not self._tts_url or self._tts_played:
             return
         utils.processing_sound_loop.stop()
         self._tts_played = True
         _LOGGER.debug("Playing TTS: %s", self._tts_url)
-        self._on_tts_url(self._tts_url, done_callback=self._tts_finished)
+        self._set_animation("responding")
+        self._play_tts_sequence([self._tts_url], streaming=streaming)
 
-    def _play_tts_sequence(self, urls: list, done_callback: callable) -> None:
+    def _play_tts_sequence(self, urls: list, *, streaming=False) -> None:
         """Play a sequence of URLs (for announce preannounce + main audio)."""
-        if not urls:
-            done_callback()
-            return
+        cancel_event = threading.Event()
+        self._playback_cancel = cancel_event
+        remaining = iter(urls)
 
-        url = urls[0]
-        remaining = urls[1:]
+        def next_url():
+            if self._playback_cancel is not cancel_event:
+                return
+            url = next(remaining, None)
+            if url is None:
+                self._playback_cancel = None
+                if self._tts_played and self._pipeline_active:
+                    self._tts_completed = True
+                    return
+                self._tts_finished_on_loop()
+                return
+            self._on_tts_url(url, done_callback=finished, cancel_event=cancel_event, streaming=streaming)
 
-        def _next():
-            self._play_tts_sequence(remaining, done_callback)
+        def finished():
+            if self._loop is not None:
+                if not self._loop.is_closed():
+                    self._loop.call_soon_threadsafe(next_url)
+            else:
+                next_url()
 
-        self._on_tts_url(url, done_callback=_next if remaining else done_callback)
-
-    def _tts_finished(self) -> None:
-        """Called from TTS playback thread — schedule on asyncio loop for thread safety."""
-        loop = self._loop
-        if loop is not None:
-            loop.call_soon_threadsafe(self._tts_finished_on_loop)
-        else:
-            self._tts_finished_on_loop()
+        next_url()
 
     def _tts_finished_on_loop(self) -> None:
         """Runs on the asyncio event loop thread."""
@@ -578,6 +644,10 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
 
     def connection_lost(self, exc) -> None:
         super().connection_lost(exc)
+        if self._playback_cancel:
+            self._playback_cancel.set()
+            self._playback_cancel = None
+        utils.processing_sound_loop.stop()
         self._pipeline_active = False
         self._is_streaming_audio = False
         self._block_wake_words = False
@@ -734,7 +804,7 @@ class SatelliteServer:
     def wakeup(self) -> None:
         """Trigger pipeline run on wake word detection."""
         if self._protocol:
-            self._protocol.wakeup()
+            self._dispatch(self._protocol.wakeup)
         else:
             _LOGGER.warning("Wake word detected but HA not connected — ignoring")
             if self._animation_server:
@@ -743,9 +813,21 @@ class SatelliteServer:
     def start_conversation(self) -> None:
         """Trigger pipeline run from hotkey / tray menu."""
         if self._protocol:
-            self._protocol.start_conversation()
+            self._dispatch(self._protocol.start_conversation)
         else:
             _LOGGER.warning("Voice trigger but HA not connected")
+
+    def toggle_conversation(self) -> None:
+        if self.is_connected:
+            self._dispatch(self._protocol.toggle_conversation)
+
+    def _dispatch(self, callback) -> None:
+        loop = self._protocol._loop
+        if loop is not None:
+            if not loop.is_closed():
+                loop.call_soon_threadsafe(callback)
+        else:
+            callback()
 
     def stop_timer(self) -> None:
         """Stop looping timer sound."""
@@ -755,6 +837,10 @@ class SatelliteServer:
     @property
     def is_connected(self) -> bool:
         return self._protocol is not None and self._protocol._transport is not None
+
+    @property
+    def can_interrupt_response(self) -> bool:
+        return self.is_connected and self._protocol.can_interrupt_response
 
     @property
     def is_streaming_audio(self) -> bool:

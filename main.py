@@ -61,6 +61,9 @@ class HAAssistApp:
         self.animations_enabled = utils.get_env_bool("HA_ANIMATIONS_ENABLED", True)
         self.response_text_enabled = utils.get_env_bool("HA_RESPONSE_TEXT_ENABLED", True)
         self.open_settings_on_start = open_settings_on_start
+        self._voice_lock = threading.Lock()
+        self._voice_cancel = None
+        self._voice_task = None
 
         # Platform detection
         self.is_linux = platform.system() == "Linux"
@@ -571,7 +574,7 @@ class HAAssistApp:
             )
             root.destroy()
 
-    async def process_voice_command(self):
+    async def process_voice_command(self, cancel_event=None):
         """Enhanced voice command processing with pipeline validation."""
         # Store references to temporary instances for cleanup
         # temp variables removed - using self.ha_client and self.audio_manager
@@ -580,6 +583,8 @@ class HAAssistApp:
         saved_volumes = {}
         media_player_entities = []
         target_volume = None
+        ha_client = None
+        audio_manager = None
         
         try:
             # Load media player configuration
@@ -734,7 +739,9 @@ class HAAssistApp:
                             audio_url = ha_client.extract_audio_url(results)
                             if audio_url:
                                 print("Playing voice response with FFT analysis...")
-                                success = utils.play_audio_from_url(audio_url, ha_client.host, self.animation_server)
+                                success = await asyncio.to_thread(
+                                    utils.play_audio_from_url, audio_url, ha_client.host,
+                                    self.animation_server, cancel_event=cancel_event)
                                 if not success:
                                     logger.warning("Failed to play response audio")
 
@@ -760,6 +767,10 @@ class HAAssistApp:
                     self.animation_server.change_state("hidden")
                     utils.play_feedback_sound("deactivation")
                 
+        except asyncio.CancelledError:
+            logger.info("Voice interaction cancelled")
+            self.animation_server.change_state("hidden")
+            raise
         except asyncio.TimeoutError:
             logger.error("Timeout during voice command processing")
             utils.processing_sound_loop.stop()
@@ -781,10 +792,13 @@ class HAAssistApp:
             self.animation_server.change_state("hidden")
             utils.play_feedback_sound("deactivation")
         finally:
+            with self._voice_lock:
+                if self._voice_task is asyncio.current_task():
+                    self._voice_task = None
             utils.processing_sound_loop.stop()
             # Restore original volumes (prefer from HA client if available, fallback to local)
-            volumes_to_restore = ha_client.saved_volumes_for_restore if ha_client.saved_volumes_for_restore else saved_volumes
-            if volumes_to_restore and media_player_entities and ha_client.volumes_managed:
+            volumes_to_restore = (ha_client.saved_volumes_for_restore or saved_volumes) if ha_client else []
+            if volumes_to_restore and media_player_entities:
                 try:
                     logger.info("Restoring original volumes")
                     results = await ha_client.set_multiple_volumes(volumes_to_restore)
@@ -800,47 +814,81 @@ class HAAssistApp:
             logger.info("Cleaning up voice command session...")
             
             # Only close temporary instances if we created them (not self instances)
-            if audio_manager != self.audio_manager:
+            if audio_manager is not None and audio_manager is not self.audio_manager:
                 try:
                     audio_manager.close_audio()
                     logger.debug("Temp audio manager closed")
                 except Exception as e:
                     logger.error(f"Error closing temp audio manager: {e}")
                 
-            if ha_client != self.ha_client:
+            if ha_client is not None:
                 try:
                     await ha_client.close()
-                    logger.debug("Temp HA client closed")
+                    logger.debug("HA client closed")
                 except Exception as e:
                     logger.error(f"Error closing temp HA client: {e}")
             
             logger.info("Voice command session cleanup completed")
 
-    def on_voice_command_trigger(self):
+    def on_activation_hotkey(self):
+        self.on_voice_command_trigger(toggle=True)
+
+    def on_voice_command_trigger(self, *, toggle=False):
         """Callback called when user activates voice command."""
         if self.multi_room_enabled:
             if self.multi_room_manager:
-                self.multi_room_manager.start_conversation()
+                if toggle:
+                    self.multi_room_manager.toggle_conversation()
+                else:
+                    self.multi_room_manager.start_conversation()
             return
         if self.connection_mode == "esphome":
             if self.satellite_server:
-                self.satellite_server.start_conversation()
+                if toggle:
+                    self.satellite_server.toggle_conversation()
+                else:
+                    self.satellite_server.start_conversation()
             else:
                 logger.warning("ESPHome mode: satellite server not running")
             return
 
-        if self.animation_server.current_state != "hidden":
-            logger.info("Application is busy, ignoring trigger")
-            return
+        with self._voice_lock:
+            if self._voice_cancel is not None:
+                if toggle and not self._voice_cancel.is_set():
+                    self._voice_cancel.set()
+                    if self._voice_task is not None:
+                        task = self._voice_task
+                        if not task.get_loop().is_closed():
+                            task.get_loop().call_soon_threadsafe(self._cancel_voice_task, task)
+                return
+            if self.animation_server.current_state != "hidden":
+                return
+            cancel_event = self._voice_cancel = threading.Event()
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        async def run():
+            with self._voice_lock:
+                if cancel_event.is_set():
+                    return
+                self._voice_task = asyncio.current_task()
+            await self.process_voice_command(cancel_event)
 
         def run_async():
-            loop.run_until_complete(self.process_voice_command())
+            try:
+                asyncio.run(run())
+            except asyncio.CancelledError:
+                pass
+            finally:
+                with self._voice_lock:
+                    self._voice_task = None
+                    self._voice_cancel = None
 
         thread = threading.Thread(target=run_async, daemon=True)
         thread.start()
+
+    def _cancel_voice_task(self, task):
+        with self._voice_lock:
+            if task is self._voice_task:
+                task.cancel()
     
     def hide_from_taskbar(self):
         """Hide window from taskbar using cross-platform implementation."""
@@ -864,7 +912,7 @@ class HAAssistApp:
             import keyboard
             
             hotkey = utils.get_env("HA_HOTKEY", "ctrl+shift+h")
-            keyboard.add_hotkey(hotkey, self.on_voice_command_trigger)
+            keyboard.add_hotkey(hotkey, self.on_activation_hotkey, trigger_on_release=True)
             logger.info(f"Keyboard shortcut set: {hotkey}")
             
             # Add escape key to hide interface quickly
@@ -961,13 +1009,13 @@ class HAAssistApp:
         port = utils.get_env("ESPHOME_PORT", 6053, int)
         pipeline_id = utils.get_env("HA_PIPELINE_ID")
 
-        def on_tts_url(url: str, done_callback=None):
+        def on_tts_url(url: str, done_callback=None, **playback_options):
             """Play TTS audio from URL, call done_callback when finished."""
             host = utils.get_env("HA_HOST", "")
             threading.Thread(
                 target=utils.play_audio_from_url,
                 args=(url, host, self.animation_server),
-                kwargs={"done_callback": done_callback},
+                kwargs={"done_callback": done_callback, **playback_options},
                 daemon=True,
             ).start()
 

@@ -2,6 +2,7 @@
 Audio handling module - recording and processing audio.
 """
 import time
+import asyncio
 import pyaudio
 import numpy as np
 import utils
@@ -213,6 +214,7 @@ class AudioManager:
             speech_active = False
             
             while True:
+                await asyncio.sleep(0)
                 try:
                     data = self.stream.read(self.chunk_size, exception_on_overflow=False)
                     chunks_processed += 1

@@ -6,6 +6,7 @@ import pytest
 
 import media_ducking
 from aioesphomeapi.model import VoiceAssistantEventType as EventType
+from aioesphomeapi.api_pb2 import VoiceAssistantRequest
 from satellite_protocol import VoiceSatelliteProtocol
 
 
@@ -115,3 +116,45 @@ def test_processing_sound_can_wait_for_recognized_speech(setting, text, calls_af
         assert sound.start.call_count == calls_after_vad
         protocol._handle_voice_event(EventType.VOICE_ASSISTANT_STT_END, {"text": text})
         assert sound.start.call_count == calls_after_stt
+
+
+def test_hotkey_cancels_pipeline_and_discards_late_events():
+    protocol = make_protocol()
+    with patch("satellite_protocol.media_ducker"), patch("utils.processing_sound_loop"):
+        protocol.toggle_conversation()
+        assert protocol.is_streaming_audio
+        protocol.toggle_conversation()
+        assert any(isinstance(msg, VoiceAssistantRequest) and not msg.start
+                   for call in protocol.send_messages.call_args_list for msg in call.args[0])
+        protocol._handle_voice_event(EventType.VOICE_ASSISTANT_TTS_END, {"url": "http://ha/old.wav"})
+        protocol._handle_voice_event(EventType.VOICE_ASSISTANT_RUN_END, {})
+        protocol._on_tts_url.assert_not_called()
+        assert not protocol.is_streaming_audio
+        protocol.toggle_conversation()
+        protocol._handle_voice_event(EventType.VOICE_ASSISTANT_RUN_START, {})
+        assert protocol.is_streaming_audio
+
+
+@pytest.mark.parametrize("interrupt", [False, True])
+def test_wake_word_can_interrupt_streaming_reply(interrupt):
+    protocol = make_protocol()
+    with patch("satellite_protocol.media_ducker"), patch("utils.processing_sound_loop"), \
+         patch("utils.get_env_bool", return_value=interrupt):
+        protocol._handle_voice_event(EventType.VOICE_ASSISTANT_RUN_START, {"url": "http://ha/stream.wav"})
+        protocol._handle_voice_event(EventType.VOICE_ASSISTANT_INTENT_PROGRESS, {"tts_start_streaming": "1"})
+        protocol._handle_voice_event(EventType.VOICE_ASSISTANT_TTS_END, {"url": "http://ha/stream.wav"})
+        protocol._on_tts_url.assert_called_once()
+        playback = protocol._on_tts_url.call_args.kwargs
+        assert playback["streaming"]
+        protocol.send_messages.reset_mock()
+        protocol.wakeup()
+        assert playback["cancel_event"].is_set() is interrupt
+        if interrupt:
+            requests = [msg for call in protocol.send_messages.call_args_list for msg in call.args[0]
+                        if isinstance(msg, VoiceAssistantRequest)]
+            assert [msg.start for msg in requests] == [False, True]
+            protocol._on_tts_finished.reset_mock()
+            playback["done_callback"]()
+            protocol._on_tts_finished.assert_not_called()
+        else:
+            protocol.send_messages.assert_not_called()

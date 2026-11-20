@@ -546,8 +546,9 @@ class TestHAAssistApp:
                 assert result is True
                 assert mock_keyboard.add_hotkey.call_args_list[0].args == (
                     'ctrl+alt+v',
-                    app.on_voice_command_trigger
+                    app.on_activation_hotkey
                 )
+                assert mock_keyboard.add_hotkey.call_args_list[0].kwargs == {"trigger_on_release": True}
                 assert mock_keyboard.add_hotkey.call_args_list[1].args == (
                     'escape',
                     app.hide_interface
@@ -628,6 +629,28 @@ class TestHAAssistApp:
 
                     app.satellite_server.start_conversation.assert_called_once()
                     mock_thread.assert_not_called()
+
+    def test_second_hotkey_cancels_websocket_task(self):
+        started = threading.Event()
+        stopped = threading.Event()
+
+        async def run(cancel_event):
+            started.set()
+            try:
+                await asyncio.Future()
+            finally:
+                if cancel_event.is_set():
+                    stopped.set()
+
+        with patch('main.platform.system', return_value="Windows"), patch('main.WakeWordDetector'):
+            app = main.HAAssistApp()
+        app.animation_server = Mock(current_state="hidden")
+        app.process_voice_command = AsyncMock(side_effect=run)
+        app.on_activation_hotkey()
+        assert started.wait(2)
+        app.on_activation_hotkey()
+        assert stopped.wait(2)
+        app.process_voice_command.assert_awaited_once()
 
     def test_on_voice_command_trigger_busy(self):
         """Test voice command trigger when busy."""

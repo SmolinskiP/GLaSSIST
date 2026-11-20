@@ -115,6 +115,10 @@ def room_protocol_factory(gate):
             self._watchdog = None
             self._playback_finished_early = False
 
+        @property
+        def can_interrupt_response(self):
+            return gate.owner is self and super().can_interrupt_response
+
         def start_conversation(self):
             # Manual triggers must wait for playback and the echo cooldown.
             # Automatic follow-ups call _start_pipeline_run directly and retain
@@ -262,7 +266,8 @@ class MultiRoomManager:
                 self.detectors.append(detector)
                 server = SatelliteServer(
                     device_name=f'GLaSSIST-{room.id}', animation_server=self.animation,
-                    on_tts_url=lambda url, done_callback=None, r=room: self._play(r, url, done_callback),
+                    on_tts_url=lambda url, done_callback=None, r=room, **options:
+                        self._play(r, url, done_callback, **options),
                     on_tts_finished=lambda: None, port=room.port,
                     mac_address=room.mac, protocol_factory=room_protocol_factory(self.gate))
                 self.servers.append(server)
@@ -324,7 +329,9 @@ class MultiRoomManager:
         if self._stop.is_set():
             return False
         server.handle_audio(data)
-        return not self.paused and self.gate.idle and server.is_connected
+        if self.paused or not server.is_connected:
+            return False
+        return self.gate.idle or server.can_interrupt_response is True
 
     @property
     def paused(self):
@@ -347,7 +354,7 @@ class MultiRoomManager:
         connected = sum(server.is_connected for server in self.servers)
         return f'Rooms: {connected}/{len(self.rooms)} connected, wake word {state}'
 
-    def _play(self, room, url, callback):
+    def _play(self, room, url, callback, **playback_options):
         # Protocol calls this on its loop. Capture that connection's callback;
         # reconnecting must never finish another connection's conversation.
         self.gate.playbacks += 1
@@ -356,7 +363,7 @@ class MultiRoomManager:
             try:
                 await asyncio.to_thread(utils.play_audio_from_url, url,
                                         utils.get_env('HA_HOST', ''), None, None,
-                                        room.output_device)
+                                        room.output_device, **playback_options)
             finally:
                 self.gate.playbacks -= 1
                 if not self._stop.is_set() and callback:
@@ -369,6 +376,16 @@ class MultiRoomManager:
         """Hotkey uses the first configured room; wake words select their source."""
         if self._loop and not self._stop.is_set() and self.servers:
             self._loop.call_soon_threadsafe(self.servers[0].start_conversation)
+
+    def toggle_conversation(self):
+        if self._loop and not self._stop.is_set() and self.servers:
+            self._loop.call_soon_threadsafe(self._toggle_on_loop)
+
+    def _toggle_on_loop(self):
+        if self.gate.owner is not None:
+            self.gate.owner.cancel_interaction()
+        else:
+            self.servers[0].start_conversation()
 
     def stop(self):
         self._stop.set()

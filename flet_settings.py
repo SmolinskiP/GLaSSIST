@@ -2292,6 +2292,7 @@ class FletSettingsApp:
             env_content += f"HA_SOUND_FEEDBACK={settings['HA_SOUND_FEEDBACK']}\n"
             env_content += f"HA_PROCESSING_SOUND={settings['HA_PROCESSING_SOUND']}\n"
             env_content += f"HA_PROCESSING_SOUND_START={utils.get_env('HA_PROCESSING_SOUND_START', 'stt_vad_end')}\n"
+            env_content += f"HA_TTS_STREAMING={utils.get_env('HA_TTS_STREAMING', 'true')}\n"
             env_content += f"HA_SOUND_ACTIVATION={settings['HA_SOUND_ACTIVATION']}\n"
             env_content += f"HA_SOUND_DEACTIVATION={settings['HA_SOUND_DEACTIVATION']}\n"
             env_content += f"HA_SOUND_PROCESSING={settings['HA_SOUND_PROCESSING']}\n"
@@ -2301,6 +2302,7 @@ class FletSettingsApp:
             env_content += f"HA_CONVERSATION_TIMEOUT={settings['HA_CONVERSATION_TIMEOUT']}\n"
 
             env_content += "\n# === WAKE WORD DETECTION ===\n"
+            env_content += f"HA_WAKE_WORD_INTERRUPT={utils.get_env('HA_WAKE_WORD_INTERRUPT', 'false')}\n"
             env_content += f"HA_WAKE_WORD_ENABLED={settings['HA_WAKE_WORD_ENABLED']}\n"
             env_content += f"HA_WAKE_WORD_MODELS={settings['HA_WAKE_WORD_MODELS']}\n"
             env_content += f"HA_WAKE_WORD_THRESHOLD={settings['HA_WAKE_WORD_THRESHOLD']}\n"
