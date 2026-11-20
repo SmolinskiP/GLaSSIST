@@ -260,8 +260,254 @@ def _decode_audio_bytes(content, logger):
 
     return sf.read(io.BytesIO(content))
 
+
+# ---------------------------------------------------------------------------
+# Streaming TTS playback
+#
+# Home Assistant can stream TTS audio while the LLM is still writing the
+# answer (TTS streaming, HA 2025.7+). Downloading the whole response before
+# playing (requests.get + response.content) makes the user wait until the
+# last sentence is synthesized. These helpers start playback as soon as the
+# first audio bytes arrive and fall back to the old path if anything fails
+# before playback starts.
+# ---------------------------------------------------------------------------
+
+class _StreamingNotPossible(Exception):
+    """Raised before any audio was played; caller falls back to full download."""
+
+
+def _sniff_audio_format(head):
+    """Return 'wav', 'flac', 'mp3', 'ogg' or None from the first bytes."""
+    if head[:4] == b'RIFF' and head[8:12] == b'WAVE':
+        return 'wav'
+    if head[:4] == b'fLaC':
+        return 'flac'
+    if head[:4] == b'OggS':
+        return 'ogg'
+    if _looks_like_mp3(head):
+        return 'mp3'
+    return None
+
+
+class _ByteFeeder:
+    """Pull-based reader over an iterator of byte chunks (blocking)."""
+
+    def __init__(self, chunks, cancel_event=None):
+        self._chunks = chunks
+        self._buf = bytearray()
+        self._eof = False
+        self._cancel_event = cancel_event
+
+    def _fill(self, n):
+        while len(self._buf) < n and not self._eof:
+            if self._cancel_event is not None and self._cancel_event.is_set():
+                self._eof = True
+                break
+            try:
+                chunk = next(self._chunks)
+            except StopIteration:
+                self._eof = True
+                break
+            if chunk:
+                self._buf += chunk
+
+    def peek(self, n):
+        self._fill(n)
+        return bytes(self._buf[:n])
+
+    def read(self, n):
+        """Block until n bytes are available or the stream ends."""
+        self._fill(n)
+        out = bytes(self._buf[:n])
+        del self._buf[:n]
+        return out
+
+    def read_available(self, max_bytes, min_bytes=1):
+        """Wait for min(max_bytes, min_bytes) bytes (or EOF), then return
+        up to max_bytes of whatever is buffered."""
+        self._fill(min(max_bytes, max(1, min_bytes)))
+        out = bytes(self._buf[:max_bytes])
+        del self._buf[:max_bytes]
+        return out
+
+
+def _parse_wav_header(feeder):
+    """Consume a PCM WAV header, including HA's placeholder data size."""
+    import struct
+    riff = feeder.read(12)
+    if len(riff) < 12 or riff[:4] != b'RIFF' or riff[8:12] != b'WAVE':
+        raise _StreamingNotPossible('not a WAV stream')
+    fmt = None
+    while True:
+        hdr = feeder.read(8)
+        if len(hdr) < 8:
+            raise _StreamingNotPossible('WAV stream ended before data chunk')
+        cid, size = hdr[:4], struct.unpack('<I', hdr[4:])[0]
+        if cid == b'data':
+            break
+        if size > 1024 * 1024:
+            raise _StreamingNotPossible('oversized WAV header chunk')
+        body = feeder.read(size + (size & 1))
+        if cid == b'fmt ':
+            tag, ch, rate, _, _, bits = struct.unpack('<HHIIHH', body[:16])
+            if tag == 0xFFFE and len(body) >= 26:  # WAVE_FORMAT_EXTENSIBLE
+                tag = struct.unpack('<H', body[24:26])[0]
+            fmt = (tag, ch, rate, bits)
+    if fmt is None:
+        raise _StreamingNotPossible('WAV stream without fmt chunk')
+    tag, ch, rate, bits = fmt
+    if tag != 1 or bits != 16 or not ch or not rate:
+        raise _StreamingNotPossible(f'unsupported WAV encoding tag={tag} bits={bits}')
+    remaining = None if size in (0, 0xFFFFFFFF) else size
+    return rate, ch, remaining
+
+
+def _iter_pcm_blocks(feeder, fmt, target_rate):
+    """Yield (int16 numpy block shaped (frames, channels), samplerate, channels)."""
+    if fmt == 'wav':
+        rate, ch, remaining = _parse_wav_header(feeder)
+        frame = ch * 2
+        pending = b''
+        while remaining != 0:
+            max_bytes = 2048 if remaining is None else min(2048, remaining)
+            data = feeder.read_available(max_bytes)
+            if not data:
+                break
+            if remaining is not None:
+                remaining -= len(data)
+            data = pending + data
+            usable = len(data) - (len(data) % frame)
+            pending = data[usable:]
+            if usable:
+                block = np.frombuffer(data[:usable], dtype='<i2').reshape(-1, ch)
+                yield block, rate, ch
+        return
+
+    try:
+        import miniaudio
+    except ImportError:
+        raise _StreamingNotPossible('miniaudio not available for compressed audio')
+
+    formats = {'mp3': miniaudio.FileFormat.MP3,
+               'flac': miniaudio.FileFormat.FLAC,
+               'ogg': miniaudio.FileFormat.VORBIS}
+
+    class _Source(miniaudio.StreamableSource):
+        def read(self, num_bytes):
+            # Decoders ask for large reads (64 KB for MP3). Blocking until that
+            # much has arrived would delay playback by several sentences, so
+            # hand over whatever is buffered; b'' only at the real end.
+            # Small requests (headers, metadata) are filled completely because
+            # some decoders (FLAC) fail on short reads during init.
+            return feeder.read_available(num_bytes, min_bytes=8192)
+
+    ch = 1
+    source = _Source()
+    stream = miniaudio.stream_any(
+        source, source_format=formats[fmt],
+        output_format=miniaudio.SampleFormat.SIGNED16,
+        nchannels=ch, sample_rate=target_rate, frames_to_read=2048)
+    try:
+        for frames in stream:
+            if len(frames):
+                block = np.frombuffer(frames, dtype=np.int16).reshape(-1, ch)
+                yield block, target_rate, ch
+    finally:
+        try:
+            source.close()
+        except Exception:
+            pass
+
+
+def _play_stream_from_url(full_url, animation_server, output_device_index, logger, cancel_event):
+    """Download and play TTS audio at the same time. Returns True on success.
+
+    Raises _StreamingNotPossible if nothing has been played yet, so the caller
+    can fall back to the non-streaming path.
+    """
+    t0 = time.perf_counter()
+    try:
+        response = requests.get(full_url, stream=True, timeout=(5, 120))
+    except Exception as e:
+        raise _StreamingNotPossible(f'request failed: {e!r}')
+    if response.status_code != 200:
+        response.close()
+        raise _StreamingNotPossible(f'HTTP {response.status_code}')
+
+    try:
+        try:
+            feeder = _ByteFeeder(iter(response.iter_content(chunk_size=1024)), cancel_event)
+            head = feeder.peek(12)
+        except Exception as e:
+            raise _StreamingNotPossible(f'cannot read response stream: {e!r}')
+        fmt = _sniff_audio_format(head)
+        logger.info(f"Streaming TTS: format={fmt}, first bytes after "
+                    f"{time.perf_counter() - t0:.2f}s")
+        if fmt is None:
+            raise _StreamingNotPossible(f'unknown audio format {head[:4]!r}')
+
+        configured_rate = get_output_sample_rate()
+        if configured_rate:
+            target_rate = configured_rate
+        else:
+            try:
+                dev = sd.query_devices(output_device_index, 'output')
+                target_rate = int(dev['default_samplerate'])
+            except Exception:
+                target_rate = 48000
+
+        stream = None
+        played = False
+        try:
+            for block, rate, ch in _iter_pcm_blocks(feeder, fmt, target_rate):
+                if cancel_event is not None and cancel_event.is_set():
+                    return False
+                if stream is None:
+                    if configured_rate and rate != configured_rate:
+                        raise _StreamingNotPossible(
+                            f'WAV rate {rate} differs from configured output rate')
+                    stream = sd.OutputStream(device=output_device_index,
+                                             samplerate=rate, channels=ch,
+                                             dtype='int16', latency='low')
+                    stream.start()
+                    logger.info(f"Streaming TTS: playback started after "
+                                f"{time.perf_counter() - t0:.2f}s ({rate} Hz, {ch} ch)")
+                played = True
+                if animation_server is not None:
+                    mono = block[:, 0] if block.ndim > 1 else block
+                    _send_fft_to_animation(mono, animation_server)
+                stream.write(block)
+        except _StreamingNotPossible:
+            if played:
+                logger.warning("Streaming TTS failed after playback started", exc_info=True)
+                return False
+            raise
+        except Exception as e:
+            if not played:
+                raise _StreamingNotPossible(f'decode/playback failed early: {e!r}')
+            logger.exception(f"Streaming TTS interrupted: {e!r}")
+            return False
+        finally:
+            if stream is not None:
+                try:
+                    if cancel_event is not None and cancel_event.is_set():
+                        stream.abort()
+                    else:
+                        stream.stop()
+                finally:
+                    stream.close()
+
+        if cancel_event is not None and cancel_event.is_set():
+            return False
+        if not played:
+            raise _StreamingNotPossible('stream contained no audio')
+        logger.info(f"Streaming TTS: finished after {time.perf_counter() - t0:.2f}s")
+        return True
+    finally:
+        response.close()
+
 def play_audio_from_url(url, host, animation_server=None, done_callback=None,
-                        output_device_index=None):
+                        output_device_index=None, *, streaming=False, cancel_event=None):
     """
     Play audio from given URL using sounddevice and soundfile.
     Optionally send FFT data to animation server during playback.
@@ -269,11 +515,12 @@ def play_audio_from_url(url, host, animation_server=None, done_callback=None,
     """
     logger = setup_logger()
     
-    if not url:
-        logger.error("No audio file URL provided")
-        return False
-    
     try:
+        if not url:
+            logger.error("No audio file URL provided")
+            return False
+        if cancel_event is not None and cancel_event.is_set():
+            return False
         import re as _re
         # Home Assistant's TTS proxy paths also look absolute on POSIX.
         is_tts_proxy_url = url.startswith("/api/tts_proxy/")
@@ -295,6 +542,19 @@ def play_audio_from_url(url, host, animation_server=None, done_callback=None,
             else:
                 full_url = url
 
+            if streaming and get_env_bool('HA_TTS_STREAMING', True):
+                stream_device = output_device_index
+                if stream_device is None:
+                    stream_device = get_output_device_index()
+                try:
+                    return _play_stream_from_url(
+                        full_url, animation_server, stream_device, logger, cancel_event)
+                except _StreamingNotPossible as e:
+                    if cancel_event is not None and cancel_event.is_set():
+                        return False
+                    logger.warning(f"Streaming TTS not possible ({e}); "
+                                   f"falling back to full download")
+
             logger.info(f"Downloading audio from: {full_url}")
 
             response = requests.get(full_url, timeout=10)
@@ -302,7 +562,8 @@ def play_audio_from_url(url, host, animation_server=None, done_callback=None,
                 logger.error(f"Audio download error: {response.status_code}")
                 return False
 
-            audio_buffer = io.BytesIO(response.content)
+            if cancel_event is not None and cancel_event.is_set():
+                return False
 
             logger.info("Reading audio file...")
             data, samplerate = _decode_audio_bytes(response.content, logger)
@@ -316,6 +577,9 @@ def play_audio_from_url(url, host, animation_server=None, done_callback=None,
             logger.info(f"Resampling audio from {samplerate}Hz to {output_sample_rate}Hz")
             data = _resample_audio(data, samplerate, output_sample_rate)
             samplerate = output_sample_rate
+        if cancel_event is not None:
+            return _play_cancellable_audio(
+                data, samplerate, animation_server, output_device_index, cancel_event)
         if explicit_output:
             # A dedicated stream avoids sounddevice.play's process-global stream,
             # which can interrupt another room or a feedback sound.
@@ -342,21 +606,39 @@ def play_audio_from_url(url, host, animation_server=None, done_callback=None,
             logger.info("Audio playback completed")
             result = True
 
+        return result
+
+    except Exception as e:
+        logger.exception(f"Audio playback error: {str(e)}")
+        return False
+    finally:
         if done_callback:
             try:
                 done_callback()
             except Exception as e:
                 logger.error(f"done_callback error: {e}")
-        return result
 
-    except Exception as e:
-        logger.exception(f"Audio playback error: {str(e)}")
-        if done_callback:
-            try:
-                done_callback()
-            except Exception:
-                pass
+
+def _play_cancellable_audio(data, samplerate, animation_server, device, cancel_event):
+    """Play on a dedicated stream so cancelling TTS doesn't stop other audio."""
+    if cancel_event.is_set():
         return False
+    channels = 1 if data.ndim == 1 else data.shape[1]
+    block_frames = max(1, samplerate // 50)
+    with sd.OutputStream(device=device, samplerate=samplerate, channels=channels,
+                         dtype="float32", latency="low") as output:
+        for start in range(0, len(data), block_frames):
+            if cancel_event.is_set():
+                break
+            block = data[start:start + block_frames]
+            output.write(block.astype(np.float32))
+            if animation_server is not None and not cancel_event.is_set():
+                mono = block.mean(axis=1) if block.ndim == 2 else block
+                _send_fft_to_animation((np.clip(mono, -1, 1) * 32767).astype(np.int16), animation_server)
+        if cancel_event.is_set():
+            output.abort()
+            return False
+    return True
 
 def _play_with_fft_analysis(audio_data, samplerate, animation_server, output_device_index=None):
     """
