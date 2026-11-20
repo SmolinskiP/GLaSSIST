@@ -275,9 +275,13 @@ def play_audio_from_url(url, host, animation_server=None, done_callback=None,
     
     try:
         import re as _re
-        _is_local = os.path.isabs(url) or _re.match(r'^[A-Za-z]:[/\\]', url)
+        # Home Assistant's TTS proxy paths also look absolute on POSIX.
+        is_tts_proxy_url = url.startswith("/api/tts_proxy/")
+        is_local = not is_tts_proxy_url and (
+            os.path.isabs(url) or _re.match(r'^[A-Za-z]:[/\\]', url)
+        )
 
-        if _is_local:
+        if is_local:
             local_path = os.path.normpath(url)
             logger.info(f"Playing local audio file: {local_path}")
             data, samplerate = sf.read(local_path)

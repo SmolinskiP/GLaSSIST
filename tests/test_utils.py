@@ -3,6 +3,7 @@ Tests for utils module.
 """
 import pytest
 import os
+import posixpath
 import tempfile
 from unittest.mock import patch, Mock, mock_open
 import utils
@@ -108,11 +109,16 @@ class TestUtils:
             result = utils.play_feedback_sound("activation")
             assert result is False
     
+    @pytest.mark.parametrize("url, expected_url", [
+        ("http://test.com/audio.wav", "http://test.com/audio.wav"),
+        ("/api/tts_proxy/test.wav", "http://localhost:8123/api/tts_proxy/test.wav"),
+    ])
     @patch('utils.sd')
     @patch('utils.get_output_sample_rate', return_value=None)
     @patch('utils.get_output_device_index', return_value=None)
     @patch('requests.get')
-    def test_play_audio_from_url_success(self, mock_get, mock_device, mock_rate, mock_sd):
+    def test_play_audio_from_url_success(self, mock_get, mock_device, mock_rate, mock_sd,
+                                        url, expected_url):
         """Test audio playback from URL."""
         import numpy as np
         mock_get.return_value.status_code = 200
@@ -120,11 +126,12 @@ class TestUtils:
         data = np.zeros(160, dtype=np.float32)
         done = Mock()
 
-        with patch('utils._decode_audio_bytes', return_value=(data, 16000)):
-            result = utils.play_audio_from_url("http://test.com/audio.wav", "localhost:8123",
-                                               done_callback=done)
+        with patch('utils.os.path.isabs', side_effect=posixpath.isabs), \
+             patch('utils._decode_audio_bytes', return_value=(data, 16000)):
+            result = utils.play_audio_from_url(url, "localhost:8123", done_callback=done)
 
         assert result is True
+        mock_get.assert_called_once_with(expected_url, timeout=10)
         mock_sd.play.assert_called_once_with(data, 16000)
         mock_sd.wait.assert_called_once()
         done.assert_called_once()
