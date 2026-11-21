@@ -1,3 +1,30 @@
+## 🎙️ GLaSSIST 3.9.0 — Faster replies, cancel anytime
+
+### ✨ New features
+
+- **Press the hotkey again to cancel.** The activation hotkey now works as a toggle: press it while GLaSSIST is listening, thinking or speaking and the interaction stops. Works in WebSocket, ESPHome and room mode, so one Stream Deck button can start and cancel. Implements [#61](https://github.com/SmolinskiP/GLaSSIST/issues/61).
+- **Streamed TTS in ESPHome mode.** With a Home Assistant pipeline that streams speech (HA 2025.7+), the reply starts playing as soon as the first audio arrives instead of after the whole answer is synthesized. Turn it off in **Settings → Audio & VAD → Play streamed replies as they arrive**. Contributed in [#69](https://github.com/SmolinskiP/GLaSSIST/pull/69) (thanks [@omermuslu](https://github.com/omermuslu)!). Part of [#66](https://github.com/SmolinskiP/GLaSSIST/issues/66).
+- **Interrupt a reply with the wake word (ESPHome).** Enable **Settings → Wake Word → Let the wake word interrupt replies** and saying the wake word while GLaSSIST talks stops the reply and starts a new command. Off by default — it works best with a microphone that cancels speaker echo. Part of [#66](https://github.com/SmolinskiP/GLaSSIST/issues/66).
+- **Processing sound after speech is recognized (ESPHome).** Choose when the processing sound starts: when you stop speaking (as before) or only once Home Assistant recognized your words, so background noise doesn't trigger it. **Settings → Audio & VAD → Processing sound starts**. Implements [#68](https://github.com/SmolinskiP/GLaSSIST/issues/68).
+
+### 🐛 Bug fixes
+
+- **ESPHome mode starts with animations disabled.** Fixes [#65](https://github.com/SmolinskiP/GLaSSIST/issues/65).
+- **TTS plays again in WebSocket mode on Linux.** Relative `/api/tts_proxy/…` URLs were treated as local files. Fixes [#63](https://github.com/SmolinskiP/GLaSSIST/issues/63).
+- **GLaSSIST no longer blocks Windows shutdown.** The WebView2 teardown error is handled. Fixes [#64](https://github.com/SmolinskiP/GLaSSIST/issues/64).
+- **`ANIMATION_PORT` is respected** by both the animation server and the overlay. Fixes [#62](https://github.com/SmolinskiP/GLaSSIST/issues/62).
+- **Updating no longer resets your configuration.** The Windows installer used to write a fresh `.env` on every install in ESPHome mode, wiping microphone, hotkey and wake word settings. It now keeps an existing `.env` (and skips the setup pages), and writes it to the folder you actually installed to.
+- **Saving settings keeps entries added by hand.** Keys the Settings window doesn't show (for example `HA_PROMPT_SERVER_PORT`, `HA_AI_AGENT_ID`, `WINDOW_WIDTH`) used to disappear after saving. They are now kept in an `OTHER` section.
+- **Recording works with any sample rate setting.** At 22 050, 44 100 or 48 000 Hz, or with a stereo microphone, voice detection never heard speech and GLaSSIST waited forever. Unsupported values now fall back to 16 kHz, which Home Assistant speech-to-text expects, and stereo input is mixed to mono. The Settings list only offers 8 000 and 16 000 Hz. In ESPHome mode the microphone always records 16 kHz mono, the format the ESPHome voice protocol sends to Home Assistant.
+- **Media players are no longer left quiet.** If Home Assistant was unreachable when restoring volumes, the original levels were lost and the next interaction saved the lowered volume as the "original". GLaSSIST now keeps the original levels until they are restored.
+- **The overlay works without internet.** When Three.js couldn't be loaded (e.g. autostart before the network is up), the whole overlay stopped and showed no statuses. Texts and status messages now work anyway; only the ring animation is skipped.
+- **Cancelling streamed TTS is immediate**, even if Home Assistant stops sending audio mid-reply. Previously it could wait up to 2 minutes and block other rooms.
+- **A failed TTS stream no longer swallows the reply.** If streaming fails early, GLaSSIST plays the final audio from Home Assistant instead of staying silent.
+
+### 🔧 Other
+
+- More tests for cancelling, streaming, settings saves and media ducking.
+
 ## 🔉 GLaSSIST 3.8.1 — Media player ducking in ESPHome mode
 
 ### ✨ New features
