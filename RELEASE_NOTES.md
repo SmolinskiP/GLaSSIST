@@ -1,3 +1,14 @@
+## 🧠 GLaSSIST 3.10.0 — Clear AI errors and wake word detection clips
+
+### ✨ New features
+
+- **AI-service errors in plain language (ESPHome).** When the conversation agent fails (for example Gemini's `503 Service Unavailable`, a used-up quota or a refused API key), Home Assistant used to show and read out the raw English error with the provider's JSON. GLaSSIST now shows a short sentence in your interface language, such as "The AI service (Google Generative AI) is overloaded right now. Try again in a few seconds." On Windows it is also spoken with an installed voice of that language, on your selected speaker, and the hotkey or wake word can cut it off. Without a matching voice (or on Linux) Home Assistant's own audio plays as before. Recognises errors from Google Generative AI, OpenAI, Anthropic, Ollama and OpenRouter; normal answers are never touched. Contributed in [#60](https://github.com/SmolinskiP/GLaSSIST/pull/60) (thanks [@gustavomorozi](https://github.com/gustavomorozi)!).
+- **Save a clip of every wake word detection.** Turn on **Settings → Wake Word → Save a 3-second audio clip of every detection** and each detection keeps the ~3 seconds of audio that triggered it. Delete the clips where you really said the word; the rest are the sounds that fool the model, ready for retraining a custom wake word (see [glassist-wakeword-trainer](https://github.com/gustavomorozi/glassist-wakeword-trainer)). **Off by default**, clips stay on your computer, at most 300 per model. Open them with **Wake Word → Model Management → Open Detection Clips Folder**; the Windows uninstaller removes them. Works in room mode too. Contributed in [#58](https://github.com/SmolinskiP/GLaSSIST/pull/58) (thanks [@gustavomorozi](https://github.com/gustavomorozi)!).
+
+### 🐛 Bug fixes
+
+- **ESPHome discovery no longer advertises `127.0.0.1`.** When the PC had a LAN address but no default gateway (for example right after boot), GLaSSIST announced itself as `127.0.0.1` and Home Assistant tried to connect to itself, leaving GLaSSIST on "Connecting...". It now finds the address through the route to your Home Assistant, never guesses between VPN, Hyper-V/WSL or VirtualBox adapters, and retries every 30 seconds until the network is up. Reported and first fixed in [#59](https://github.com/SmolinskiP/GLaSSIST/pull/59) (thanks [@gustavomorozi](https://github.com/gustavomorozi)!).
+
 ## 🎙️ GLaSSIST 3.9.0 — Faster replies, cancel anytime
 
 ### ✨ New features
