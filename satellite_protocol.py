@@ -65,6 +65,7 @@ PROTO_TO_MESSAGE_TYPE = {v: k for k, v in MESSAGE_TYPE_TO_PROTO.items()}
 _LOGGER = logging.getLogger(__name__)
 
 TIMER_SOUND_PATH = "sound/timer_finished.wav"
+MDNS_RETRY_SECONDS = 30
 
 
 def _generate_timer_beep(path: str) -> None:
@@ -104,13 +105,29 @@ def _make_mac_address() -> str:
     return mac
 
 
+def _ha_host_ipv4() -> Optional[str]:
+    """HA_HOST when it is an IPv4 literal; host names are not resolved here."""
+    import ipaddress
+    from urllib.parse import urlsplit
+
+    host = utils.get_env("HA_HOST", "").strip()
+    if not host:
+        return None
+    try:
+        name = urlsplit(host if "//" in host else f"//{host}").hostname
+        return str(ipaddress.IPv4Address(name)) if name else None
+    except ValueError:
+        return None
+
+
 def find_local_ipv4() -> Optional[str]:
     """LAN IPv4 address to advertise over mDNS, or None when there is none.
 
-    First asks the OS which address it would use to reach the internet (a UDP "connect" sends
-    nothing). That needs a default route, so when it fails (for example while the network is
-    coming back up) it falls back to the first private address of any network adapter. Loopback
-    and link-local (169.254.x.x) addresses are never returned.
+    Asks the OS which address it would use to reach Home Assistant (HA_HOST, works without a
+    default gateway) or the internet; a UDP "connect" sends nothing. Without a route it uses an
+    adapter address only when exactly one candidate exists: with several (VPN, Hyper-V/WSL,
+    VirtualBox) a guess could hand HA an unreachable address. Loopback and link-local
+    (169.254.x.x) addresses are never returned.
     """
     import ipaddress
     import socket
@@ -122,25 +139,30 @@ def find_local_ipv4() -> Optional[str]:
             return False
         return ip.version == 4 and not (ip.is_loopback or ip.is_link_local or ip.is_unspecified)
 
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    for target in (_ha_host_ipv4(), "8.8.8.8"):
+        if target is None:
+            continue
         try:
-            sock.connect(("8.8.8.8", 80))
-            address = sock.getsockname()[0]
-        finally:
-            sock.close()
-        if usable(address):
-            return address
-    except OSError:
-        pass
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                sock.connect((target, 80))
+                address = sock.getsockname()[0]
+            finally:
+                sock.close()
+            if usable(address):
+                return address
+        except OSError:
+            pass
     try:
         import ifaddr  # installed together with zeroconf
-        candidates = [ip.ip for adapter in ifaddr.get_adapters() for ip in adapter.ips
-                      if ip.is_IPv4 and usable(ip.ip)]
+        candidates = {ip.ip for adapter in ifaddr.get_adapters() for ip in adapter.ips
+                      if ip.is_IPv4 and usable(ip.ip)}
     except Exception:
+        _LOGGER.debug("mDNS: listing network adapters failed", exc_info=True)
         return None
-    private = [a for a in candidates if ipaddress.ip_address(a).is_private]
-    return (private or candidates or [None])[0]
+    private = {a for a in candidates if ipaddress.ip_address(a).is_private}
+    pool = private or candidates
+    return next(iter(pool)) if len(pool) == 1 else None
 
 
 class VoiceSatelliteProtocol(ESPhomeAPIServer):
@@ -754,6 +776,7 @@ class SatelliteServer:
         self._protocol: Optional[VoiceSatelliteProtocol] = None
         self._zeroconf = None
         self._zeroconf_info = None
+        self._mdns_retry: Optional[asyncio.Task] = None
 
     def _make_protocol(self) -> VoiceSatelliteProtocol:
         protocol = self._protocol_factory(
@@ -794,8 +817,9 @@ class SatelliteServer:
 
         local_ip = find_local_ipv4()
         if local_ip is None:
-            # Never advertise a loopback address: HA would store it and then try to reach itself.
-            _LOGGER.warning("mDNS: no LAN IPv4 address found, auto-discovery disabled for now")
+            # Never advertise a loopback or guessed address: HA would store it and lose the device.
+            _LOGGER.warning("mDNS: no LAN IPv4 address yet, retrying every %d s", MDNS_RETRY_SECONDS)
+            self._mdns_retry = asyncio.get_running_loop().create_task(self._register_mdns_later())
             return
 
         # ESPHome service name: lowercase device name with spaces → dashes
@@ -830,7 +854,16 @@ class SatelliteServer:
         except Exception:
             _LOGGER.exception("mDNS registration failed (non-fatal)")
 
+    async def _register_mdns_later(self) -> None:
+        while find_local_ipv4() is None:
+            await asyncio.sleep(MDNS_RETRY_SECONDS)
+        self._mdns_retry = None
+        await self._register_mdns()
+
     async def stop(self) -> None:
+        if self._mdns_retry:
+            self._mdns_retry.cancel()
+            self._mdns_retry = None
         if self._zeroconf and self._zeroconf_info:
             try:
                 await self._zeroconf.async_unregister_service(self._zeroconf_info)
