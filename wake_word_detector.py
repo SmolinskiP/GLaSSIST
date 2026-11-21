@@ -24,7 +24,7 @@ def _tflite_runtime_available():
 class WakeWordDetector:
     """Wake word detector using openWakeWord library."""
     
-    def __init__(self, callback=None):
+    def __init__(self, callback=None, clip_label=""):
         """Initialize wake word detector."""
         # Safe boolean parsing for enabled flag
         enabled_str = utils.get_env("HA_WAKE_WORD_ENABLED", "false")
@@ -55,7 +55,7 @@ class WakeWordDetector:
             self.noise_suppression = bool(noise_suppression_str)
         
         # Optional (off by default): keep ~3 s of audio around every detection to learn from false triggers
-        self.clips = detection_clips.from_env()
+        self.clips = detection_clips.from_env(clip_label)
 
         # Model configuration
         self.selected_models = self._get_selected_models()

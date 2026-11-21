@@ -147,3 +147,76 @@ def test_multi_room_mode_feeds_and_saves_too():
         manager._capture(manager.rooms[0], stream, detector, Mock())
     assert detector.record_audio.call_count == 3                 # every chunk, listening or not
     detector.record_detection.assert_called_once_with('bruna', 0.8)
+
+
+# ---- follow-up fixes
+def test_prune_keeps_files_the_user_added(tmp_path):
+    rec = DetectionClipRecorder(tmp_path, max_files=2)
+    folder = tmp_path / 'bruna'
+    folder.mkdir()
+    for name in ('Kuchnia.wav', 'pos_01.wav', 'fp_tv.wav'):
+        (folder / name).write_bytes(b'mine')
+    rec.push(np.zeros(2 * SR, np.int16))
+    for i in range(4):
+        assert rec.save('bruna', 0.9, now=1000 * i)
+        assert rec.flush()
+    names = sorted(os.listdir(folder))
+    assert {'Kuchnia.wav', 'pos_01.wav', 'fp_tv.wav'} <= set(names)
+    assert len([n for n in names if n.startswith('trig_')]) == 2
+
+
+def test_prune_removes_the_oldest_by_time_not_by_name(tmp_path):
+    rec = DetectionClipRecorder(tmp_path, max_files=1)
+    folder = tmp_path / 'bruna'
+    folder.mkdir()
+    old = folder / 'trig_99991231_235959_000_bruna_090.wav'       # sorts last by name, but is older
+    old.write_bytes(b'old')
+    os.utime(old, (1, 1))
+    rec.push(np.zeros(2 * SR, np.int16))
+    assert rec.save('bruna', 0.9, now=0)
+    assert rec.flush()
+    assert not old.exists() and len(os.listdir(folder)) == 1
+
+
+def test_rooms_detecting_the_same_word_keep_both_clips(tmp_path):
+    rooms = [DetectionClipRecorder(tmp_path, label='kitchen'), DetectionClipRecorder(tmp_path, label='office'),
+             DetectionClipRecorder(tmp_path, label='office')]
+    for rec in rooms:
+        rec.push(np.full(2 * SR, 7, np.int16))
+        assert rec.save('hey_jarvis', 1.0, now=1000.5)
+    for rec in rooms:
+        assert rec.flush()
+    names = sorted(os.listdir(tmp_path / 'hey_jarvis'))
+    assert len(names) == 3
+    assert sum('_kitchen_' in n for n in names) == 1 and sum('_office_' in n for n in names) == 2
+
+
+def test_one_utterance_is_saved_once(tmp_path):
+    rec = DetectionClipRecorder(tmp_path)
+    rec.push(np.zeros(2 * SR, np.int16))
+    assert rec.save('bruna', 0.9, now=100.0) is True
+    assert rec.save('bruna', 0.95, now=100.4) is False             # same word, next frames
+    assert rec.save('other', 0.9, now=100.4) is True
+    assert rec.save('bruna', 0.9, now=103.0) is True
+    assert rec.flush()
+
+
+def test_errors_in_the_detection_thread_never_stop_detection(tmp_path):
+    rec = DetectionClipRecorder(tmp_path)
+    rec.push(np.zeros(2 * SR, np.int16))
+    with patch.object(rec, '_snapshot', side_effect=MemoryError()):
+        assert rec.save('bruna', 0.9) is False
+    with patch.object(rec, '_push', side_effect=ValueError('bad chunk')):
+        rec.push(np.zeros(10, np.int16))
+
+
+@pytest.mark.parametrize('value', ['1', 'True', 'yes'])
+def test_setting_accepts_the_usual_true_values(monkeypatch, value):
+    monkeypatch.setenv('HA_WAKE_WORD_SAVE_DETECTIONS', value)
+    assert isinstance(detection_clips.from_env(), DetectionClipRecorder)
+
+
+@pytest.mark.parametrize('name, expected', [('../evil name', 'evilname'), ('hey_jarvis_v0.1', 'hey_jarvis_v0.1'),
+                                            ('..', ''), ('a..b', 'a.b')])
+def test_model_names_are_safe_folder_names(name, expected):
+    assert detection_clips._safe_name(name) == expected

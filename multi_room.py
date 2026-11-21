@@ -260,7 +260,7 @@ class MultiRoomManager:
                 self.streams.append(self._audio.open(
                     format=pyaudio.paInt16, channels=1, rate=16000, input=True,
                     input_device_index=room.input_device, frames_per_buffer=1280))
-                detector = WakeWordDetector()
+                detector = WakeWordDetector(clip_label=room.id)
                 if not detector.enabled or detector.model is None:
                     raise ValueError(f'{room.name}: enable and configure local wake word detection')
                 self.detectors.append(detector)

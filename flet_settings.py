@@ -157,7 +157,7 @@ class FletSettingsApp:
             'HA_WAKE_WORD_THRESHOLD': utils.get_env('HA_WAKE_WORD_THRESHOLD', 0.5, float),
             'HA_WAKE_WORD_VAD_THRESHOLD': utils.get_env('HA_WAKE_WORD_VAD_THRESHOLD', 0.3, float),
             'HA_WAKE_WORD_NOISE_SUPPRESSION': utils.get_env('HA_WAKE_WORD_NOISE_SUPPRESSION', 'false'),
-            'HA_WAKE_WORD_SAVE_DETECTIONS': utils.get_env('HA_WAKE_WORD_SAVE_DETECTIONS', 'false'),
+            'HA_WAKE_WORD_SAVE_DETECTIONS': utils.get_env_bool('HA_WAKE_WORD_SAVE_DETECTIONS', False),
             'HA_MEDIA_PLAYER_ENTITIES': utils.get_env('HA_MEDIA_PLAYER_ENTITIES', ''),
             'HA_MEDIA_PLAYER_TARGET_VOLUME': utils.get_env('HA_MEDIA_PLAYER_TARGET_VOLUME', 0.3, float),
             'HA_TIMER_SOUND': utils.get_env('HA_TIMER_SOUND', ''),
@@ -884,9 +884,9 @@ class FletSettingsApp:
         # Keep a short clip of every detection, to teach the model what fools it (reduces false triggers)
         self.save_detections_switch = ft.Switch(
             label="Save a 3-second audio clip of every detection",
-            tooltip="Kept only on this computer, in the detections folder of the GLaSSIST "
-                    "configuration directory. Restart GLaSSIST to apply.",
-            value=current_settings['HA_WAKE_WORD_SAVE_DETECTIONS'] == 'true',
+            tooltip="Kept only on this computer (Model Management → Open Detection Clips Folder). "
+                    "Restart GLaSSIST to apply.",
+            value=current_settings['HA_WAKE_WORD_SAVE_DETECTIONS'],
             active_color=ft.Colors.ORANGE_700
         )
 
@@ -984,6 +984,11 @@ class FletSettingsApp:
                                     "Open Models Folder",
                                     icon=ft.Icons.FOLDER_OPEN,
                                     on_click=self._open_models_folder
+                                ),
+                                ft.ElevatedButton(
+                                    "Open Detection Clips Folder",
+                                    icon=ft.Icons.FOLDER_OPEN,
+                                    on_click=self._open_detections_folder
                                 )
                             ], spacing=10, wrap=True),
                             ft.Container(height=10),
@@ -2070,25 +2075,30 @@ class FletSettingsApp:
     
     def _open_models_folder(self, e):
         """Open models folder"""
+        self._open_folder(os.path.join(os.path.dirname(__file__), 'models'), "models")
+
+    def _open_detections_folder(self, e):
+        import detection_clips
+        self._open_folder(detection_clips.default_folder(), "detection clips")
+
+    def _open_folder(self, folder, name):
         try:
-            models_dir = os.path.join(os.path.dirname(__file__), 'models')
-            
-            if not os.path.exists(models_dir):
-                os.makedirs(models_dir)
+            if not os.path.exists(folder):
+                os.makedirs(folder)
             
             # Cross-platform folder opening
             if platform_module.system() == "Windows":
-                os.startfile(models_dir)
+                os.startfile(folder)
             elif platform_module.system() == "Darwin":  # macOS
-                subprocess.run(["open", models_dir])
+                subprocess.run(["open", folder])
             else:  # Linux
-                subprocess.run(["xdg-open", models_dir])
+                subprocess.run(["xdg-open", folder])
                 
-            logger.info(f"Opened models folder: {models_dir}")
+            logger.info(f"Opened {name} folder: {folder}")
             
         except Exception as ex:
-            asyncio.create_task(self._show_dialog("Error", f"Failed to open models folder: {str(ex)}"))
-            logger.error(f"Failed to open models folder: {ex}")
+            asyncio.create_task(self._show_dialog("Error", f"Failed to open {name} folder: {str(ex)}"))
+            logger.error(f"Failed to open {name} folder: {ex}")
     
     async def _test_wake_word_async(self, e):
         """Test wake word detection"""
@@ -2284,10 +2294,7 @@ class FletSettingsApp:
                 'HA_WAKE_WORD_THRESHOLD': str(round(self.wake_threshold_slider.value, 2)),
                 'HA_WAKE_WORD_VAD_THRESHOLD': str(round(self.vad_threshold_slider.value, 2)),
                 'HA_WAKE_WORD_NOISE_SUPPRESSION': 'true' if self.noise_suppression_switch.value else 'false',
-                'HA_WAKE_WORD_SAVE_DETECTIONS': (
-                    'true' if getattr(getattr(self, 'save_detections_switch', None), 'value',
-                                      utils.get_env('HA_WAKE_WORD_SAVE_DETECTIONS', 'false') == 'true')
-                    else 'false'),
+                'HA_WAKE_WORD_SAVE_DETECTIONS': 'true' if self.save_detections_switch.value else 'false',
                 
                 # Media player settings
                 'HA_MEDIA_PLAYER_ENTITIES': self.media_player_entities_field.value.strip(),

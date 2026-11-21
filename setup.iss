@@ -48,6 +48,10 @@ Source: "E:\GLaSSIST\dist\GLaSSIST\{#MyAppExeName}"; DestDir: "{app}"; Flags: ig
 Source: "E:\GLaSSIST\dist\GLaSSIST\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "E:\GLaSSIST\.env.example"; DestDir: "{userappdata}\GLaSSIST"; DestName: ".env.example"; Flags: ignoreversion
 
+[UninstallDelete]
+; Wake word detection clips are voice recordings; don't leave them behind.
+Type: filesandordirs; Name: "{app}\_internal\detections"
+
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
