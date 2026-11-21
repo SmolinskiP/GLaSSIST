@@ -23,7 +23,9 @@ Adapted from linux-voice-assistant/satellite.py
 
 import asyncio
 import logging
+import os
 import re
+import tempfile
 import threading
 import time
 import uuid
@@ -281,7 +283,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
             self._playback_cancel = None
         self._pipeline_active = False
         self._is_streaming_audio = False
-        self._tts_url = self._tts_text = None
+        self._tts_url = self._tts_text = self._tts_override = None
         self._tts_played = False
         self._tts_completed = False
         self._tts_end_received = False
@@ -531,16 +533,34 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
             return
         utils.processing_sound_loop.stop()
         self._tts_played = True
-        if self._tts_override:
-            override, self._tts_override = self._tts_override, None
-            url = self._tts_url
-            ai_errors.speak(
-                override, on_done=self._tts_finished,
-                on_unavailable=lambda: self._on_tts_url(url, done_callback=self._tts_finished))
-            return
         _LOGGER.debug("Playing TTS: %s", self._tts_url)
         self._set_animation("responding")
+        # A streamed reply is already playing HA's audio; only the shown text is replaced then.
+        if self._tts_override and not streaming:
+            self._play_error_speech(self._tts_override)
+            return
         self._play_tts_sequence([self._tts_url], streaming=streaming)
+
+    def _play_error_speech(self, text: str) -> None:
+        """Speak the friendly AI-error sentence locally; HA's English audio is the fallback."""
+        cancel_event = threading.Event()
+        self._playback_cancel = cancel_event        # the hotkey can cancel while synthesizing
+        url, loop = self._tts_url, self._loop
+        path = os.path.join(tempfile.gettempdir(), f"glassist-ai-error-{id(self):x}.wav")
+
+        def start(spoken: bool) -> None:
+            if self._playback_cancel is not cancel_event:
+                return
+            self._play_tts_sequence([path if spoken else url])
+
+        def synthesize() -> None:
+            spoken = ai_errors.synthesize(text, path)
+            if loop is None:
+                start(spoken)
+            elif not loop.is_closed():
+                loop.call_soon_threadsafe(start, spoken)
+
+        threading.Thread(target=synthesize, name="ai-error-speech", daemon=True).start()
 
     def _play_tts_sequence(self, urls: list, *, streaming=False) -> None:
         """Play a sequence of URLs (for announce preannounce + main audio)."""

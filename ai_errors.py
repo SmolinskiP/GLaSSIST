@@ -6,50 +6,66 @@ English, with the provider's JSON. This module recognises those answers and retu
 friendly sentence in the interface language (HA_LANGUAGE, see i18n.py), which GLaSSIST shows and,
 on Windows, speaks with an installed voice of that language.
 """
-import os
 import re
-import subprocess
 import sys
-from typing import Callable, Optional
+from typing import Optional
 
 import i18n
 import utils
 
 logger = utils.setup_logger()
 
-_MARKERS = re.compile(r"problem getting a response|error talking to|unexpected error|error from", re.I)
-_PROVIDER = re.compile(r"(?:getting a response from|talking to|error from)\s+([^.:\n]+?)\s*(?:[.:]|$)", re.I)
-_CODE = re.compile(r'"code"\s*:\s*(\d{3})|\b(?:error|status)\D{0,12}(\d{3})\b|\b(\d{3})\s+[A-Z][a-z]+', re.I)
+# Only the exact way Home Assistant's AI integrations start an error answer, so a normal answer
+# that merely mentions an error ("error from the dishwasher") is never replaced.
+_ERROR_ANSWERS = (
+    # Google Generative AI, Ollama and others
+    re.compile(r"^Sorry, I had a problem (?:getting a response from|talking to)\s+"
+               r"(?P<provider>[^:\n]+?)(?:\.?:|\.\s|\.?\s*$)", re.I),
+    re.compile(r"^Error talking to\s+(?P<provider>[^:\n]+?)(?:\.?:|\.\s|\.?\s*$)", re.I),   # OpenAI
+    re.compile(r"^Authentication error with\s+(?P<provider>.+?)\s+API\b", re.I),            # Anthropic
+    re.compile(r"^(?P<provider>[\w .-]+?)\s+API error:", re.I),                             # Anthropic
+    re.compile(r"^Error communicating with (?:the\s+)?(?P<provider>.+?)\s+API\b", re.I),    # OpenRouter
+)
 
-# (matching words or status codes, English template). {} is the provider name.
+# (status codes, words, English template). {} is the provider name.
 _KINDS = (
-    ({"503", "unavailable", "high demand", "overloaded"},
+    ({"503", "529"}, ("unavailable", "high demand", "overloaded"),
      "The AI service ({}) is overloaded right now. Try again in a few seconds."),
-    ({"429", "resource_exhausted", "quota", "rate limit"},
+    ({"429"}, ("resource_exhausted", "quota", "rate limit"),
      "The usage limit of the AI service ({}) was reached for now. Try again later."),
-    ({"401", "403", "api key", "permission_denied", "unauthenticated"},
+    ({"401", "403"}, ("api key", "permission_denied", "unauthenticated", "authentication"),
      "The AI service ({}) refused the access key. Check the key in Home Assistant."),
-    ({"504", "timeout", "timed out", "deadline"},
+    ({"504"}, ("timeout", "timed out", "deadline"),
      "The AI service ({}) took too long to answer. Try again."),
-    ({"500", "502", "internal"},
+    ({"500", "502"}, ("internal",),
      "The AI service ({}) had an internal error. Try again in a moment."),
 )
 _GENERIC = "I could not get an answer from the AI service ({}) right now. Try again."
+_CODE = re.compile(r"(?<!\d)(\d{3})(?!\d)")
 
 _CULTURES = {"en": "en-US", "pl": "pl-PL", "pt_BR": "pt-BR"}
+_SPEECH_ASSEMBLY = "System.Speech, Version=3.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"
+
+
+def _has_word(text: str, word: str) -> bool:
+    # Letters only as boundaries: "overloaded_error" matches, "international" does not.
+    return re.search(rf"(?<![a-z]){re.escape(word)}(?![a-z])", text) is not None
 
 
 def friendly_error(text: Optional[str]) -> Optional[str]:
     """The friendly sentence for an AI-service error answer, or None for a normal answer."""
-    if not text or not _MARKERS.search(text):
+    if not text:
         return None
+    text = text.strip()
+    match = next((m for m in (p.match(text) for p in _ERROR_ANSWERS) if m), None)
+    if match is None:
+        return None
+    provider = match.group("provider").strip()
     lowered = text.lower()
-    codes = {c for groups in _CODE.findall(text) for c in groups if c}
-    match = _PROVIDER.search(text)
-    provider = match.group(1).strip() if match else "?"
+    codes = set(_CODE.findall(text))
     english = _GENERIC.format(provider)
-    for words, template in _KINDS:
-        if any((w in codes) if w.isdigit() else (w in lowered) for w in words):
+    for kind_codes, words, template in _KINDS:
+        if codes & kind_codes or any(_has_word(lowered, w) for w in words):
             english = template.format(provider)
             break
     return i18n.t(english)
@@ -59,32 +75,39 @@ def speech_culture() -> str:
     return _CULTURES.get(i18n.get_language(), "en-US")
 
 
-def speak(text: str, on_done: Callable[[], None], on_unavailable: Callable[[], None]) -> None:
-    """Speak ``text`` with a Windows voice of the interface language, in a background thread.
+def synthesize(text: str, path: str) -> bool:
+    """Write ``text`` spoken by a Windows voice of the interface language to ``path`` (WAV).
 
-    Calls ``on_done`` when finished. When no voice of that language is installed (or this is not
-    Windows) calls ``on_unavailable`` instead, so the caller can fall back to Home Assistant's audio.
+    Uses System.Speech in-process through pythonnet (already loaded for the overlay window), so
+    there is no extra process and the result plays like any other reply: on the selected output
+    device, with the animation and cancellable by the hotkey or wake word. Returns False when that
+    is not possible (not Windows, no voice of that language); the caller then plays Home
+    Assistant's own audio.
     """
-    import threading
+    if sys.platform != "win32":
+        return False
+    culture = speech_culture()
+    try:
+        import clr
+        clr.AddReference(_SPEECH_ASSEMBLY)
+        from System.Speech.Synthesis import SpeechSynthesizer
 
-    def run() -> None:
-        if sys.platform != "win32":
-            on_unavailable()
-            return
-        script = ("Add-Type -AssemblyName System.Speech; "
-                  "$s = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
-                  "$v = $s.GetInstalledVoices() | Where-Object { $_.Enabled -and "
-                  "$_.VoiceInfo.Culture.Name -eq $env:GLASSIST_SPEECH_CULTURE } | Select-Object -First 1; "
-                  "if (-not $v) { exit 3 }; $s.SelectVoice($v.VoiceInfo.Name); $s.Speak($env:GLASSIST_SPEECH_TEXT)")
-        env = dict(os.environ, GLASSIST_SPEECH_TEXT=text, GLASSIST_SPEECH_CULTURE=speech_culture())
+        synth = SpeechSynthesizer()
         try:
-            result = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-                                    env=env, timeout=40, creationflags=subprocess.CREATE_NO_WINDOW,
-                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            ok = result.returncode == 0
-        except Exception:
-            logger.debug("Local speech failed", exc_info=True)
-            ok = False
-        (on_done if ok else on_unavailable)()
-
-    threading.Thread(target=run, name="ai-error-speech", daemon=True).start()
+            voices = [v.VoiceInfo for v in synth.GetInstalledVoices() if v.Enabled]
+            language = culture.split("-")[0]
+            voice = (next((v for v in voices if v.Culture.Name == culture), None)
+                     or next((v for v in voices if v.Culture.Name.split("-")[0] == language), None))
+            if voice is None:
+                logger.info(f"No Windows voice for {culture}; playing Home Assistant's audio instead")
+                return False
+            synth.SelectVoice(voice.Name)
+            synth.SetOutputToWaveFile(path)
+            synth.Speak(text)
+            synth.SetOutputToNull()
+            return True
+        finally:
+            synth.Dispose()
+    except Exception:
+        logger.warning("Local speech for the AI error failed; playing Home Assistant's audio", exc_info=True)
+        return False

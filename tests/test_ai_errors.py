@@ -1,5 +1,4 @@
 """AI-service errors read out by Home Assistant become short friendly sentences."""
-import asyncio
 from unittest.mock import Mock, patch
 
 import pytest
@@ -46,55 +45,130 @@ def test_other_kinds_of_error(detail, expected):
     assert expected in ai_errors.friendly_error(text)
 
 
-@pytest.mark.parametrize('text', ['Pronto.', 'A luz da sala está ligada.', 'It is 503 degrees', '', None])
+@pytest.mark.parametrize('text, provider, kind', [
+    ('Sorry, I had a problem getting a response from Google Generative AI.', 'Google Generative AI', 'answer'),
+    ('Sorry, I had a problem getting a response from Google Generative AI. Reason: SAFETY',
+     'Google Generative AI', 'answer'),
+    ('Sorry, I had a problem talking to the Ollama server: timed out', 'the Ollama server', 'too long'),
+    ('Error talking to OpenAI', 'OpenAI', 'answer'),
+    ('Anthropic API error: overloaded_error.', 'Anthropic', 'overloaded'),
+    ('Authentication error with Anthropic API: invalid x-api-key. Reauthentication required.',
+     'Anthropic', 'access key'),
+    ('Error communicating with the OpenRouter API: 429 Too Many Requests', 'OpenRouter', 'usage limit'),
+])
+def test_error_answers_of_the_ha_integrations(text, provider, kind):
+    friendly = ai_errors.friendly_error(text)
+    assert f'({provider})' in friendly and kind in friendly
+
+
+@pytest.mark.parametrize('text', [
+    'Pronto.', 'A luz da sala está ligada.', 'It is 503 degrees', '', None,
+    'There is an error from the dishwasher: E15 means a leak.',
+    'The vacuum reported an unexpected error.',
+    'Sorry, I had a problem turning on the kitchen light.',
+    'The international station is unavailable.',
+])
 def test_normal_answers_are_left_alone(text):
     assert ai_errors.friendly_error(text) is None
 
 
+def test_internal_needs_the_whole_word():
+    text = 'Sorry, I had a problem getting a response from International AI: something else'
+    assert 'internal error' not in ai_errors.friendly_error(text)
+
+
+def test_synthesis_is_skipped_outside_windows(tmp_path):
+    with patch('ai_errors.sys.platform', 'linux'):
+        assert ai_errors.synthesize('oi', str(tmp_path / 'x.wav')) is False
+
+
+# ---- satellite integration (3.9.0 playback: cancellable, on the loop, with fallback)
 def make_protocol():
     protocol = VoiceSatelliteProtocol(device_name='t', mac_address='02:00:00:00:00:01',
                                       animation_server=Mock(), on_tts_url=Mock(), on_tts_finished=Mock())
-    protocol._loop = asyncio.new_event_loop()
-    protocol._transport = Mock()
     protocol.send_messages = Mock()
     return protocol
+
+
+class InlineThread:
+    """Runs the synthesis thread synchronously so the test sees its effect immediately."""
+    def __init__(self, target, **kwargs):
+        self.target = target
+
+    def start(self):
+        self.target()
+
+
+def run_error_reply(protocol, synthesize, events_before_end=()):
+    with patch('satellite_protocol.media_ducker'), patch('utils.processing_sound_loop'), \
+         patch('satellite_protocol.ai_errors.synthesize', side_effect=synthesize) as synth, \
+         patch('satellite_protocol.threading.Thread', InlineThread):
+        protocol._handle_voice_event(Event.VOICE_ASSISTANT_RUN_START, {})
+        protocol._handle_voice_event(Event.VOICE_ASSISTANT_TTS_START, {'text': GEMINI_503})
+        for event, data in events_before_end:
+            protocol._handle_voice_event(event, data)
+        protocol._handle_voice_event(Event.VOICE_ASSISTANT_TTS_END, {'url': 'http://ha/api/tts_proxy/x.mp3'})
+    return synth
 
 
 def test_error_answer_is_shown_and_spoken_locally_instead_of_the_english_audio():
     i18n.set_language('pt_BR')
     protocol = make_protocol()
-    with patch('satellite_protocol.ai_errors.speak') as speak:
-        protocol._handle_voice_event(Event.VOICE_ASSISTANT_RUN_START, {})
-        protocol._handle_voice_event(Event.VOICE_ASSISTANT_TTS_START, {'text': GEMINI_503})
-        shown = protocol._animation_server.send_response_text.call_args.args[0]
-        assert 'sobrecarregado' in shown and '503' not in shown
-        protocol._handle_voice_event(Event.VOICE_ASSISTANT_TTS_END, {'url': 'http://ha/api/tts_proxy/x.mp3'})
-    (spoken,), kwargs = speak.call_args
+    synth = run_error_reply(protocol, lambda text, path: True)
+    shown = protocol._animation_server.send_response_text.call_args.args[0]
+    assert 'sobrecarregado' in shown and '503' not in shown
+    spoken, path = synth.call_args.args
     assert 'sobrecarregado' in spoken
-    protocol._on_tts_url.assert_not_called()                  # the English audio is not played
-    kwargs['on_unavailable']()                                # no Portuguese voice: fall back to HA's audio
+    played = protocol._on_tts_url.call_args
+    assert played.args[0] == path and path.endswith('.wav')     # local speech, not HA's English audio
+    assert played.kwargs['cancel_event'] is protocol._playback_cancel
+
+    protocol._handle_voice_event(Event.VOICE_ASSISTANT_RUN_END, {})
+    protocol._on_tts_finished.assert_not_called()               # still speaking
+    played.kwargs['done_callback'](True)
+    protocol._on_tts_finished.assert_called_once()
+
+
+def test_without_a_voice_home_assistant_audio_is_played():
+    protocol = make_protocol()
+    run_error_reply(protocol, lambda text, path: False)
+    played = protocol._on_tts_url.call_args
+    assert played.args[0] == 'http://ha/api/tts_proxy/x.mp3'
+    assert played.kwargs['cancel_event'] is protocol._playback_cancel
+
+
+def test_hotkey_during_synthesis_plays_nothing():
+    protocol = make_protocol()
+
+    def synthesize(text, path):
+        protocol.cancel_interaction()                          # pressed while the voice is generated
+        return True
+
+    run_error_reply(protocol, synthesize)
+    protocol._on_tts_url.assert_not_called()
+    assert protocol._tts_override is None
+
+
+def test_streamed_reply_keeps_home_assistant_audio():
+    protocol = make_protocol()
+    with patch('satellite_protocol.media_ducker'), patch('utils.processing_sound_loop'), \
+         patch('satellite_protocol.ai_errors.synthesize') as synth:
+        protocol._handle_voice_event(Event.VOICE_ASSISTANT_RUN_START, {'url': 'http://ha/stream.mp3'})
+        protocol._handle_voice_event(Event.VOICE_ASSISTANT_INTENT_PROGRESS, {'tts_start_streaming': '1'})
+        protocol._handle_voice_event(Event.VOICE_ASSISTANT_TTS_START, {'text': GEMINI_503})
+        protocol._handle_voice_event(Event.VOICE_ASSISTANT_TTS_END, {'url': 'http://ha/stream.mp3'})
+    synth.assert_not_called()
     protocol._on_tts_url.assert_called_once()
-    assert protocol._on_tts_url.call_args.args[0] == 'http://ha/api/tts_proxy/x.mp3'
+    assert protocol._on_tts_url.call_args.kwargs['streaming'] is True
 
 
 def test_normal_answer_still_plays_the_home_assistant_audio():
     protocol = make_protocol()
-    with patch('satellite_protocol.ai_errors.speak') as speak:
+    with patch('satellite_protocol.media_ducker'), patch('utils.processing_sound_loop'), \
+         patch('satellite_protocol.ai_errors.synthesize') as synth:
         protocol._handle_voice_event(Event.VOICE_ASSISTANT_RUN_START, {})
         protocol._handle_voice_event(Event.VOICE_ASSISTANT_TTS_START, {'text': 'Pronto.'})
         protocol._handle_voice_event(Event.VOICE_ASSISTANT_TTS_END, {'url': 'http://ha/x.mp3'})
-    speak.assert_not_called()
+    synth.assert_not_called()
     protocol._on_tts_url.assert_called_once()
-
-
-def test_speak_falls_back_when_not_windows_or_no_voice():
-    done, unavailable = Mock(), Mock()
-    with patch('ai_errors.sys.platform', 'linux'):
-        t = ai_errors.speak('oi', done, unavailable)
-    import time
-    for _ in range(50):
-        if unavailable.called:
-            break
-        time.sleep(0.02)
-    unavailable.assert_called_once()
-    done.assert_not_called()
+    assert protocol._on_tts_url.call_args.args[0] == 'http://ha/x.mp3'
