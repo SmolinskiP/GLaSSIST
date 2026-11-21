@@ -4,6 +4,7 @@ Application utility functions module.
 import os
 import logging
 import time
+import queue
 import threading
 from datetime import datetime
 from dotenv import load_dotenv
@@ -292,11 +293,28 @@ def _sniff_audio_format(head):
 class _ByteFeeder:
     """Pull-based reader over an iterator of byte chunks (blocking)."""
 
+    _END = object()
+
     def __init__(self, chunks, cancel_event=None):
-        self._chunks = chunks
         self._buf = bytearray()
         self._eof = False
         self._cancel_event = cancel_event
+        # A stalled server would block next() until the read timeout; reading
+        # in another thread lets a cancel stop playback right away.
+        self._chunks = queue.Queue()
+        threading.Thread(target=self._pump, args=(chunks,), daemon=True,
+                         name='tts-stream-reader').start()
+
+    def _pump(self, chunks):
+        try:
+            for chunk in chunks:
+                if self._cancel_event is not None and self._cancel_event.is_set():
+                    break
+                self._chunks.put(chunk)
+        except Exception as e:
+            self._chunks.put(e)
+        finally:
+            self._chunks.put(self._END)
 
     def _fill(self, n):
         while len(self._buf) < n and not self._eof:
@@ -304,10 +322,15 @@ class _ByteFeeder:
                 self._eof = True
                 break
             try:
-                chunk = next(self._chunks)
-            except StopIteration:
+                chunk = self._chunks.get(timeout=0.1)
+            except queue.Empty:
+                continue
+            if chunk is self._END:
                 self._eof = True
                 break
+            if isinstance(chunk, Exception):
+                self._eof = True
+                raise chunk
             if chunk:
                 self._buf += chunk
 
@@ -504,7 +527,12 @@ def _play_stream_from_url(full_url, animation_server, output_device_index, logge
         logger.info(f"Streaming TTS: finished after {time.perf_counter() - t0:.2f}s")
         return True
     finally:
-        response.close()
+        if cancel_event is not None and cancel_event.is_set():
+            # close() waits for the reader thread's pending read, which can
+            # last until the read timeout when the server stalls.
+            threading.Thread(target=response.close, daemon=True).start()
+        else:
+            response.close()
 
 def play_audio_from_url(url, host, animation_server=None, done_callback=None,
                         output_device_index=None, *, streaming=False, cancel_event=None):
@@ -732,10 +760,27 @@ def _send_fft_to_animation(audio_chunk, animation_server):
     except Exception as e:
         pass
 
+VAD_SAMPLE_RATES = (8000, 16000, 32000)
+
+
+def get_capture_sample_rate():
+    """Microphone sample rate that WebRTC VAD can analyse.
+
+    Unsupported rates fall back to 16 kHz, which HA speech-to-text expects.
+    """
+    rate = get_env("HA_SAMPLE_RATE", 16000, int)
+    if get_env("CONNECTION_MODE", "websocket").lower() == "esphome":
+        # The ESPHome voice protocol has no rate field; HA assumes 16 kHz.
+        return 16000
+    if rate in VAD_SAMPLE_RATES:
+        return rate
+    setup_logger().warning(f"Sample rate {rate}Hz is not supported by WebRTC VAD, using 16000Hz")
+    return 16000
+
+
 def validate_audio_format(sample_rate, channels=1):
     """Validate audio parameters."""
-    valid_rates = [8000, 16000, 22050, 44100, 48000]
-    if sample_rate not in valid_rates:
+    if sample_rate not in VAD_SAMPLE_RATES:
         logger = setup_logger()
         logger.warning(f"Unusual sample rate: {sample_rate}Hz")
     

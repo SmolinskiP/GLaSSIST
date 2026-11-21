@@ -13,19 +13,7 @@ class VoiceActivityDetector:
     
     def __init__(self):
         """Initialize voice activity detector."""
-        # WebRTC VAD requires sample rate of 8000, 16000 or 32000 Hz
-        self.sample_rate = utils.get_env("HA_SAMPLE_RATE", 16000, int)
-        if self.sample_rate not in [8000, 16000, 32000]:
-            logger.warning(f"Incompatible sample rate: {self.sample_rate}Hz. WebRTC VAD requires 8000, 16000 or 32000 Hz")
-            if self.sample_rate < 8000:
-                self.sample_rate = 8000
-            elif self.sample_rate < 16000:
-                self.sample_rate = 8000
-            elif self.sample_rate < 32000:
-                self.sample_rate = 16000
-            else:
-                self.sample_rate = 32000
-            logger.info(f"Adjusted sample rate to {self.sample_rate}Hz")
+        self.sample_rate = utils.get_capture_sample_rate()
         
         self.vad_mode = utils.get_env("HA_VAD_MODE", 3, int)  # 0-3, higher = more aggressive
         

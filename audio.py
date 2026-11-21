@@ -15,11 +15,13 @@ class AudioManager:
     
     def __init__(self):
         """Initialize audio manager."""
-        self.sample_rate = utils.get_env("HA_SAMPLE_RATE", 16000, int)
+        self.sample_rate = utils.get_capture_sample_rate()
         self.channels = utils.get_env("HA_CHANNELS", 1, int)
         
         # Use same logic as VAD to determine chunk size
         frame_duration_ms = utils.get_env("HA_FRAME_DURATION_MS", 30, int)
+        if frame_duration_ms not in (10, 20, 30):
+            frame_duration_ms = 30
         self.chunk_size = int(self.sample_rate * frame_duration_ms / 1000)
         
         self.format = pyaudio.paInt16
@@ -189,6 +191,14 @@ class AudioManager:
         except Exception as e:
             logger.warning(f"Could not flush input buffer: {e}")
 
+    def read_chunk(self):
+        """Read one chunk as mono PCM, the only layout VAD and HA STT accept."""
+        data = self.stream.read(self.chunk_size, exception_on_overflow=False)
+        if self.channels > 1:
+            frames = np.frombuffer(data, dtype='<i2').reshape(-1, self.channels)
+            data = frames.mean(axis=1).astype('<i2').tobytes()
+        return data
+
     async def record_audio(self, on_chunk_callback, on_end_callback=None):
         """
         Record audio with voice activity detection.
@@ -216,7 +226,7 @@ class AudioManager:
             while True:
                 await asyncio.sleep(0)
                 try:
-                    data = self.stream.read(self.chunk_size, exception_on_overflow=False)
+                    data = self.read_chunk()
                     chunks_processed += 1
                     
                 except Exception as e:
@@ -332,7 +342,7 @@ class AudioManager:
                 
                 try:
                     # Read audio chunk
-                    data = self.stream.read(self.chunk_size, exception_on_overflow=False)
+                    data = self.read_chunk()
                     chunks_processed += 1
                     
                 except Exception as e:

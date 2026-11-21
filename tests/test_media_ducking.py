@@ -67,6 +67,33 @@ def test_failed_connection_is_contained(client, ducker):
     client.set_multiple_volumes.assert_not_called()
 
 
+def test_failed_restore_keeps_original_volumes(client, ducker):
+    with patch.dict(os.environ, ENV):
+        ducker.duck()
+        client.connect.return_value = False
+        ducker.restore()
+
+        client.connect.return_value = True
+        client.get_multiple_volumes.return_value = {'media_player.tv': 0.2}
+        ducker.duck()
+        ducker.restore()
+    client.set_multiple_volumes.assert_awaited_with({'media_player.tv': 0.8})
+
+
+def test_partial_restore_still_ducks_every_player(client, ducker):
+    client.get_multiple_volumes.return_value = {'media_player.tv': 0.8, 'media_player.radio': 0.6}
+    client.set_multiple_volumes.side_effect = lambda volumes: {e: e != 'media_player.radio' for e in volumes}
+    with patch.dict(os.environ, {**ENV, 'HA_MEDIA_PLAYER_ENTITIES': 'media_player.tv, media_player.radio'}):
+        ducker.duck()
+        ducker.restore()  # radio fails, tv is restored
+        client.get_multiple_volumes.return_value = {'media_player.tv': 0.8, 'media_player.radio': 0.2}
+        client.set_multiple_volumes.side_effect = lambda volumes: {e: True for e in volumes}
+        ducker.duck()
+        assert client.set_multiple_volumes.await_args.args[0] == {'media_player.tv': 0.2, 'media_player.radio': 0.2}
+        ducker.restore()
+    assert client.set_multiple_volumes.await_args.args[0] == {'media_player.tv': 0.8, 'media_player.radio': 0.6}
+
+
 def make_protocol():
     protocol = VoiceSatelliteProtocol(device_name='glasssist', mac_address='02:00:00:00:00:01',
                                       animation_server=Mock(), on_tts_url=Mock(),
@@ -158,3 +185,42 @@ def test_wake_word_can_interrupt_streaming_reply(interrupt):
             protocol._on_tts_finished.assert_not_called()
         else:
             protocol.send_messages.assert_not_called()
+
+
+@pytest.mark.parametrize("tts_end_before_failure", [False, True])
+def test_failed_early_stream_plays_final_tts_audio(tts_end_before_failure):
+    protocol = make_protocol()
+    with patch("satellite_protocol.media_ducker"), patch("utils.processing_sound_loop"):
+        protocol._handle_voice_event(EventType.VOICE_ASSISTANT_RUN_START, {"url": "http://ha/stream.wav"})
+        protocol._handle_voice_event(EventType.VOICE_ASSISTANT_INTENT_PROGRESS, {"tts_start_streaming": "1"})
+        streamed = protocol._on_tts_url.call_args.kwargs
+        if tts_end_before_failure:
+            protocol._handle_voice_event(EventType.VOICE_ASSISTANT_TTS_END, {"url": "http://ha/final.wav"})
+            assert protocol._on_tts_url.call_count == 1
+        streamed["done_callback"](False)
+        if not tts_end_before_failure:
+            protocol._handle_voice_event(EventType.VOICE_ASSISTANT_TTS_END, {"url": "http://ha/final.wav"})
+        assert protocol._on_tts_url.call_count == 2
+        retry = protocol._on_tts_url.call_args
+        assert retry.args[0] == "http://ha/final.wav"
+        assert not retry.kwargs["streaming"]
+        protocol._handle_voice_event(EventType.VOICE_ASSISTANT_RUN_END, {})
+        protocol._on_tts_finished.assert_not_called()
+        retry.kwargs["done_callback"](True)
+        protocol._on_tts_finished.assert_called_once()
+
+
+def test_stream_failing_after_run_end_still_plays_final_audio():
+    protocol = make_protocol()
+    with patch("satellite_protocol.media_ducker"), patch("utils.processing_sound_loop"):
+        protocol._handle_voice_event(EventType.VOICE_ASSISTANT_RUN_START, {"url": "http://ha/stream.wav"})
+        protocol._handle_voice_event(EventType.VOICE_ASSISTANT_INTENT_PROGRESS, {"tts_start_streaming": "1"})
+        streamed = protocol._on_tts_url.call_args.kwargs
+        protocol._handle_voice_event(EventType.VOICE_ASSISTANT_TTS_END, {"url": "http://ha/final.wav"})
+        protocol._handle_voice_event(EventType.VOICE_ASSISTANT_RUN_END, {})
+        streamed["done_callback"](False)
+        retry = protocol._on_tts_url.call_args
+        assert retry.args[0] == "http://ha/final.wav" and not retry.kwargs["streaming"]
+        protocol._on_tts_finished.assert_not_called()
+        retry.kwargs["done_callback"](True)
+        protocol._on_tts_finished.assert_called_once()

@@ -37,10 +37,30 @@ class TestAudioManager:
         }):
             manager = audio.AudioManager()
 
-            assert manager.sample_rate == 44100
+            # WebRTC VAD only handles 8/16/32 kHz, so 44.1 kHz falls back to 16 kHz.
+            assert manager.sample_rate == 16000
             assert manager.channels == 2
-            assert manager.chunk_size == 882  # 44100 * 20 / 1000
-            mock_validate.assert_called_once_with(44100, 2)
+            assert manager.chunk_size == 320  # 16000 * 20 / 1000
+            mock_validate.assert_called_once_with(16000, 2)
+
+    def test_stereo_and_high_rate_chunks_fit_vad(self):
+        """Settings allow 48 kHz stereo; VAD must still get frames it accepts."""
+        import numpy as np
+        with patch.dict('os.environ', {'HA_SAMPLE_RATE': '48000', 'HA_CHANNELS': '2',
+                                       'HA_FRAME_DURATION_MS': '30'}):
+            manager = audio.AudioManager()
+        frames = np.full((manager.chunk_size, 2), [1000, 3000], dtype=np.int16)
+        manager.stream = Mock()
+        manager.stream.read.return_value = frames.tobytes()
+
+        chunk = manager.read_chunk()
+
+        assert len(chunk) == manager.vad.chunk_size * 2
+        assert set(np.frombuffer(chunk, dtype=np.int16)) == {2000}
+        manager.vad.vad = Mock()
+        manager.vad.vad.is_speech.return_value = True
+        assert manager.vad.is_speech(chunk) is True
+        manager.vad.vad.is_speech.assert_called_once_with(chunk, 16000)
 
     def test_get_available_microphones_no_audio(self):
         """Test getting microphones when audio is not initialized."""

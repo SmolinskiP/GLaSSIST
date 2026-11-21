@@ -139,3 +139,23 @@ def test_dialog_closes_and_runs_callback():
     app._close_dialog(dialog, callback)
     app.page.close.assert_called_once_with(dialog)
     callback.assert_called_once()
+
+
+def test_save_keeps_entries_the_dialog_does_not_manage(tmp_path):
+    from collections import defaultdict
+    env = tmp_path / '.env'
+    env.write_text('HA_PROMPT_SERVER_PORT=9000\n'
+                   'WINDOW_WIDTH = 600\n'
+                   '# my note\n'
+                   'HA_PIPELINE_ID=old-pipeline\n'
+                   'HA_HOTKEY=ctrl+alt+x\n', encoding='utf-8')
+    settings = defaultdict(str, CONNECTION_MODE='esphome', HA_HOTKEY='ctrl+shift+g')
+    with patch('flet_settings.platform_utils.get_env_file_path', return_value=env), \
+         patch('flet_settings.utils.get_env', return_value=''):
+        assert FletSettingsApp._save_env_file(None, settings)['success']
+    content = env.read_text(encoding='utf-8')
+    assert 'HA_PROMPT_SERVER_PORT=9000\n' in content
+    assert 'WINDOW_WIDTH = 600\n' in content
+    # Keys the dialog writes itself are not duplicated or resurrected.
+    assert content.count('HA_HOTKEY=') == 1 and 'HA_HOTKEY=ctrl+shift+g' in content
+    assert 'old-pipeline' not in content

@@ -1034,12 +1034,17 @@ class HAAssistApp:
         def on_tts_url(url: str, done_callback=None, **playback_options):
             """Play TTS audio from URL, call done_callback when finished."""
             host = utils.get_env("HA_HOST", "")
-            threading.Thread(
-                target=utils.play_audio_from_url,
-                args=(url, host, self.animation_server),
-                kwargs={"done_callback": done_callback, **playback_options},
-                daemon=True,
-            ).start()
+
+            def play():
+                success = utils.play_audio_from_url(
+                    url, host, self.animation_server, **playback_options)
+                if done_callback:
+                    try:
+                        done_callback(success)
+                    except Exception as e:
+                        logger.error(f"done_callback error: {e}")
+
+            threading.Thread(target=play, daemon=True).start()
 
         def on_tts_finished():
             logger.info("TTS playback finished")
@@ -1079,9 +1084,7 @@ class HAAssistApp:
                     time.sleep(0.1)
                     continue
                 try:
-                    data = self.audio_manager.stream.read(
-                        self.audio_manager.chunk_size, exception_on_overflow=False
-                    )
+                    data = self.audio_manager.read_chunk()
                     if self.satellite_server:
                         self.satellite_server.handle_audio(data)
                         if self.satellite_server.is_streaming_audio and self.animation_server:
@@ -1396,8 +1399,8 @@ def validate_configuration():
             issues.append("Missing access token (HA_TOKEN)")
     
     sample_rate = utils.get_env("HA_SAMPLE_RATE", 16000, int)
-    if sample_rate not in [8000, 16000, 22050, 44100, 48000]:
-        issues.append(f"Unusual sample rate: {sample_rate}Hz")
+    if sample_rate not in utils.VAD_SAMPLE_RATES:
+        issues.append(f"Unsupported sample rate: {sample_rate}Hz (using {utils.get_capture_sample_rate()}Hz)")
     
     frame_duration = utils.get_env("HA_FRAME_DURATION_MS", 30, int)
     if frame_duration not in [10, 20, 30]:

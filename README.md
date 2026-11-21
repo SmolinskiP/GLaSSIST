@@ -48,7 +48,8 @@ Windows 10 or 11, 64-bit:
 2. Run the installer and choose a connection mode.
 3. Launch GLaSSIST and finish configuring audio, wake words, and the Assist pipeline in Settings.
 
-The installer includes the application and its Python dependencies.
+The installer includes the application and its Python dependencies. To update, run the new installer
+over the existing installation: your configuration is kept and the connection pages are skipped.
 
 ### Linux — Flatpak
 

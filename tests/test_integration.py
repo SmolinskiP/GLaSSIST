@@ -315,9 +315,9 @@ class TestConfigurationIntegration:
                 ha_client = HomeAssistantClient()
                 
                 # Verify consistent configuration
-                assert audio_manager.sample_rate == 44100
+                assert audio_manager.sample_rate == 16000  # VAD-compatible rate
                 assert wake_word_detector.sample_rate == 16000  # Fixed for OpenWakeWord
-                assert ha_client.sample_rate == 44100
+                assert ha_client.sample_rate == 16000
                 assert ha_client.host == 'test.local:8123'
                 assert ha_client.token == 'test_token'
                 assert wake_word_detector.enabled is True

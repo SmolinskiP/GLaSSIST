@@ -58,6 +58,16 @@ class TestUtils:
             result = utils.get_env_bool("TEST_BOOL", True)
             assert result is True
     
+    @pytest.mark.parametrize("mode, configured, expected", [
+        ("websocket", "16000", 16000), ("websocket", "32000", 32000),
+        ("websocket", "44100", 16000), ("websocket", "48000", 16000),
+        ("esphome", "8000", 16000), ("esphome", "48000", 16000),
+    ])
+    def test_capture_sample_rate(self, mode, configured, expected):
+        with patch.dict(os.environ, {"CONNECTION_MODE": mode, "HA_SAMPLE_RATE": configured}), \
+             patch("utils._read_from_env_file", return_value=None):
+            assert utils.get_capture_sample_rate() == expected
+
     def test_validate_audio_format_valid(self):
         """Test audio format validation with valid parameters."""
         # Should not raise exception
@@ -340,17 +350,23 @@ class TestStreamingPlayback:
     @patch('requests.get')
     def test_wav_stream_is_played_incrementally(self, mock_get, _dev, _rate, mock_sd, _env):
         import numpy as np
+        import threading
         samples = (np.arange(48000) % 200).astype(np.int16)
         written = []
+        first_write = threading.Event()
         payload = _streaming_wav(samples)
 
         def chunks():
             yield payload[:1024]
-            assert written, "playback must start before reading the rest of the stream"
+            assert first_write.wait(5), "playback must start before the rest of the stream arrives"
             yield from _chunked(payload[1024:])
 
+        def write(block):
+            written.append(block.copy())
+            first_write.set()
+
         mock_get.return_value = self._response(chunks())
-        mock_sd.OutputStream.return_value.write.side_effect = lambda block: written.append(block.copy())
+        mock_sd.OutputStream.return_value.write.side_effect = write
         done = Mock()
 
         result = utils.play_audio_from_url("http://ha/api/tts_proxy/x.wav", "", done_callback=done, streaming=True)
@@ -420,6 +436,33 @@ class TestStreamingPlayback:
         assert result is True
         assert 'stream' not in mock_get.call_args.kwargs
         mock_sd.OutputStream.assert_not_called()
+
+    def test_cancel_does_not_wait_for_a_stalled_stream(self, _env):
+        import threading
+        import time
+        import numpy as np
+        cancel_event = threading.Event()
+        release = threading.Event()
+        payload = _streaming_wav(np.zeros(4096, dtype=np.int16))
+
+        def chunks():
+            yield payload[:1024]
+            release.wait(10)  # server stops sending, like a stalled TTS stream
+            yield payload[1024:]
+
+        response = self._response(chunks())
+        # Like requests, close() blocks while the reader thread waits for data.
+        response.close.side_effect = lambda: release.wait(10)
+        with patch('utils.sd') as sd, patch('requests.get', return_value=response), \
+                patch('utils.get_output_sample_rate', return_value=None):
+            sd.OutputStream.return_value.write.side_effect = \
+                lambda block: threading.Timer(0.2, cancel_event.set).start()
+            started = time.monotonic()
+            assert not utils.play_audio_from_url("http://ha/x.wav", "", streaming=True,
+                                                cancel_event=cancel_event)
+            elapsed = time.monotonic() - started
+        release.set()
+        assert elapsed < 2
 
     def test_compressed_decoder_gets_partial_reads(self, _env):
         """MP3 decoders ask for 64 KB; the feeder must not wait for all of it."""

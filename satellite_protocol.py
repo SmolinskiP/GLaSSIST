@@ -140,6 +140,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
         self._tts_text: Optional[str] = None
         self._tts_played = False
         self._tts_completed = False
+        self._tts_end_received = False
         self._playback_cancel = None
         self._ignore_cancelled_events = False
         self._continue_conversation = False
@@ -220,6 +221,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
         self._tts_url = self._tts_text = None
         self._tts_played = False
         self._tts_completed = False
+        self._tts_end_received = False
         self._continue_conversation = False
         utils.processing_sound_loop.stop()
         media_ducker.restore()
@@ -308,6 +310,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
             self._tts_text = None
             self._tts_played = False
             self._tts_completed = False
+            self._tts_end_received = False
             self._continue_conversation = False
             self._pipeline_active = True
             self._is_streaming_audio = True
@@ -352,6 +355,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_TTS_END:
             self._tts_url = data.get("url")
+            self._tts_end_received = True
             self._play_tts()
 
         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END:
@@ -420,6 +424,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
         self._speech_end_handled = False
         self._tts_played = False
         self._tts_completed = False
+        self._tts_end_received = False
         self._continue_conversation = False
 
         try:
@@ -468,8 +473,17 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
         self._playback_cancel = cancel_event
         remaining = iter(urls)
 
-        def next_url():
+        def next_url(success=True):
             if self._playback_cancel is not cancel_event:
+                return
+            if not success and streaming and (self._pipeline_active or self._tts_end_received):
+                # Streaming failed; play the final TTS_END audio instead.
+                self._playback_cancel = None
+                self._tts_played = False
+                if self._tts_end_received:
+                    self._play_tts()
+                if self._playback_cancel is None and not self._pipeline_active:
+                    self._tts_finished_on_loop()
                 return
             url = next(remaining, None)
             if url is None:
@@ -481,12 +495,12 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
                 return
             self._on_tts_url(url, done_callback=finished, cancel_event=cancel_event, streaming=streaming)
 
-        def finished():
+        def finished(success=True):
             if self._loop is not None:
                 if not self._loop.is_closed():
-                    self._loop.call_soon_threadsafe(next_url)
+                    self._loop.call_soon_threadsafe(next_url, success)
             else:
-                next_url()
+                next_url(success)
 
         next_url()
 
@@ -567,7 +581,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
                 return
             self._on_tts_url(sound_path, done_callback=_check_repeat)
 
-        def _check_repeat():
+        def _check_repeat(_success=True):
             if not self._timer_active:
                 return
             if self._pipeline_active:

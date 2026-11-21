@@ -18,7 +18,7 @@ class HomeAssistantClient:
         self.token = utils.get_env("HA_TOKEN")
         self.pipeline_id = utils.get_env("HA_PIPELINE_ID")
         self.ai_agent_id = utils.get_env("HA_AI_AGENT_ID")
-        self.sample_rate = utils.get_env("HA_SAMPLE_RATE", 16000, int)
+        self.sample_rate = utils.get_capture_sample_rate()
         
         if not self.token:
             raise ValueError("Missing access token in .env file (HA_TOKEN)")

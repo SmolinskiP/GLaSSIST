@@ -360,14 +360,15 @@ class MultiRoomManager:
         self.gate.playbacks += 1
         async def play():
             import utils
+            success = False
             try:
-                await asyncio.to_thread(utils.play_audio_from_url, url,
-                                        utils.get_env('HA_HOST', ''), None, None,
-                                        room.output_device, **playback_options)
+                success = await asyncio.to_thread(utils.play_audio_from_url, url,
+                                                  utils.get_env('HA_HOST', ''), None, None,
+                                                  room.output_device, **playback_options)
             finally:
                 self.gate.playbacks -= 1
                 if not self._stop.is_set() and callback:
-                    callback()
+                    callback(success)
         task = self._loop.create_task(play())
         self._play_tasks.add(task)
         task.add_done_callback(self._play_tasks.discard)

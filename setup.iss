@@ -140,9 +140,21 @@ begin
   ESPHomeHACredsPage.Add('Long-Lived Access Token (optional):', True);
 end;
 
+function ExistingEnvPath: string;
+begin
+  Result := AddBackslash(WizardDirValue) + '_internal\.env';
+end;
+
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
   Result := False;
+  // Updates keep the existing configuration, so its pages are not needed.
+  if FileExists(ExistingEnvPath) and ((PageID = ModePage.ID) or (PageID = HAHostPage.ID) or
+     (PageID = HATokenPage.ID) or (PageID = ESPHomeDevicePage.ID) or
+     (PageID = ESPHomeHACredsPage.ID)) then begin
+    Result := True;
+    Exit;
+  end;
   // WebSocket pages — skip when ESPHome mode selected
   if (PageID = HAHostPage.ID) or (PageID = HATokenPage.ID) then
     Result := ModePage.Values[1];
@@ -163,8 +175,10 @@ var
   HAToken: string;
 begin
   if CurStep = ssPostInstall then begin
-    EnvDir := ExpandConstant('{localappdata}\GLaSSIST\_internal');
+    EnvDir := ExpandConstant('{app}\_internal');
     EnvPath := EnvDir + '\.env';
+    if FileExists(EnvPath) then
+      Exit;
 
     if not DirExists(EnvDir) then
       CreateDir(EnvDir);

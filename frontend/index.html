@@ -272,7 +272,16 @@
         `;
         
         // Three.js initialization
+        function renderFrame() {
+            if (renderer) renderer.render(scene, camera);
+        }
+
         function initThree() {
+            // Without Three.js (CDN unreachable) keep the texts and the WebSocket working.
+            if (typeof THREE === 'undefined') {
+                console.error('Three.js not loaded - ring animation disabled');
+                return;
+            }
             scene = new THREE.Scene();
             scene.background = null;
             
@@ -334,14 +343,14 @@
                     hiddenSince = null;
                     isAnimating = false;
                     animationFrameId = null;
-                    renderer.render(scene, camera);
+                    renderFrame();
                     return;
                 }
             }
 
             animationFrameId = requestAnimationFrame(animate);
             updateAnimation();
-            renderer.render(scene, camera);
+            renderFrame();
         }
         
         function startAnimation() {
@@ -352,7 +361,7 @@
             
             // Show appropriate elements based on state
             if (currentState !== 'hidden') {
-                ring.visible = true;
+                if (ring) ring.visible = true;
                 
                 // Show error text only in error state
                 if (currentState === 'error') {
@@ -375,7 +384,7 @@
             console.log('Stopping animation');
 
             // Hide all elements
-            ring.visible = false;
+            if (ring) ring.visible = false;
 
             // Hide all texts
             hideErrorText();
@@ -397,7 +406,7 @@
                 animationFrameId = null;
             }
 
-            renderer.render(scene, camera);
+            renderFrame();
         }
         
         function showErrorText(message) {
@@ -742,6 +751,7 @@
         });
         
         window.addEventListener('resize', function() {
+            if (!renderer) return;
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -757,7 +767,13 @@
         
         window.addEventListener('load', function() {
             console.log('Initializing application with error and success text support...');
-            initThree();
+            try {
+                initThree();
+            } catch (error) {
+                console.error('Three.js initialization failed - ring animation disabled', error);
+                renderer = null;
+                ring = null;
+            }
             initWebSocket();
             startHeartbeat();
         });

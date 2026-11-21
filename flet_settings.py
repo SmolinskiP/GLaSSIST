@@ -5,6 +5,7 @@ Replaces the problematic Tkinter-based settings
 import flet as ft
 import asyncio
 import os
+import re
 import threading
 import webbrowser
 import subprocess
@@ -23,6 +24,32 @@ logger = utils.setup_logger()
 # Translate the settings UI according to HA_LANGUAGE (see i18n.py, locales/)
 i18n.init_from_env()
 i18n.patch_flet(ft)
+
+# Written only when set, so an emptied field must not bring back the old value.
+_OPTIONAL_ENV_KEYS = {'HA_PIPELINE_ID', 'HA_TIMER_SOUND',
+                      'HA_ROOMS_ENABLED', 'HA_ROOMS', 'HA_ROOMS_CONFIG'}
+
+def _preserved_env_lines(env_path, env_content):
+    """Keep entries the dialog does not manage, e.g. ones added by hand."""
+    key_pattern = re.compile(r'^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=')
+    written = {match.group(1) for line in env_content.splitlines()
+               if (match := key_pattern.match(line))}
+    try:
+        with open(env_path, encoding='utf-8-sig') as f:
+            lines = f.read().splitlines()
+    except FileNotFoundError:
+        return ''
+    except UnicodeDecodeError:
+        logger.warning(f"Could not read {env_path} as UTF-8; entries added by hand are not kept")
+        return ''
+    kept = [line for line in lines
+            if (match := key_pattern.match(line))
+            and match.group(1) not in written
+            and match.group(1) not in _OPTIONAL_ENV_KEYS]
+    if not kept:
+        return ''
+    return "\n# === OTHER ===\n" + "\n".join(kept) + "\n"
+
 
 class FletSettingsApp:
     def __init__(self, animation_server=None):
@@ -121,7 +148,7 @@ class FletSettingsApp:
             'HA_ANIMATIONS_ENABLED': utils.get_env('HA_ANIMATIONS_ENABLED', 'true'),
             'HA_RESPONSE_TEXT_ENABLED': utils.get_env('HA_RESPONSE_TEXT_ENABLED', 'true'),
             'HA_LANGUAGE': i18n.normalize(utils.get_env('HA_LANGUAGE', 'en')),
-            'HA_SAMPLE_RATE': utils.get_env('HA_SAMPLE_RATE', '16000'),
+            'HA_SAMPLE_RATE': str(utils.get_capture_sample_rate()),
             'HA_FRAME_DURATION_MS': utils.get_env('HA_FRAME_DURATION_MS', '30'),
             'ANIMATION_PORT': utils.get_env('ANIMATION_PORT', '8765'),
             'HA_WAKE_WORD_ENABLED': utils.get_env('HA_WAKE_WORD_ENABLED', 'false'),
@@ -1115,9 +1142,6 @@ class FletSettingsApp:
             options=[
                 ft.dropdown.Option("8000"),
                 ft.dropdown.Option("16000"),
-                ft.dropdown.Option("22050"),
-                ft.dropdown.Option("44100"),
-                ft.dropdown.Option("48000"),
             ],
             expand=True
         )
@@ -2358,6 +2382,8 @@ class FletSettingsApp:
             
             env_content += "\n# === DEBUG ===\n"
             env_content += f"DEBUG={settings['DEBUG']}\n"
+
+            env_content += _preserved_env_lines(env_path, env_content)
             
             # Ensure directory exists
             os.makedirs(os.path.dirname(env_path), exist_ok=True)

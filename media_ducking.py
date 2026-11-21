@@ -60,7 +60,9 @@ class MediaPlayerDucker:
         if not await client.connect():
             return
         try:
-            saved = await client.get_multiple_volumes(entities)
+            # Players whose restore failed are still lowered; keep their
+            # original level instead of the lowered one read now.
+            saved = {**(await client.get_multiple_volumes(entities) or {}), **(self._saved or {})}
             if saved:
                 self._saved = saved
                 results = await client.set_multiple_volumes({entity: target for entity in saved})
@@ -69,15 +71,19 @@ class MediaPlayerDucker:
             await client.close()
 
     async def _restore(self):
-        saved, self._saved = self._saved, None
+        saved = self._saved
         if not saved:
             return
         from client import HomeAssistantClient
         client = HomeAssistantClient()
+        # Keep the saved volumes until restoring succeeds so the next
+        # interaction can retry it.
         if not await client.connect():
             return
         try:
             results = await client.set_multiple_volumes(saved)
+            self._saved = {entity: volume for entity, volume in saved.items()
+                           if not results.get(entity)} or None
             logger.info(f'Restored media player volumes: {results}')
         finally:
             await client.close()
