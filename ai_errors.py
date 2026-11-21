@@ -26,14 +26,18 @@ _ERROR_ANSWERS = (
     re.compile(r"^(?P<provider>[\w .-]+?)\s+API error:", re.I),                             # Anthropic
     re.compile(r"^Error communicating with (?:the\s+)?(?P<provider>.+?)\s+API\b", re.I),    # OpenRouter
 )
+# The provider must look like an AI service, so "a problem talking to the TV" stays an answer.
+_AI_PROVIDER = re.compile(r"(?<![a-z])(ai|gpt|gemini|google|ollama|openai|anthropic|claude|mistral|"
+                          r"openrouter|llm|groq|deepseek|grok|xai|cohere|perplexity|azure|bedrock|"
+                          r"llama|qwen|server)(?![a-z])", re.I)
 
 # (status codes, words, English template). {} is the provider name.
 _KINDS = (
     ({"503", "529"}, ("unavailable", "high demand", "overloaded"),
      "The AI service ({}) is overloaded right now. Try again in a few seconds."),
-    ({"429"}, ("resource_exhausted", "quota", "rate limit"),
+    ({"429"}, ("resource exhausted", "quota", "rate limit", "too many requests"),
      "The usage limit of the AI service ({}) was reached for now. Try again later."),
-    ({"401", "403"}, ("api key", "permission_denied", "unauthenticated", "authentication"),
+    ({"401", "403"}, ("api key", "permission denied", "unauthenticated", "authentication"),
      "The AI service ({}) refused the access key. Check the key in Home Assistant."),
     ({"504"}, ("timeout", "timed out", "deadline"),
      "The AI service ({}) took too long to answer. Try again."),
@@ -41,7 +45,9 @@ _KINDS = (
      "The AI service ({}) had an internal error. Try again in a moment."),
 )
 _GENERIC = "I could not get an answer from the AI service ({}) right now. Try again."
-_CODE = re.compile(r"(?<!\d)(\d{3})(?!\d)")
+# Only numbers in a status position, not any number in the text ("Requested 503" tokens).
+_STATUS_CODE = re.compile(r'"code"\s*:\s*(\d{3})\b|\b(?:error code|status code|status|code)\s*[:=]?\s*(\d{3})\b'
+                          r'|\b(\d{3})\s+(?-i:[A-Z][a-z]+)', re.I)   # "429 Too Many Requests"
 
 _CULTURES = {"en": "en-US", "pl": "pl-PL", "pt_BR": "pt-BR"}
 _SPEECH_ASSEMBLY = "System.Speech, Version=3.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"
@@ -58,17 +64,17 @@ def friendly_error(text: Optional[str]) -> Optional[str]:
         return None
     text = text.strip()
     match = next((m for m in (p.match(text) for p in _ERROR_ANSWERS) if m), None)
-    if match is None:
+    if match is None or not _AI_PROVIDER.search(match.group("provider")):
         return None
     provider = match.group("provider").strip()
-    lowered = text.lower()
-    codes = set(_CODE.findall(text))
-    english = _GENERIC.format(provider)
-    for kind_codes, words, template in _KINDS:
-        if codes & kind_codes or any(_has_word(lowered, w) for w in words):
-            english = template.format(provider)
-            break
-    return i18n.t(english)
+    words_text = re.sub(r"[_-]", " ", text.lower())
+    codes = [code for groups in _STATUS_CODE.findall(text) for code in groups if code]
+    # The reported status decides; words only when no known status code is given.
+    template = next((t for code in codes for kind_codes, _, t in _KINDS if code in kind_codes), None)
+    if template is None:
+        template = next((t for _, words, t in _KINDS if any(_has_word(words_text, w) for w in words)),
+                        _GENERIC)
+    return i18n.t(template.format(provider))
 
 
 def speech_culture() -> str:

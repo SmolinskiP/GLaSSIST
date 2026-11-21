@@ -78,10 +78,12 @@ class DetectionClipRecorder:
         or an error (logged; detection keeps running).
         """
         try:
+            # The cooldown uses a monotonic clock so a clock change can't block saving.
+            clock = time.monotonic() if now is None else now
             now = time.time() if now is None else now
             if self._filled < MIN_SECONDS * self.sample_rate:
                 return False
-            if now - self._last_save.get(model_name, float('-inf')) < COOLDOWN_SECONDS:
+            if clock - self._last_save.get(model_name, float('-inf')) < COOLDOWN_SECONDS:
                 return False
             item = (self._snapshot(), model_name, float(score), now)
             try:
@@ -89,7 +91,7 @@ class DetectionClipRecorder:
             except queue.Full:
                 logger.debug('Detection clip skipped: writer is busy')
                 return False
-            self._last_save[model_name] = now
+            self._last_save[model_name] = clock
             self._ensure_worker()
             return True
         except Exception as e:
@@ -137,11 +139,19 @@ class DetectionClipRecorder:
                     continue
             else:
                 raise FileExistsError(path)
-            with f, wave.open(f, 'wb') as w:
-                w.setnchannels(1)
-                w.setsampwidth(2)
-                w.setframerate(self.sample_rate)
-                w.writeframes(audio.tobytes())
+            try:
+                with f, wave.open(f, 'wb') as w:
+                    w.setnchannels(1)
+                    w.setsampwidth(2)
+                    w.setframerate(self.sample_rate)
+                    w.writeframes(audio.tobytes())
+            except BaseException:
+                # A half-written clip (full disk) must not look like a real one.
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+                raise
             self._prune(folder)
             return path
         finally:
@@ -149,10 +159,16 @@ class DetectionClipRecorder:
 
     def _prune(self, folder):
         """Remove the oldest of our own clips; files the user added or renamed are never touched."""
-        paths = [os.path.join(folder, f) for f in os.listdir(folder)
-                 if f.startswith('trig_') and f.endswith('.wav')]
-        paths.sort(key=lambda path: (os.path.getmtime(path), path))
-        for old in paths[:max(0, len(paths) - self.max_files)]:
+        clips = []
+        for name in os.listdir(folder):
+            if name.startswith('trig_') and name.endswith('.wav'):
+                path = os.path.join(folder, name)
+                try:
+                    clips.append((os.path.getmtime(path), path))
+                except OSError:
+                    pass              # removed meanwhile by another room or the user
+        clips.sort()
+        for _, old in clips[:max(0, len(clips) - self.max_files)]:
             try:
                 os.remove(old)
             except OSError:

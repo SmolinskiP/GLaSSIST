@@ -14,7 +14,9 @@ GEMINI_503 = ('Sorry, I had a problem getting a response from Google Generative 
 
 
 @pytest.fixture(autouse=True)
-def language():
+def language(monkeypatch, tmp_path):
+    import tempfile
+    monkeypatch.setattr(tempfile, 'tempdir', str(tmp_path))     # error speech files stay in the test dir
     yield
     i18n.set_language('en')
 
@@ -172,3 +174,63 @@ def test_normal_answer_still_plays_the_home_assistant_audio():
     synth.assert_not_called()
     protocol._on_tts_url.assert_called_once()
     assert protocol._on_tts_url.call_args.args[0] == 'http://ha/x.mp3'
+
+
+# ---- review follow-ups
+@pytest.mark.parametrize('text, kind', [
+    ('Error talking to OpenAI: Error code: 429 - Rate limit reached for gpt-4o. Limit 30000, Used 29873, '
+     'Requested 503.', 'usage limit'),
+    ('Sorry, I had a problem getting a response from Google Generative AI.: {"error": {"code": 403, '
+     '"message": "Your quota project does not have access"}}', 'access key'),
+    ('Anthropic API error: rate_limit_error.', 'usage limit'),
+])
+def test_the_reported_status_decides_the_kind(text, kind):
+    assert kind in ai_errors.friendly_error(text)
+
+
+@pytest.mark.parametrize('text', [
+    'Sorry, I had a problem talking to the TV: it is off.',
+    'Weather API error: the station is down',
+])
+def test_device_answers_with_error_wording_are_left_alone(text):
+    assert ai_errors.friendly_error(text) is None
+
+
+def test_hanging_voice_falls_back_to_home_assistant_audio():
+    import asyncio
+    import threading
+    protocol = make_protocol()
+    release = threading.Event()
+
+    def synthesize(text, path):
+        release.wait(5)
+        return True
+
+    async def run():
+        protocol._loop = asyncio.get_running_loop()
+        with patch('satellite_protocol.media_ducker'), patch('utils.processing_sound_loop'), \
+             patch('satellite_protocol.ai_errors.synthesize', side_effect=synthesize), \
+             patch('satellite_protocol.ERROR_SPEECH_TIMEOUT', 0.05):
+            protocol._handle_voice_event(Event.VOICE_ASSISTANT_RUN_START, {})
+            protocol._handle_voice_event(Event.VOICE_ASSISTANT_TTS_START, {'text': GEMINI_503})
+            protocol._handle_voice_event(Event.VOICE_ASSISTANT_TTS_END, {'url': 'http://ha/x.mp3'})
+            await asyncio.sleep(0.2)
+            assert protocol._on_tts_url.call_args.args[0] == 'http://ha/x.mp3'
+            release.set()
+            await asyncio.sleep(0.2)
+        assert protocol._on_tts_url.call_count == 1                # the late voice is not played too
+
+    asyncio.run(run())
+
+
+def test_each_error_reply_gets_its_own_file_and_the_old_one_is_removed():
+    import os
+    protocol = make_protocol()
+    run_error_reply(protocol, lambda text, path: True)
+    first = protocol._on_tts_url.call_args.args[0]
+    protocol._on_tts_url.call_args.kwargs['done_callback'](True)
+    protocol._handle_voice_event(Event.VOICE_ASSISTANT_RUN_END, {})
+    run_error_reply(protocol, lambda text, path: True)
+    second = protocol._on_tts_url.call_args.args[0]
+    assert first != second and not os.path.exists(first) and os.path.exists(second)
+    protocol._remove_error_speech()

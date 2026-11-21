@@ -69,6 +69,7 @@ _LOGGER = logging.getLogger(__name__)
 
 TIMER_SOUND_PATH = "sound/timer_finished.wav"
 MDNS_RETRY_SECONDS = 30
+ERROR_SPEECH_TIMEOUT = 10
 
 
 def _generate_timer_beep(path: str) -> None:
@@ -203,6 +204,7 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
         self._tts_url: Optional[str] = None
         self._tts_text: Optional[str] = None
         self._tts_override: Optional[str] = None   # friendly text for an AI-service error, spoken locally
+        self._error_speech_path: Optional[str] = None
         self._tts_played = False
         self._tts_completed = False
         self._tts_end_received = False
@@ -546,9 +548,14 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
         cancel_event = threading.Event()
         self._playback_cancel = cancel_event        # the hotkey can cancel while synthesizing
         url, loop = self._tts_url, self._loop
-        path = os.path.join(tempfile.gettempdir(), f"glassist-ai-error-{id(self):x}.wav")
+        # A new file each time: a cancelled synthesis may still hold the previous one open.
+        self._remove_error_speech()
+        fd, path = tempfile.mkstemp(prefix="glassist-ai-error-", suffix=".wav")
+        os.close(fd)
+        self._error_speech_path = path
 
         def start(spoken: bool) -> None:
+            # Runs once: playback replaces _playback_cancel, so a late call is ignored.
             if self._playback_cancel is not cancel_event:
                 return
             self._play_tts_sequence([path if spoken else url])
@@ -561,6 +568,17 @@ class VoiceSatelliteProtocol(ESPhomeAPIServer):
                 loop.call_soon_threadsafe(start, spoken)
 
         threading.Thread(target=synthesize, name="ai-error-speech", daemon=True).start()
+        if loop is not None:
+            # Should the voice hang, the user still gets Home Assistant's answer.
+            loop.call_later(ERROR_SPEECH_TIMEOUT, start, False)
+
+    def _remove_error_speech(self) -> None:
+        if self._error_speech_path:
+            try:
+                os.remove(self._error_speech_path)
+            except OSError:
+                pass
+            self._error_speech_path = None
 
     def _play_tts_sequence(self, urls: list, *, streaming=False) -> None:
         """Play a sequence of URLs (for announce preannounce + main audio)."""
@@ -891,13 +909,19 @@ class SatelliteServer:
     async def _register_mdns_later(self) -> None:
         while find_local_ipv4() is None:
             await asyncio.sleep(MDNS_RETRY_SECONDS)
-        self._mdns_retry = None
         await self._register_mdns()
+        if self._mdns_retry is asyncio.current_task():
+            self._mdns_retry = None
 
     async def stop(self) -> None:
-        if self._mdns_retry:
-            self._mdns_retry.cancel()
-            self._mdns_retry = None
+        retry, self._mdns_retry = self._mdns_retry, None
+        if retry is not None and not retry.done():
+            # cleanup() may call stop() from another event loop; Task.cancel is not thread-safe.
+            retry_loop = retry.get_loop()
+            if retry_loop is asyncio.get_running_loop():
+                retry.cancel()
+            elif not retry_loop.is_closed():
+                retry_loop.call_soon_threadsafe(retry.cancel)
         if self._zeroconf and self._zeroconf_info:
             try:
                 await self._zeroconf.async_unregister_service(self._zeroconf_info)

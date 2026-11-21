@@ -220,3 +220,28 @@ def test_setting_accepts_the_usual_true_values(monkeypatch, value):
                                             ('..', ''), ('a..b', 'a.b')])
 def test_model_names_are_safe_folder_names(name, expected):
     assert detection_clips._safe_name(name) == expected
+
+
+def test_a_half_written_clip_is_removed(tmp_path):
+    rec = DetectionClipRecorder(tmp_path)
+    rec.push(np.zeros(2 * SR, np.int16))
+    with patch('wave.Wave_write.writeframes', side_effect=OSError('disk full')):
+        assert rec.save('bruna', 0.9)
+        assert rec.flush()
+    assert os.listdir(tmp_path / 'bruna') == []
+
+
+def test_prune_ignores_a_clip_removed_meanwhile(tmp_path):
+    rec = DetectionClipRecorder(tmp_path, max_files=1)
+    folder = tmp_path / 'bruna'
+    folder.mkdir()
+    (folder / 'trig_20000101_000000_000_bruna_090.wav').write_bytes(b'x')
+    real = os.path.getmtime
+
+    def vanished(path):
+        if path.endswith('trig_20000101_000000_000_bruna_090.wav'):
+            raise FileNotFoundError(path)
+        return real(path)
+
+    with patch('detection_clips.os.path.getmtime', side_effect=vanished):
+        rec._prune(str(folder))                                   # no exception
