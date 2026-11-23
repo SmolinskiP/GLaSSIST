@@ -36,44 +36,14 @@ if exist "inno\GLaSSIST-Debug.exe" (
     echo   Removing old installer...
     del /q "inno\GLaSSIST-Debug.exe"
 )
-if exist "*.spec" (
-    echo   Removing old spec files...
-    del /q "*.spec"
-)
 echo   Cleanup complete!
 echo.
 
 :: Step 2: Build with PyInstaller
 echo [2/5] Building application with PyInstaller...
 echo   This may take several minutes...
-pyinstaller --name "GLaSSIST" ^
-    --icon "img/icon.ico" ^
-    --add-data "frontend;frontend" ^
-    --add-data "sound;sound" ^
-    --add-data "img;img" ^
-    --add-data "models;models" ^
-    --add-data "locales;locales" ^
-    --add-data "venv/Lib/site-packages/openwakeword;openwakeword" ^
-    --add-data "venv/Lib/site-packages/onnxruntime/capi/*;onnxruntime/capi/" ^
-    --hidden-import "openwakeword" ^
-    --hidden-import "openwakeword.model" ^
-    --hidden-import "openwakeword.utils" ^
-    --hidden-import "webrtcvad" ^
-    --hidden-import "pystray" ^
-    --hidden-import "PIL" ^
-    --hidden-import "numpy" ^
-    --hidden-import "scipy" ^
-    --hidden-import "onnxruntime" ^
-    --hidden-import "sounddevice" ^
-    --hidden-import "soundfile" ^
-    --hidden-import "miniaudio" ^
-    --hidden-import "webview" ^
-    --hidden-import "websockets" ^
-    --hidden-import "keyboard" ^
-    --collect-all "openwakeword" ^
-    --collect-all "flet_desktop" ^
-    --noconfirm ^
-    main.py
+set GLASSIST_CONSOLE=1
+pyinstaller --noconfirm GLaSSIST.spec
 
 if %ERRORLEVEL% neq 0 (
     echo   PyInstaller build failed!

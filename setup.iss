@@ -22,13 +22,13 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
-LicenseFile=E:\GLaSSIST\LICENSE
-InfoBeforeFile=E:\GLaSSIST\pre-install-info.txt
-InfoAfterFile=E:\GLaSSIST\post-install-info.txt
+LicenseFile=LICENSE
+InfoBeforeFile=pre-install-info.txt
+InfoAfterFile=post-install-info.txt
 PrivilegesRequired=lowest
-OutputDir=E:\GLaSSIST\inno
+OutputDir=inno
 OutputBaseFilename=GLaSSIST-Setup
-SetupIconFile=E:\GLaSSIST\img\icon.ico
+SetupIconFile=img\icon.ico
 SolidCompression=yes
 WizardStyle=modern
 
@@ -44,9 +44,9 @@ Name: "{app}"; Permissions: users-modify
 Name: "{userappdata}\GLaSSIST"; Permissions: users-modify
 
 [Files]
-Source: "E:\GLaSSIST\dist\GLaSSIST\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "E:\GLaSSIST\dist\GLaSSIST\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "E:\GLaSSIST\.env.example"; DestDir: "{userappdata}\GLaSSIST"; DestName: ".env.example"; Flags: ignoreversion
+Source: "dist\GLaSSIST\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist\GLaSSIST\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: ".env.example"; DestDir: "{userappdata}\GLaSSIST"; DestName: ".env.example"; Flags: ignoreversion
 
 [UninstallDelete]
 ; Wake word detection clips are voice recordings; don't leave them behind.

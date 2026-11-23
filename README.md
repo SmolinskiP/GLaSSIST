@@ -255,8 +255,7 @@ requested by the user or the person installing or operating it. In detail:
   configure. In ESPHome Satellite mode GLaSSIST announces itself on the local network (mDNS) so Home
   Assistant can find it.
 - GLaSSIST checks GitHub (`api.github.com`) for new releases and loads release notes from GitHub in
-  Settings. No personal data is sent. Set `HA_UPDATE_CHECK=false` in `.env` to turn off the check at
-  startup.
+  Settings. No personal data is sent. Set `HA_UPDATE_CHECK=false` in `.env` to turn both off.
 - There is no telemetry or analytics. Logs, configuration and optional wake word detection clips
   stay on your computer.
 

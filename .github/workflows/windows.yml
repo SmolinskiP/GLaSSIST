@@ -1,0 +1,75 @@
+name: Windows build
+# Builds the PyInstaller app and the Inno Setup installer on demand and keeps
+# them as a workflow artifact. Releases are still uploaded by hand until
+# SignPath signing is added here.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch, tag or commit to build (leave empty for the selected branch)'
+        required: false
+        default: ''
+      console:
+        description: 'Console (debug) build'
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      # GLaSSIST.spec and the local build scripts expect a venv in the repo root.
+      - name: Install dependencies
+        run: |
+          python -m venv venv
+          venv\Scripts\python -m pip install --upgrade pip
+          venv\Scripts\python -m pip install -r requirements.txt pyinstaller==6.14.2 pyinstaller-hooks-contrib==2025.6
+
+      - name: Download default wake word models
+        run: venv\Scripts\python -c "import openwakeword.utils; openwakeword.utils.download_models()"
+
+      - name: Verify Flet client and release versions
+        run: |
+          venv\Scripts\python packaging\check_flet_bundle.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          venv\Scripts\python packaging\check_release_version.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: Build with PyInstaller
+        env:
+          GLASSIST_CONSOLE: ${{ inputs.console && '1' || '' }}
+        run: |
+          venv\Scripts\python -m PyInstaller --noconfirm GLaSSIST.spec
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          venv\Scripts\python packaging\check_flet_bundle.py dist\GLaSSIST\_internal\flet_desktop\app\flet
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          Copy-Item C:\Windows\System32\MSVCP140.dll dist\GLaSSIST\_internal\
+
+      - name: Build installer
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
+          & $iscc setup.iss
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          Get-FileHash inno\GLaSSIST-Setup.exe -Algorithm SHA256 | Format-List
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GLaSSIST-${{ inputs.console && 'console' || 'windowed' }}-${{ github.run_number }}
+          path: inno/GLaSSIST-Setup.exe
+          if-no-files-found: error

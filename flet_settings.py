@@ -1361,6 +1361,16 @@ class FletSettingsApp:
 
     def _start_changelog_load(self):
         """Fetch release notes from GitHub without blocking the settings window."""
+        if not utils.get_env_bool("HA_UPDATE_CHECK", True):
+            self.changelog_column.controls = [
+                ft.Text("Update check is disabled (HA_UPDATE_CHECK=false).", color=ft.Colors.GREY_500),
+                ft.TextButton(
+                    "View all releases on GitHub", icon=ft.Icons.OPEN_IN_NEW,
+                    on_click=lambda _: webbrowser.open(update_checker.RELEASES_URL)),
+            ]
+            self.page.update()
+            return
+
         def worker():
             releases = update_checker.get_releases()
             controls = []
@@ -1391,6 +1401,11 @@ class FletSettingsApp:
 
     def _start_update_check(self):
         """Run the GitHub update check in the background and update the top version bar."""
+        if not utils.get_env_bool("HA_UPDATE_CHECK", True):
+            self.update_status_text.value = "Update check disabled"
+            self.page.update()
+            return
+
         def worker():
             try:
                 latest = update_checker.check_for_update()
