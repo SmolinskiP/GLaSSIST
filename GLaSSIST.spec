@@ -1,6 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Used by build.bat, build_console.bat and the Windows GitHub Actions workflow.
-# GLASSIST_CONSOLE=1 builds the console (debug) variant.
+# Used by build.bat and the Windows GitHub Actions workflow.
 import os
 import runpy
 
@@ -68,7 +67,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    console=os.environ.get('GLASSIST_CONSOLE') == '1',
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

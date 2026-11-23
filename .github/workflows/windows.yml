@@ -1,19 +1,21 @@
 name: Windows build
-# Builds the PyInstaller app and the Inno Setup installer on demand and keeps
-# them as a workflow artifact. Releases are still uploaded by hand until
-# SignPath signing is added here.
+# Runs on release (builds the installer and attaches GLaSSIST-Setup.exe to the
+# release) and on manual workflow_dispatch (build on demand, optionally
+# attaching to a given tag). Every run also keeps the installer as an artifact.
 
 on:
   workflow_dispatch:
     inputs:
-      ref:
-        description: 'Branch, tag or commit to build (leave empty for the selected branch)'
+      release_tag:
+        description: 'Attach the installer to this existing release tag (leave empty to just build)'
         required: false
         default: ''
-      console:
-        description: 'Console (debug) build'
-        type: boolean
-        default: false
+  release:
+    types: [published]
+
+# The release job uploads GLaSSIST-Setup.exe as a release asset
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -21,10 +23,12 @@ jobs:
     defaults:
       run:
         shell: pwsh
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag || github.ref }}
 
       - uses: actions/setup-python@v5
         with:
@@ -40,16 +44,15 @@ jobs:
       - name: Download default wake word models
         run: venv\Scripts\python -c "import openwakeword.utils; openwakeword.utils.download_models()"
 
+      # Fail rather than publishing an installer with mismatched version metadata.
       - name: Verify Flet client and release versions
         run: |
           venv\Scripts\python packaging\check_flet_bundle.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          venv\Scripts\python packaging\check_release_version.py
+          venv\Scripts\python packaging\check_release_version.py --expected "$env:RELEASE_TAG"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
       - name: Build with PyInstaller
-        env:
-          GLASSIST_CONSOLE: ${{ inputs.console && '1' || '' }}
         run: |
           venv\Scripts\python -m PyInstaller --noconfirm GLaSSIST.spec
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
@@ -70,6 +73,14 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: GLaSSIST-${{ inputs.console && 'console' || 'windowed' }}-${{ github.run_number }}
+          name: GLaSSIST-Setup-${{ github.run_number }}
           path: inno/GLaSSIST-Setup.exe
           if-no-files-found: error
+
+      - name: Attach installer to release
+        if: env.RELEASE_TAG != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$env:RELEASE_TAG" inno\GLaSSIST-Setup.exe --clobber
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }

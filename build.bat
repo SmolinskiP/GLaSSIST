@@ -42,7 +42,6 @@ echo.
 :: Step 2: Build with PyInstaller
 echo [2/5] Building application with PyInstaller...
 echo   This may take several minutes...
-set GLASSIST_CONSOLE=
 pyinstaller --noconfirm GLaSSIST.spec
 
 if %ERRORLEVEL% neq 0 (

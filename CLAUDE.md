@@ -28,7 +28,6 @@ python -m pytest tests/test_client.py -v
 ### Building (Windows)
 ```bash
 build.bat                         # Build Windows executable (requires virtual environment)
-build_console.bat                 # Build console version with debug output
 ```
 
 ### Dependencies
