@@ -234,6 +234,32 @@ See [`tests/README.md`](tests/README.md) for the complete test-runner reference.
 - `i18n.py`, `locales/` — interface translations (`HA_LANGUAGE`)
 - `conversation_manager.py`, `prompt_server.py` — local interactive prompts in WebSocket mode
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
+[SignPath Foundation](https://signpath.org).
+
+- Committers and reviewers: [SmolinskiP](https://github.com/SmolinskiP). Pull requests from other
+  contributors are reviewed before they are merged.
+- Approvers: [SmolinskiP](https://github.com/SmolinskiP)
+
+Signed Windows releases are built from this repository by GitHub Actions. See [Privacy](#privacy) for
+what the program sends over the network.
+
+## Privacy
+
+This program will not transfer any information to other networked systems unless specifically
+requested by the user or the person installing or operating it. In detail:
+
+- Audio, recognized text and responses are exchanged only with the Home Assistant instance you
+  configure. In ESPHome Satellite mode GLaSSIST announces itself on the local network (mDNS) so Home
+  Assistant can find it.
+- GLaSSIST checks GitHub (`api.github.com`) for new releases and loads release notes from GitHub in
+  Settings. No personal data is sent. Set `HA_UPDATE_CHECK=false` in `.env` to turn off the check at
+  startup.
+- There is no telemetry or analytics. Logs, configuration and optional wake word detection clips
+  stay on your computer.
+
 ## 📄 License
 
 GLaSSIST is available under the [MIT License](LICENSE).
