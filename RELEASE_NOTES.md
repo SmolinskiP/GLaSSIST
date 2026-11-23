@@ -1,3 +1,19 @@
+## 🏗️ GLaSSIST 3.10.1 — Installer built by GitHub
+
+### 🏗️ Windows installer built by GitHub
+
+- **`GLaSSIST-Setup.exe` is now built by GitHub Actions** straight from the source code in this repository, not on my PC. Anyone can open the [Windows build workflow](https://github.com/SmolinskiP/GLaSSIST/actions/workflows/windows.yml), see exactly what went into the installer, and compare its SHA-256 (printed in the build log) with the file you downloaded. This release is also the first test of this pipeline.
+- **The executable has proper version info** (product name and version in file properties).
+- Code signing is not there yet. I'm working on free signing for open source projects, which should also help with false antivirus alerts like [#70](https://github.com/SmolinskiP/GLaSSIST/issues/70).
+
+### 🐛 Bug fixes
+
+- **`HA_UPDATE_CHECK=false` turns off all GitHub requests.** The Settings window used to check for updates and load the changelog anyway. Both are skipped now when the update check is disabled.
+
+### 🔧 Other
+
+- README has new **Code signing policy** and **Privacy** sections.
+
 ## 🧠 GLaSSIST 3.10.0 — Clear AI errors and wake word detection clips
 
 ### ✨ New features
